@@ -67,6 +67,14 @@ class Scanner(
 ) {
     private fun client(endpoint: NodeEndpoint, pin: String?) = ElectrumClient(endpoint, pin, transports)
 
+    /**
+     * Every server conversation runs here, one at a time: the caches below are plain maps (the
+     * Android app uses ConcurrentHashMap, which Kotlin/Native lacks), and serialising also keeps
+     * the wallet to a single connection at a time.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val worker = ioDispatcher.limitedParallelism(1)
+
     fun scan(xpub: String, endpoint: NodeEndpoint, pinnedFingerprint: String?, gap: Int = gapLimit): Flow<ScanEvent> = flow {
         val txHeights = HashMap<String, Int>()
         val parsed = try {
@@ -124,7 +132,7 @@ class Scanner(
         } finally {
             client.close()
         }
-    }.flowOn(ioDispatcher)
+    }.flowOn(worker)
 
     private fun confirmations(client: ElectrumClient, txHeights: Map<String, Int>, rows: List<AddressRow>, tip: Int): List<TxConf> {
         val amounts = netAmounts(client, txHeights.keys, rows.map { it.scriptHash }.toSet())
@@ -139,7 +147,7 @@ class Scanner(
     /** Silent refresh of already-discovered addresses: status first, details only when it changed. */
     suspend fun refreshDetails(
         rows: List<AddressRow>, endpoint: NodeEndpoint, pinnedFingerprint: String?,
-    ): Triple<List<AddressRow>, List<TxConf>, Int> = withContext(ioDispatcher) {
+    ): Triple<List<AddressRow>, List<TxConf>, Int> = withContext(worker) {
         val client = client(endpoint, pinnedFingerprint)
         try {
             client.connect()
@@ -177,7 +185,7 @@ class Scanner(
     /** Every unspent output the wallet's addresses hold that a send can draw on (immature rewards left out). */
     suspend fun gatherUtxos(
         rows: List<AddressRow>, endpoint: NodeEndpoint, pinnedFingerprint: String?,
-    ): List<SpendableUtxo> = withContext(ioDispatcher) {
+    ): List<SpendableUtxo> = withContext(worker) {
         val client = client(endpoint, pinnedFingerprint)
         try {
             client.connect()
@@ -204,7 +212,7 @@ class Scanner(
      */
     suspend fun verifyCoins(
         xpub: String, coins: List<SpendableUtxo>, endpoint: NodeEndpoint, pinnedFingerprint: String?,
-    ) = withContext(ioDispatcher) {
+    ) = withContext(worker) {
         val parsed = Bip32.parseExtendedPubKey(xpub)
         val c = client(endpoint, pinnedFingerprint)
         try {
@@ -224,13 +232,13 @@ class Scanner(
     }
 
     suspend fun broadcast(rawTxHex: String, endpoint: NodeEndpoint, pinnedFingerprint: String?): String =
-        withContext(ioDispatcher) {
+        withContext(worker) {
             val client = client(endpoint, pinnedFingerprint)
             try { client.connect(); client.broadcast(rawTxHex) } finally { client.close() }
         }
 
     /** A rough sats/vByte estimate from the server, floored by the relay minimum. Null if it fails. */
-    suspend fun suggestedFeeRate(endpoint: NodeEndpoint, pinnedFingerprint: String?): Double? = withContext(ioDispatcher) {
+    suspend fun suggestedFeeRate(endpoint: NodeEndpoint, pinnedFingerprint: String?): Double? = withContext(worker) {
         val client = client(endpoint, pinnedFingerprint)
         try {
             client.connect()
@@ -244,7 +252,7 @@ class Scanner(
     }
 
     /** Connect once and report the server's fingerprint and tip, for the server settings screen. */
-    suspend fun probe(endpoint: NodeEndpoint, pinnedFingerprint: String?): Pair<String?, Int> = withContext(ioDispatcher) {
+    suspend fun probe(endpoint: NodeEndpoint, pinnedFingerprint: String?): Pair<String?, Int> = withContext(worker) {
         val client = client(endpoint, pinnedFingerprint)
         try { client.connect(); client.serverFingerprint to client.blockHeight() } finally { client.close() }
     }

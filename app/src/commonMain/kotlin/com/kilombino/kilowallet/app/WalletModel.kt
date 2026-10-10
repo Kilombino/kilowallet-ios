@@ -223,6 +223,7 @@ class WalletModel(private val platform: AppPlatform) {
                     is ScanEvent.CertificateChanged -> _state.update { it.copy(scan = ScanPhase.Error(ev.message), certChanged = ev.fingerprint) }
                 }
             }
+            if (platform.demoScreen == "home" && _state.value.scan is ScanPhase.Error) platform.markReady("home")
         }
     }
 

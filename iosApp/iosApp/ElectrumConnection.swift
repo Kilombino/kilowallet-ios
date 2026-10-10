@@ -13,8 +13,9 @@ final class ElectrumConnection: NSObject, IosConnection {
     private let conn: NWConnection
     private let queue = DispatchQueue(label: "com.kilombino.kilowallet.electrum")
     private var buffer = Data()
-    private var fp: String?
-    private var changed = false
+    private let box: TrustBox
+    private var fp: String? { box.fingerprint }
+    private var changed: Bool { box.changed }
     private var err: String?
     private var closed = false
 
@@ -22,36 +23,41 @@ final class ElectrumConnection: NSObject, IosConnection {
         let tcp = NWProtocolTCP.Options()
         tcp.connectionTimeout = 20
         tcp.noDelay = true
+        let box = TrustBox()
+        let verifyQueue = DispatchQueue(label: "com.kilombino.kilowallet.electrum.verify")
         var tlsOptions: NWProtocolTLS.Options? = nil
         if tls {
             let t = NWProtocolTLS.Options()
             sec_protocol_options_set_min_tls_protocol_version(t.securityProtocolOptions, .TLSv12)
             tlsOptions = t
         }
-        let params = NWParameters(tls: tlsOptions, tcp: tcp)
-        conn = NWConnection(host: NWEndpoint.Host(host),
-                            port: NWEndpoint.Port(rawValue: UInt16(clamping: port)) ?? 50002,
-                            using: params)
-        super.init()
-
+        // The verify block must be set BEFORE the parameters are made: NWParameters copies the options.
         if let t = tlsOptions {
             let pin = pinnedFingerprint?.lowercased()
-            sec_protocol_options_set_verify_block(t.securityProtocolOptions, { [weak self] _, trust, complete in
+            sec_protocol_options_set_verify_block(t.securityProtocolOptions, { [box] _, trust, complete in
                 let secTrust = sec_trust_copy_ref(trust).takeRetainedValue()
                 var hex: String? = nil
                 if let chain = SecTrustCopyCertificateChain(secTrust) as? [SecCertificate], let leaf = chain.first {
                     let der = SecCertificateCopyData(leaf) as Data
                     hex = SHA256.hash(data: der).map { String(format: "%02x", $0) }.joined()
                 }
-                self?.fp = hex
+                box.fingerprint = hex
+                NSLog("Kilowallet TLS: server certificate sha256=%@ (pinned: %@)", hex ?? "none", pin ?? "not yet")
                 if let pin = pin, pin != hex {
-                    self?.changed = true
+                    box.changed = true
                     complete(false)
                 } else {
                     complete(hex != nil)
                 }
-            }, queue)
+            }, verifyQueue)
         }
+
+        let params = NWParameters(tls: tlsOptions, tcp: tcp)
+        conn = NWConnection(host: NWEndpoint.Host(host),
+                            port: NWEndpoint.Port(rawValue: UInt16(clamping: port)) ?? 50002,
+                            using: params)
+        self.box = box
+        super.init()
 
         let ready = DispatchSemaphore(value: 0)
         var signalled = false
@@ -60,7 +66,7 @@ final class ElectrumConnection: NSObject, IosConnection {
             switch state {
             case .ready: signalOnce()
             case .failed(let e):
-                self?.err = self?.changed == true ? "certificate changed" : "Could not connect: \(e.localizedDescription)"
+                self?.err = self?.box.changed == true ? "certificate changed" : "Could not connect: \(e.localizedDescription)"
                 self?.closed = true
                 signalOnce()
             case .waiting(let e):
@@ -126,4 +132,10 @@ final class ElectrumConnection: NSObject, IosConnection {
         closed = true
         conn.cancel()
     }
+}
+
+/// What the TLS verify block saw (written on the verify queue before the connection is ready).
+private final class TrustBox {
+    var fingerprint: String?
+    var changed = false
 }
