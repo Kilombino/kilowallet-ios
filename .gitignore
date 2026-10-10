@@ -1,0 +1,13 @@
+.gradle/
+build/
+.kotlin/
+local.properties
+*.iml
+.idea/
+.DS_Store
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+iosApp/build/
+screenshots/
+screenshots-logs/

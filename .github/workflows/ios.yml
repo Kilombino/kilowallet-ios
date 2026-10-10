@@ -1,0 +1,102 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    name: Tests, simulator build, screenshots
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Unit tests (JVM and iOS simulator)
+        run: ./gradlew :core:jvmTest :core:iosSimulatorArm64Test --stacktrace
+
+      - name: Live smoke test against the default Electrum server
+        continue-on-error: true
+        env:
+          KW_LIVE: "1"
+        run: ./gradlew :core:jvmTest --tests '*LiveServerTest*' --rerun-tasks -i | grep -E "Connected|Done|FAIL|PASS|LiveServerTest" | head -40
+
+      - name: Build the app for the iOS Simulator (no signing)
+        run: |
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/dd ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build \
+            | tee build/xcodebuild.log | grep -E "error:|warning: .*swift|BUILD" || true
+          test -d build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app
+
+      - name: Boot a simulator, launch the app and take screenshots
+        run: ./scripts/ci-screenshots.sh build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app screenshots
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots/
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports
+          path: |
+            core/build/reports/tests/
+            core/build/test-results/
+            build/xcodebuild.log
+            screenshots-logs/
+
+  device:
+    name: Release build for device (unsigned)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Cache Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+      - name: Build Release for iphoneos without signing
+        run: |
+          mkdir -p build
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build \
+            | tee build/xcodebuild-release.log | grep -E "error:|BUILD" || true
+          test -d build/dd/Build/Products/Release-iphoneos/Kilowallet.app
+          du -sh build/dd/Build/Products/Release-iphoneos/Kilowallet.app
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-build-log
+          path: build/xcodebuild-release.log

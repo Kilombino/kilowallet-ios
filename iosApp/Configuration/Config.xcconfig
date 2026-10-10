@@ -1,0 +1,7 @@
+// Set these for your Apple developer account (or set Team / Bundle Identifier in Xcode's
+// Signing & Capabilities tab, which overrides them).
+TEAM_ID=
+BUNDLE_ID=com.kilombino.kilowallet
+APP_NAME=Kilowallet
+MARKETING_VERSION=0.1.0
+CURRENT_PROJECT_VERSION=1

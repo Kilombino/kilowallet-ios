@@ -1,0 +1,18 @@
+Kilowallet for iOS
+Copyright 2026 kilombino
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+The wallet logic is ported from Kilowallet for Android (github.com/Kilombino/kilowallet,
+Apache-2.0). RIPEMD-160, BLAKE2b, Base58Check, Bech32/Bech32m, BIP-39, BIP-32, the BIP-143 and
+unified sighashes and the BLAKE2b block header hash are implemented in this repository from their
+public specifications.
+
+Third-party libraries (Apache-2.0):
+ - secp256k1-kmp by ACINQ (fr.acinq.secp256k1), which bundles Bitcoin Core's libsecp256k1 (MIT)
+ - KotlinCrypto hash/macs (org.kotlincrypto): SHA-256, HMAC-SHA256/512
+ - Kotlin, kotlinx.coroutines, kotlinx.serialization, Compose Multiplatform by JetBrains
