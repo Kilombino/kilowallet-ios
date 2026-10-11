@@ -1,0 +1,21 @@
+{
+  "source_commit": "70afec766f957b5e0c23b0f27d0101fefcc746ee",
+  "run": "https://github.com/romanmodin/kilowallet-ios/actions/runs/38142184037",
+  "artifact_id": 11703298538,
+  "artifact_sha256": "4e3748c4ebdea40384f44ab59bfde8e6cbbc988c07866ff7c9a46c955358d907",
+  "simulator": "iPhone 16 Plus / iOS 26.2",
+  "screens_ready": 9,
+  "visual_inspection": "All nine screenshots inspected. No blank screen or crash visible. Home shows initial certificate approval before application queries. Screenshots alone do not verify interactive navigation, secure hardware, clipboard, camera, signing or accessibility. Settings attribution is below the initial viewport and was verified in source, not this screenshot.",
+  "demo_wallet": "Disposable simulation only. Creation screen uses a newly generated, unpersisted mnemonic; other wallet screens use the public abandon/about mnemonic and synthetic input. Never fund either.",
+  "sha256": {
+    "screenshots/01-welcome.png": "156c12eef3dbb18f5eff099393f92e49489abe0834e207c6ca8205f52074748f",
+    "screenshots/02-create.png": "ceb4a70980d75c540077288bfb5fc4cba6aa79a8620ecb985e86f4ce9376da14",
+    "screenshots/03-restore.png": "3906d4a8e384e5df4b2a3258a4fae698edd44fbc6e28d9b763580c4ba6f69ccc",
+    "screenshots/04-watch.png": "4dbd6ec3d2673688bff521846adb77eccfd6311660cc480651c149fc02638416",
+    "screenshots/05-home.png": "fd0fb5fbaddcc8fb43036fcd48b8b44f93760b541848947d86358c45ed0997f9",
+    "screenshots/06-receive.png": "1d93bcb4e004c33014772ba4f9615ebd835ffdf1ba86dd45a345d5eb2433aefa",
+    "screenshots/07-send.png": "fcea8790d93b782224d6a7f058fc90839cf44f61c871706be279b4aaf520449f",
+    "screenshots/08-review.png": "6ebfcfefe559def5414c981bb53a59bc01c22206926ec74eba4c9f8ed9c70149",
+    "screenshots/09-settings.png": "ef36a9b357f7be49bd2a64e9a06f3c403cf05dfb8c806f76fe778b43c6e45962"
+  }
+}

@@ -22,13 +22,14 @@ Apache-2.0 LICENSE and original NOTICE retained. No private credentials belong i
 | --- | --- |
 | Source review at upstream e20e31e | Completed with findings; see separate baseline review |
 | Baseline JVM and native characterization | Passed in Actions run 38139630578; passing reproductions confirm upstream defects |
-| Candidate core and app regression tests | Commit 610c286: 58 substantive JVM/iOS executions passed; final 70afec7 adds exact-transaction retry and restart coverage, running |
-| Candidate unsigned iOS Release build | Passed at 610c286; final 70afec7 running |
+| Candidate core and app regression tests | Final executable source 70afec7: 60 substantive executions passed (21 core + 9 app tests on each of JVM and iOS arm64 Simulator), zero failures; includes exact-transaction retry and restart coverage |
+| Candidate unsigned iOS Release build | Passed at final 70afec7 in Actions run 38142184037; strict xcodebuild exit and executable-presence checks |
+| Simulator launch and visual inspection | All nine principal screens reached readiness; screenshots inspected on iPhone 16 Plus / iOS 26.2; see evidence/simulator-screens.json |
 | Physical iPhone Keychain / Face ID / passcode / background and recovery checks | Not performed |
-| Live-chain integration against a independently verified certificate and known node | Not performed on candidate |
-| Apple provisioning access | Live API preflight 2026-10-11 13:15Z: app query authenticated but no com.kilombino.kilowallet record; bundle-ID query denied with HTTP 403. Membership conversion was pending at last web verification (2026-10-10); current browser sign-in did not establish access. |
+| Live-chain integration against an independently verified certificate and known node | Not performed on candidate |
+| Apple provisioning access | Live API preflight 2026-10-11 13:15Z: app query authenticated but no com.kilombino.kilowallet record; bundle-ID query denied with HTTP 403. Membership conversion was pending at last web verification (2026-10-10); browser rechecked after the user reported completion at 13:26Z and still showed sign-in / authResult=FAILED. |
 | Signed archive / provisioning / TestFlight processing | Not performed |
-| App Store metadata, privacy disclosures and review submission | Not performed |
+| App Store metadata and privacy information | Drafts prepared in distribution/app-store-metadata.json and PRIVACY.md; not entered in App Store Connect or submitted |
 
 Do not interpret a passing automated build as completion of the remaining gates. This review is not a guarantee that all dependencies, runtime behavior or cryptography are free of defects.
 
@@ -60,3 +61,12 @@ A real-funds transaction requires a separate user-authorized financial action; a
 | M6 build integrity | Independent release gate pins Actions, checks wrapper/distribution and fails on actual Xcode exit status. Full transitive source review and dependency locking remain outstanding |
 
 The automated checks support continued beta preparation. They do not establish production release readiness, Apple acceptance, network propagation or physical-device behavior. No signing credential or real wallet seed has been committed to this repository.
+
+## Recommended improvements before wider distribution
+
+1. Have a second wallet/security engineer review transaction construction, recovery and the complete dependency tree. Current checks cover first-party code and direct advisory lookups, not an independent cryptographic audit.
+2. Add linked-header/best-work verification and distinguish server-reported confirmations from independently verified inclusion throughout the UI. A valid individual header is not proof of the strongest chain.
+3. Track every issued receive and change address and support explicit recovery look-ahead/account discovery. The current device-local monotonic receive index is narrower than complete invoice/address management.
+4. Tighten the existing onboarding copy: restoration supports the implemented English BIP-39/BIP-84 account rather than every standard wallet; server operators can correlate queries, and an address may be reused until usage is discovered. Avoid absolute privacy claims.
+5. Complete small-screen, large-text, VoiceOver, QR permission and hardware authentication checks. Nine simulator screenshots show initial rendering only; the send demo remains in coin-loading state without an approved server, and the Settings credit is below the first viewport.
+6. Lock and review transitive dependencies, replace the inherited permissive iOS workflow with the strict release gate for ordinary PRs, and retain reproducible build provenance for the eventual signed binary.
