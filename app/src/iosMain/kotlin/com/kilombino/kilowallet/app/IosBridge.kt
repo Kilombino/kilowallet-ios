@@ -13,7 +13,7 @@ interface IosBridge {
     /** Face ID / Touch ID / passcode, then the secret (or null and an error message). Called back on the main thread. */
     fun keychainLoad(reason: String, completion: (String?, String?) -> Unit)
     fun keychainHas(): Boolean
-    fun keychainDelete()
+    fun keychainDelete(): String?
     /** "Face ID", "Touch ID" or "passcode". */
     fun unlockName(): String
 

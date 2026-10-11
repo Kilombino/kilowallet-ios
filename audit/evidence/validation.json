@@ -1,0 +1,9 @@
+{
+  "reviewed_upstream": "e20e31edf63298d38f1b1fcc0a09a0922fa4abef",
+  "baseline_run": "https://github.com/romanmodin/kilowallet-ios/actions/runs/38139630578",
+  "baseline_tests": "completed success per GitHub run step",
+  "baseline_unsigned_build": "in_progress",
+  "candidate_tests": "pending",
+  "signed": false,
+  "released": false
+}

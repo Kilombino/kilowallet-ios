@@ -34,8 +34,11 @@ object Bip32Priv {
 
     /** The account-level extended PUBLIC key (a zpub for m/84'/0'/0'). */
     fun accountXpub(master: ExtendedPrivKey, purpose: Int, account: Int = 0): String {
-        val coinNode = deriveChild(deriveChild(master, purpose, hardened = true), 0, hardened = true)
-        val accountNode = deriveChild(coinNode, account, hardened = true)
+        val nodes = mutableListOf<ExtendedPrivKey>()
+        try {
+        val purposeNode = deriveChild(master, purpose, hardened = true).also { nodes += it }
+        val coinNode = deriveChild(purposeNode, 0, hardened = true).also { nodes += it }
+        val accountNode = deriveChild(coinNode, account, hardened = true).also { nodes += it }
         val childNumber = account or HARDENED
         val v = xpubVersion(purpose)
         val out = ByteArray(78)
@@ -47,16 +50,18 @@ object Bip32Priv {
         out[11] = (childNumber ushr 8).toByte(); out[12] = childNumber.toByte()
         accountNode.chainCode.copyInto(out, 13)
         accountNode.publicKey().copyInto(out, 45)
-        coinNode.wipe(); accountNode.wipe()
         return Base58.encodeChecked(out)
+        } finally { nodes.forEach { it.wipe() } }
     }
 
     /** Master key from a BIP-39 seed: I = HMAC-SHA512("Bitcoin seed", seed). */
     fun fromSeed(seed: ByteArray): ExtendedPrivKey {
         val i = Hashes.hmacSha512("Bitcoin seed".encodeToByteArray(), seed)
         val il = i.copyOfRange(0, 32)
-        require(Ec.isValidSecret(il)) { "invalid master key (retry with different seed)" }
-        return ExtendedPrivKey(il, i.copyOfRange(32, 64), 0)
+        try {
+            if (!Ec.isValidSecret(il)) { il.fill(0); error("invalid master key (retry with different seed)") }
+            return ExtendedPrivKey(il, i.copyOfRange(32, 64), 0)
+        } finally { i.fill(0) }
     }
 
     /** CKDpriv at [index]. */
@@ -65,15 +70,18 @@ object Bip32Priv {
         val isHardened = (idx and HARDENED) != 0
         val data = if (isHardened) byteArrayOf(0x00) + parent.key + ser32(idx)
                    else parent.publicKey() + ser32(idx)
-        val i = Hashes.hmacSha512(parent.chainCode, data)
-        data.fill(0)
-        val childKey = Ec.secretAdd(parent.key, i.copyOfRange(0, 32))
-        return ExtendedPrivKey(childKey, i.copyOfRange(32, 64), parent.depth + 1)
+        val i = try { Hashes.hmacSha512(parent.chainCode, data) } finally { data.fill(0) }
+        val tweak = i.copyOfRange(0, 32)
+        try {
+            val childKey = Ec.secretAdd(parent.key, tweak)
+            return ExtendedPrivKey(childKey, i.copyOfRange(32, 64), parent.depth + 1)
+        } finally { tweak.fill(0); i.fill(0) }
     }
 
     /** Derive a full path such as "m/84'/0'/0'/0/0". Accepts ' or h for hardened steps. */
     fun derivePath(master: ExtendedPrivKey, path: String): ExtendedPrivKey {
         var node = master
+        try {
         for (part in path.split('/')) {
             val p = part.trim()
             if (p.isEmpty() || p == "m") continue
@@ -84,6 +92,10 @@ object Bip32Priv {
             node = next
         }
         return node
+        } catch (e: Exception) {
+            if (node !== master) node.wipe()
+            throw e
+        }
     }
 
     private fun ser32(i: Int): ByteArray = byteArrayOf(

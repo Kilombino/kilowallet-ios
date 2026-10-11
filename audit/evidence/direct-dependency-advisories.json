@@ -1,0 +1,115 @@
+{
+  "scope": "Direct declared Maven coordinates only; not a complete resolved/transitive dependency scan",
+  "results": [
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.jetbrains.kotlinx:kotlinx-coroutines-core"
+        },
+        "version": "1.10.2"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.jetbrains.kotlinx:kotlinx-coroutines-swing"
+        },
+        "version": "1.10.2"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.jetbrains.kotlinx:kotlinx-serialization-json"
+        },
+        "version": "1.9.0"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "fr.acinq.secp256k1:secp256k1-kmp"
+        },
+        "version": "0.24.0"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "fr.acinq.secp256k1:secp256k1-kmp-jni-jvm"
+        },
+        "version": "0.24.0"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.kotlincrypto.hash:sha2"
+        },
+        "version": "0.8.0"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.kotlincrypto.macs:hmac-sha2"
+        },
+        "version": "0.8.0"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.jetbrains.compose.runtime:runtime"
+        },
+        "version": "1.9.3"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.jetbrains.compose.foundation:foundation"
+        },
+        "version": "1.9.3"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.jetbrains.compose.ui:ui"
+        },
+        "version": "1.9.3"
+      },
+      "result": {}
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.jetbrains.compose.material3:material3"
+        },
+        "version": "1.9.0"
+      },
+      "result": {}
+    }
+  ]
+}

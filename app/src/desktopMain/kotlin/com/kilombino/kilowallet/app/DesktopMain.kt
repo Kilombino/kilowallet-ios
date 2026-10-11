@@ -21,7 +21,7 @@ fun main() = application {
             override fun hasSeed() = seed != null
             override fun save(secret: String, done: (String?) -> Unit) { seed = secret; done(null) }
             override fun load(reason: String, done: (String?, String?) -> Unit) = done(seed, if (seed == null) "no words" else null)
-            override fun delete() { seed = null }
+            override fun delete(): String? { seed = null; return null }
         }
         override val prefs = object : Prefs {
             override fun get(key: String) = mem[key]

@@ -1,5 +1,9 @@
 # Kilowallet for iOS
 
+Created by **Kilombino**. This distribution is maintained by [romanmodin](https://github.com/romanmodin/kilowallet-ios); upstream authorship, Apache-2.0 license and NOTICE are preserved.
+
+**Release candidate under validation — not yet approved for real funds.** See [the source review](audit/SECURITY_REVIEW_2026-10-11.md) and [release checklist](audit/RELEASE_READINESS.md).
+
 A self-custodial wallet for Bitcoin on the BLAKE2b proof-of-work chain (BTC / XBT), for iPhone.
 The iOS sibling of [Kilowallet for Android](https://github.com/Kilombino/kilowallet).
 

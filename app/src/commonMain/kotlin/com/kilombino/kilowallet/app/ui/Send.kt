@@ -39,6 +39,16 @@ fun SendScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
         is SendPhase.Review -> Review(model, p, platform)
         SendPhase.Signing -> Busy(model, "Signing (unified sighash) and broadcasting…", allowBack = false)
         is SendPhase.Sent -> Sent(model, p.txid)
+        is SendPhase.Pending -> ScreenColumn {
+            BackLink { model.back() }
+            Text("Delivery unconfirmed", style = MaterialTheme.typography.titleLarge, color = Warn)
+            Panel(accent = Warn) {
+                Text(p.message, style = MaterialTheme.typography.bodyMedium, color = TextMain)
+                Text(p.txid, style = MaterialTheme.typography.bodySmall, color = TextSoft)
+            }
+            Explain("This payment may already have reached the network. Resending the saved transaction keeps the same transaction ID and cannot create a second payment.")
+            PrimaryButton("Check or resend same transaction", Modifier.fillMaxWidth()) { model.retryPendingSend() }
+        }
         is SendPhase.Failed -> ScreenColumn {
             BackLink { model.back() }
             Text("Not sent", style = MaterialTheme.typography.titleLarge, color = Bad)
@@ -63,6 +73,7 @@ private fun Busy(model: WalletModel, text: String, allowBack: Boolean = true) {
 @Composable
 private fun SendForm(model: WalletModel, state: UiState, platform: AppPlatform) {
     val clipboard = LocalClipboardManager.current
+    var paymentError by remember { mutableStateOf<String?>(null) }
     var to by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var rate by remember { mutableStateOf("") }
@@ -72,7 +83,9 @@ private fun SendForm(model: WalletModel, state: UiState, platform: AppPlatform) 
     val addrOk = to.isNotBlank() && Address.isValid(to)
 
     fun takePayment(text: String) {
-        val (a, s) = parsePaymentText(text)
+        val parsed = runCatching { parsePaymentText(text) }.getOrElse { paymentError = it.message ?: "Invalid payment request"; return }
+        paymentError = null
+        val (a, s) = parsed
         to = a
         if (s != null) { amount = s.toString(); all = false }
     }
@@ -82,6 +95,7 @@ private fun SendForm(model: WalletModel, state: UiState, platform: AppPlatform) 
         Text("Send ${Chain.COIN}", style = MaterialTheme.typography.titleLarge, color = TextMain)
         Panel {
             SectionLabel("To")
+            paymentError?.let { Text(it, color = Bad) }
             Field(to, { to = it.trim() }, "bc1… / 1… / 3… address", singleLine = false, minLines = 2)
             if (to.isNotBlank() && !addrOk) Text("Not a valid address.", style = MaterialTheme.typography.bodySmall, color = Bad)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -153,6 +167,7 @@ private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatfor
                 }
             }
         }
+        Explain("Confirm that the recipient expects XBT on the BLAKE2b chain. Address format alone cannot distinguish it from Bitcoin SHA-256.")
         Explain("Signed with the unified sighash (0x21): this transaction is valid on the ${Chain.DISPLAY} chain only and " +
             "cannot be replayed on the SHA-256 chain. It signals replace-by-fee.")
         PrimaryButton("Send with ${platform.unlockName}", Modifier.fillMaxWidth(), enabled = p.concern == null || ack) {

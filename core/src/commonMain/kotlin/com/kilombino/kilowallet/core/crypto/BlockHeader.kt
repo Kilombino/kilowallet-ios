@@ -106,10 +106,18 @@ object BlockHeader {
     fun compare(a: ByteArray, b: ByteArray): Int = Ec.compareUnsigned(a, b)
 
     /** True when the header's hash is at or below the target its own bits claim. */
-    fun meetsItsTarget(h: Parsed): Boolean = compare(Hashes.hexToBytes(blockHash(h)), target(h.bits)) <= 0
+    fun meetsItsTarget(h: Parsed): Boolean {
+        val exponent = (h.bits ushr 24).toInt()
+        val mantissa = h.bits and 0x007fffff
+        if (h.bits and 0x00800000 != 0L || mantissa == 0L || exponent > 34 ||
+            (mantissa > 0xff && exponent > 33) || (mantissa > 0xffff && exponent > 32)) return false
+        val target = target(h.bits)
+        return target.any { it != 0.toByte() } && compare(Hashes.hexToBytes(blockHash(h)), target) <= 0
+    }
 
     /** Whether [txid] is in the block of [header], by an Electrum merkle branch at position [pos]. */
     fun inBlock(txid: String, branch: List<String>, pos: Int, header: Parsed): Boolean {
+        if (pos < 0 || branch.size > 31 || txid.length != 64 || branch.any { it.length != 64 }) return false
         var h = Hashes.hexToBytes(txid).reversedArray()
         var p = pos
         for (s in branch) {
@@ -117,6 +125,6 @@ object BlockHeader {
             h = Hashes.doubleSha256(if (p and 1 == 0) h + sib else sib + h)
             p = p shr 1
         }
-        return h.contentEquals(header.merkleRoot)
+        return p == 0 && h.contentEquals(header.merkleRoot)
     }
 }

@@ -41,8 +41,7 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
         Panel {
             SectionLabel("Electrum server")
             Explain("Your balance and history come from this server, and your sends go through it. It learns your " +
-                "addresses, so for the most privacy point it at your own Fulcrum/Electrs on the ${Chain.DISPLAY} chain. TLS only " +
-                "(plain TCP is allowed for a server on your local network).", color = TextSoft)
+                "addresses, so for the most privacy point it at your own Fulcrum/Electrs on the ${Chain.DISPLAY} chain. TLS is required for every server.", color = TextSoft)
             Field(host, { host = it.trim() }, "host")
             Field(port, { port = it.filter { c -> c.isDigit() } }, "port (TLS)", keyboard = KeyboardType.Number)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -56,7 +55,7 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             }
             KeyValue("in use", state.endpoint.toString() + if (state.endpoint.isCustom) " (yours)" else " (default)")
             Text("Pinned certificate (SHA-256):", style = MaterialTheme.typography.bodySmall, color = TextSoft)
-            Text(state.pinned?.let { chunked(it) } ?: "none yet — trusted on first connection",
+            Text(state.pinned?.let { chunked(it) } ?: "none yet — approval required before wallet queries",
                 style = MaterialTheme.typography.bodySmall, color = TextFaint)
         }
 
@@ -77,6 +76,10 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             Explain("A self-custodial wallet for Bitcoin on the ${Chain.DISPLAY} proof-of-work chain (${Chain.TICKER}). " +
                 "No account, no analytics, no tracking. The app contacts only the Electrum server above; opening a " +
                 "transaction on the explorer is done in your browser, only when you tap it.", color = TextSoft)
+            Text("Created by Kilombino", style = MaterialTheme.typography.bodyMedium, color = TextMain)
+            Explain("Original project by Kilombino. This iOS distribution is maintained by romanmodin. Apache License 2.0.")
+            Explain("Balances and confirmation counts rely on your selected server. Recent payment proofs check individual headers; the app does not independently validate the highest-work chain.")
+            LinkText("github.com/romanmodin/kilowallet-ios", color = Purple) { runCatching { uri.openUri("https://github.com/romanmodin/kilowallet-ios") } }
             LinkText("github.com/Kilombino/kilowallet-ios", color = Purple) { runCatching { uri.openUri("https://github.com/Kilombino/kilowallet-ios") } }
             LinkText("kilombino.com", color = Purple) { runCatching { uri.openUri("https://kilombino.com") } }
         }

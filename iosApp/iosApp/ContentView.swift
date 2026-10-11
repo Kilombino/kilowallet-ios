@@ -21,9 +21,18 @@ struct ComposeView: UIViewControllerRepresentable {
 }
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     var body: some View {
-        ComposeView()
-            .ignoresSafeArea(.all) // Compose handles insets (safe area, keyboard) itself
-            .background(Color.black)
+        ZStack {
+            ComposeView().ignoresSafeArea(.all)
+            if scenePhase != .active {
+                Color.black.ignoresSafeArea()
+                Text("Kilowallet").foregroundColor(.white)
+            }
+        }
+        .background(Color.black)
+        .onChange(of: scenePhase) { phase in
+            if phase == .background { MainViewControllerKt.walletDidEnterBackground() }
+        }
     }
 }

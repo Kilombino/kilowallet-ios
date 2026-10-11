@@ -1,4 +1,4 @@
-name: Source audit characterization
+name: Release readiness checks
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-      - name: Verify Gradle bootstrap and install audit-only tests
+      - name: Verify Gradle bootstrap
         run: |
           set -euo pipefail
           echo '76805e32c009c0cf0dd5d206bddc9fb22ea42e84db904b764f3047de095493f3  gradle/wrapper/gradle-wrapper.jar' | shasum -a 256 -c -
@@ -26,9 +26,8 @@ jobs:
           CHECKSUM=$(cat /tmp/kw-gradle.sha256)
           test "${#CHECKSUM}" = 64
           printf '\ndistributionSha256Sum=%s\n' "$CHECKSUM" >> gradle/wrapper/gradle-wrapper.properties
-          cp audit/repro/AuditCharacterizationTest.kt core/src/commonTest/kotlin/com/kilombino/kilowallet/core/
-      - name: Existing tests and defect characterization on JVM and iOS
-        run: ./gradlew --no-daemon :core:jvmTest :core:iosSimulatorArm64Test --stacktrace
+      - name: Wallet regression tests on JVM and iOS
+        run: ./gradlew --no-daemon :core:jvmTest :core:iosSimulatorArm64Test :app:desktopTest :app:iosSimulatorArm64Test --stacktrace
       - name: Unsigned Release device build
         run: |
           set -euo pipefail
@@ -45,4 +44,6 @@ jobs:
           path: |
             core/build/test-results/
             core/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/tests/
             build/audit-xcodebuild.log

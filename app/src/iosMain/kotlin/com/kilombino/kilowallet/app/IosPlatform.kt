@@ -71,7 +71,7 @@ private class MemorySeedStore : SeedStore {
     override fun hasSeed() = s != null
     override fun save(secret: String, done: (String?) -> Unit) { s = secret; done(null) }
     override fun load(reason: String, done: (String?, String?) -> Unit) = done(s, if (s == null) "no words" else null)
-    override fun delete() { s = null }
+    override fun delete(): String? { s = null; return null }
 }
 
 private class MemoryPrefs : Prefs {

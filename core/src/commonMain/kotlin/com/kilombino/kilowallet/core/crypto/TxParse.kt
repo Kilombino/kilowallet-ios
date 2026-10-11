@@ -8,23 +8,49 @@ object TxParse {
     class Tx(val version: Long, val inputs: List<In>, val outputs: List<Out>, val locktime: Long)
 
     fun parse(hex: String): Tx {
+        require(hex.length in 20..2_000_000 && hex.length % 2 == 0) { "Invalid transaction size" }
         val b = Hashes.hexToBytes(hex)
         var o = 0
-        fun u8() = b[o++].toInt() and 0xFF
-        fun le(n: Int): Long { var v = 0L; for (i in 0 until n) v = v or ((b[o + i].toLong() and 0xFF) shl (8 * i)); o += n; return v }
-        fun varint(): Long = when (val n = u8()) { 0xfd -> le(2); 0xfe -> le(4); 0xff -> le(8); else -> n.toLong() }
-        fun bytes(n: Int) = b.copyOfRange(o, o + n).also { o += n }
+        fun need(n: Int) { require(n >= 0 && n <= b.size - o) { "Truncated transaction" } }
+        fun u8(): Int { need(1); return b[o++].toInt() and 0xFF }
+        fun le(n: Int): Long {
+            need(n)
+            var v = 0L
+            for (i in 0 until n) v = v or ((b[o + i].toLong() and 0xFF) shl (8 * i))
+            o += n
+            return v
+        }
+        fun varint(): Int {
+            val prefix = u8()
+            val n = when (prefix) { 0xfd -> le(2); 0xfe -> le(4); 0xff -> le(8); else -> prefix.toLong() }
+            require(n >= 0 && n <= b.size - o) { "Invalid transaction count or length" }
+            require(when (prefix) { 0xfd -> n >= 253; 0xfe -> n > 65535; 0xff -> n > 0xffffffffL; else -> true }) { "Non-canonical transaction count" }
+            return n.toInt()
+        }
+        fun bytes(n: Int): ByteArray { need(n); return b.copyOfRange(o, o + n).also { o += n } }
         val version = le(4)
+        need(2)
         val segwit = b[o] == 0.toByte() && b[o + 1] == 1.toByte()
         if (segwit) o += 2
-        val raw = (0 until varint().toInt()).map {
+        val nInputs = varint()
+        require(nInputs > 0 && nInputs <= (b.size - o) / 41) { "Invalid input count" }
+        val raw = (0 until nInputs).map {
             val txid = with(Hashes) { bytes(32).reversedArray().toHex() }
             val vout = le(4).toInt()
-            val ss = bytes(varint().toInt())
+            val ss = bytes(varint())
             Triple(txid to vout, ss, le(4))
         }
-        val outs = (0 until varint().toInt()).map { val v = le(8); Out(v, bytes(varint().toInt())) }
-        val wit = if (segwit) raw.map { (0 until varint().toInt()).map { bytes(varint().toInt()) } } else raw.map { emptyList() }
+        val nOutputs = varint()
+        require(nOutputs > 0 && nOutputs <= (b.size - o) / 9) { "Invalid output count" }
+        var total = 0L
+        val outs = (0 until nOutputs).map {
+            val v = le(8)
+            require(v >= 0 && total <= Long.MAX_VALUE - v) { "Invalid output amount" }
+            total += v
+            Out(v, bytes(varint()))
+        }
+        val wit = if (segwit) raw.map { (0 until varint()).map { bytes(varint()) } } else raw.map { emptyList() }
+        require(!segwit || wit.any { it.isNotEmpty() }) { "Superfluous witness marker" }
         val locktime = le(4)
         require(o == b.size) { "trailing bytes in transaction" }
         return Tx(version, raw.mapIndexed { i, r -> In(r.first.first, r.first.second, r.second, r.third, wit[i]) }, outs, locktime)

@@ -79,7 +79,7 @@ fun WelcomeScreen(model: WalletModel) {
                 "Careful: it reveals every address you will ever use — keep it like a bank statement.", color = TextSoft)
             SecondaryButton("Watch a zpub", Modifier.fillMaxWidth(), color = Orange) { model.go(com.kilombino.kilowallet.app.Screen.Watch) }
         }
-        Explain("BTC here is Bitcoin on the BLAKE2b proof-of-work chain (XBT): same addresses and history as Bitcoin " +
+        Explain("XBT here is Bitcoin on the BLAKE2b proof-of-work chain (XBT): same addresses and history as Bitcoin " +
             "up to block 961 640, a different proof of work after it.")
     }
 }
@@ -162,7 +162,7 @@ fun RestoreScreen(model: WalletModel) {
         }
         Text(status, style = MaterialTheme.typography.bodySmall, color = if (valid) Good else if (unknown.isNotEmpty()) Bad else TextSoft)
         if (showPass) {
-            Field(pass, { pass = it }, "passphrase (the \"25th word\", if you set one)")
+            Field(pass, { pass = it }, "passphrase (the \"25th word\", if you set one)", secret = true)
             Explain("A wrong passphrase opens a different, empty wallet: no error can tell you.", color = Warn)
         } else LinkText("+ I also used a passphrase") { showPass = true }
         PrimaryButton("Restore", Modifier.fillMaxWidth(), enabled = valid) { model.restore(words, pass) }

@@ -18,7 +18,7 @@ final class Bridge: NSObject, IosBridge {
 
     func keychainHas() -> Bool { Keychain.has() }
 
-    func keychainDelete() { Keychain.delete() }
+    func keychainDelete() -> String? { Keychain.delete() }
 
     func unlockName() -> String {
         let ctx = LAContext()

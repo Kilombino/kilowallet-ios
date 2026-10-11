@@ -57,7 +57,20 @@ object JvmTransport : TransportFactory {
         return object : LineTransport {
             override val fingerprint: String? = fp
             override fun writeLine(line: String) { writer.write(line); writer.write("\n"); writer.flush() }
-            override fun readLine(): String? = reader.readLine()
+            override fun readLine(): String? {
+                val deadline = System.nanoTime() + READ_TIMEOUT_MS * 1_000_000L
+                val line = StringBuilder()
+                while (true) {
+                    val remaining = (deadline - System.nanoTime()) / 1_000_000L
+                    if (remaining <= 0) { s.close(); throw ElectrumException("Response deadline exceeded") }
+                    s.soTimeout = remaining.coerceAtMost(READ_TIMEOUT_MS.toLong()).toInt().coerceAtLeast(1)
+                    val ch = reader.read()
+                    if (ch == -1) return null
+                    if (ch == 10) return line.toString().removeSuffix("\r")
+                    if (line.length >= ElectrumClient.MAX_LINE_BYTES) { s.close(); throw ElectrumException("Response too large") }
+                    line.append(ch.toChar())
+                }
+            }
             override fun close() { runCatching { s.close() } }
         }
     }

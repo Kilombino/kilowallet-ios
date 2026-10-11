@@ -14,7 +14,7 @@ interface SeedStore {
     fun save(secret: String, done: (String?) -> Unit)
     /** Ask the user to authenticate, then return the secret (or an error message). */
     fun load(reason: String, done: (secret: String?, error: String?) -> Unit)
-    fun delete()
+    fun delete(): String?
 }
 
 /** Non-secret settings (the wallet's public key, the server and its certificate pin). */

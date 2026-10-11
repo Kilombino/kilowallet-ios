@@ -11,6 +11,7 @@ import com.kilombino.kilowallet.core.crypto.BlockHeader
 import com.kilombino.kilowallet.core.crypto.ScriptType
 import com.kilombino.kilowallet.core.crypto.TxParse
 import com.kilombino.kilowallet.core.platform.ioDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
@@ -91,6 +92,8 @@ class Scanner(
             client.connect()
         } catch (e: CertificateChangedException) {
             emit(ScanEvent.CertificateChanged(e.fingerprint, e.message ?: "certificate changed")); return@flow
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             emit(ScanEvent.Failed(e.message ?: "Could not connect")); return@flow
         }
@@ -104,6 +107,7 @@ class Scanner(
                 var index = 0
                 var consecutiveEmpty = 0
                 while (consecutiveEmpty < gap) {
+                    require(index < 10_000) { "Address scan limit reached; use a trusted server" }
                     val path = "m/$purpose'/0'/0'/$chainIndex/$index"
                     emit(ScanEvent.Deriving(chainIndex, index, path))
                     val child = Bip32.deriveChild(branch, index)
@@ -127,6 +131,8 @@ class Scanner(
             }
             val txs = confirmations(client, txHeights, rows, height)
             emit(ScanEvent.Done(rows, height, txs, client.serverFingerprint))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             emit(ScanEvent.Failed(e.message ?: "The scan failed"))
         } finally {
@@ -192,11 +198,12 @@ class Scanner(
             val all = rows.flatMap { r ->
                 client.listUnspent(r.scriptHash).map { SpendableUtxo(it.txid, it.vout, it.value, r.chainIndex, r.index, it.height) }
             }
-            val tip = runCatching { client.blockHeight() }.getOrNull() ?: return@withContext all
+            SendPlanner.validateCoins(all)
+            val tip = client.blockHeight()
             all.filter { u ->
                 if (u.height <= 0 || tip - u.height + 1 >= LONG_MATURITY) return@filter true
                 val tx = txCache[u.txid] ?: runCatching { TxParse.parse(client.transaction(u.txid)) }.getOrNull()
-                    ?.also { txCache[u.txid] = it } ?: return@filter true
+                    ?.also { txCache[u.txid] = it } ?: return@filter false
                 val coinbase = tx.inputs.size == 1 && tx.inputs[0].txid.all { it == '0' } && tx.inputs[0].vout == -1
                 !coinbase || tip - u.height + 1 >= maturityFor(u.height)
             }
@@ -237,13 +244,23 @@ class Scanner(
             try { client.connect(); client.broadcast(rawTxHex) } finally { client.close() }
         }
 
+    suspend fun resolveBroadcast(raw: String, endpoint: NodeEndpoint, pin: String?): String = withContext(worker) {
+        val expected = TxParse.txid(TxParse.parse(raw))
+        val client = client(endpoint, pin)
+        try {
+            client.connect()
+            if (runCatching { client.transaction(expected) }.isSuccess) expected
+            else client.broadcast(raw)
+        } finally { client.close() }
+    }
+
     /** A rough sats/vByte estimate from the server, floored by the relay minimum. Null if it fails. */
     suspend fun suggestedFeeRate(endpoint: NodeEndpoint, pinnedFingerprint: String?): Double? = withContext(worker) {
         val client = client(endpoint, pinnedFingerprint)
         try {
             client.connect()
             val rate = maxOf(client.estimateFeePerKb(3), client.relayFeePerKb())
-            if (rate <= 0) null else rate * 100_000.0
+            if (!rate.isFinite() || rate <= 0) null else (rate * 100_000.0).takeIf { it.isFinite() }
         } catch (e: Exception) {
             null
         } finally {
@@ -263,7 +280,6 @@ class Scanner(
      * [SPV_FLOOR_BITS].
      */
     private fun spvCheck(client: ElectrumClient, txid: String, height: Int): Boolean? {
-        spvCache[txid]?.let { return it }
         val ok = runCatching {
             val header = BlockHeader.parse(client.blockHeader(height))
             val (branch, pos) = client.merkle(txid, height)
@@ -271,14 +287,12 @@ class Scanner(
                 BlockHeader.meetsItsTarget(header) &&
                 BlockHeader.compare(BlockHeader.target(header.bits), BlockHeader.target(SPV_FLOOR_BITS)) <= 0
         }.getOrNull() ?: return null
-        spvCache[txid] = ok
         return ok
     }
 
     private class CachedAddress(val status: String?, val history: List<ElectrumClient.HistoryItem>, val balance: ScriptHashBalance)
     private val statusCache = HashMap<String, CachedAddress>()
     private val txCache = HashMap<String, TxParse.Tx>()
-    private val spvCache = HashMap<String, Boolean>()
 
     companion object {
         /** The easiest block a payment proof is accepted from (Android app value). */

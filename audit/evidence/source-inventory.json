@@ -1,0 +1,464 @@
+{
+  "upstream_sha": "e20e31edf63298d38f1b1fcc0a09a0922fa4abef",
+  "tracked_file_count": 82,
+  "commits_reviewed": [
+    "e20e31edf63298d38f1b1fcc0a09a0922fa4abef",
+    "6592d65d7fd529e2b453968c9f33b6d77246c0c3"
+  ],
+  "files": [
+    {
+      "path": ".github/workflows/ios.yml",
+      "bytes": 3443,
+      "sha256": "53613b82a7f9018a100bc201291f2798321ae69e9ccc8ff67fb920f751126041"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 161,
+      "sha256": "0c3a0a197b2344ae848dcf0cf34ffaaa497755eda93b7a217c12e3fd9d915e5f"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "NOTICE",
+      "bytes": 861,
+      "sha256": "05dadad7edd198c6d5b9dd4a2dd4bc1fc56f8c2aaec9f50cc9fa48db775920c7"
+    },
+    {
+      "path": "README.md",
+      "bytes": 10042,
+      "sha256": "c7c1d8c9e0d843a1e2ce2112f213ee1f966ed38e320eac35b02ff8bea3cbf937"
+    },
+    {
+      "path": "app/build.gradle.kts",
+      "bytes": 1867,
+      "sha256": "1050d27dd556a2436d4f7c6927ffd80c7c31023a8eb3336eaac4530b2615ef15"
+    },
+    {
+      "path": "app/src/commonMain/composeResources/drawable/logo.png",
+      "bytes": 68690,
+      "sha256": "05216a546a0482953689087475a286d0311a620452b7d3a222e1c0fd9a648719"
+    },
+    {
+      "path": "app/src/commonMain/kotlin/com/kilombino/kilowallet/app/Platform.kt",
+      "bytes": 1724,
+      "sha256": "2ae63a274138814d547e1b3e8e3eaa3317246ebb1c6ccc2a0b359214bc32f0fa"
+    },
+    {
+      "path": "app/src/commonMain/kotlin/com/kilombino/kilowallet/app/WalletModel.kt",
+      "bytes": 19938,
+      "sha256": "f783dbbae97601dc6b23c89fea400dfaabf83c4894e733f3704baa4bdd6d7298"
+    },
+    {
+      "path": "app/src/commonMain/kotlin/com/kilombino/kilowallet/app/ui/App.kt",
+      "bytes": 4079,
+      "sha256": "f894d5c6240baead1d84ff0a07fdecd4d79429486143090cbacf3586849c16db"
+    },
+    {
+      "path": "app/src/commonMain/kotlin/com/kilombino/kilowallet/app/ui/Components.kt",
+      "bytes": 7293,
+      "sha256": "f77ebd09abd636a0432b63709b09cdbdebf3125f366316f691e330fb1c4af739"
+    },
+    {
+      "path": "app/src/commonMain/kotlin/com/kilombino/kilowallet/app/ui/Home.kt",
+      "bytes": 10810,
+      "sha256": "6051fe6b45451d341589ec5c6354c783585bd587a89de171be0464a4ac9ad167"
+    },
+    {
+      "path": "app/src/commonMain/kotlin/com/kilombino/kilowallet/app/ui/Onboarding.kt",
+      "bytes": 10612,
+      "sha256": "313414311d5ee1a4eeb7d8b96798369d5763110377d16d50a866aa89d49f69da"
+    },
+    {
+      "path": "app/src/commonMain/kotlin/com/kilombino/kilowallet/app/ui/Send.kt",
+      "bytes": 8866,
+      "sha256": "7c6f4830371c9718f9518106261f15a283b8d4dc530dda17570b73cbdf0bdd43"
+    },
+    {
+      "path": "app/src/commonMain/kotlin/com/kilombino/kilowallet/app/ui/Settings.kt",
+      "bytes": 5714,
+      "sha256": "dfceda8d78365ec5165f9e078c819023cd77a6df1eca080e14bfb599cf1d9892"
+    },
+    {
+      "path": "app/src/commonMain/kotlin/com/kilombino/kilowallet/app/ui/Theme.kt",
+      "bytes": 2187,
+      "sha256": "fb3a78ae785d79ae76b2f5084586f9a65e67ccc98c6ab896e2b196a08644eaf5"
+    },
+    {
+      "path": "app/src/desktopMain/kotlin/com/kilombino/kilowallet/app/DesktopMain.kt",
+      "bytes": 2048,
+      "sha256": "e2e126d6a8de224c5b1a343e19a7483b9ac9dc8f612e6437ca383b537bdee02b"
+    },
+    {
+      "path": "app/src/iosMain/kotlin/com/kilombino/kilowallet/app/IosBridge.kt",
+      "bytes": 1953,
+      "sha256": "0e4926c4009c58258522a78104f800532232aed75801bcfd10c108a8c07143d5"
+    },
+    {
+      "path": "app/src/iosMain/kotlin/com/kilombino/kilowallet/app/IosPlatform.kt",
+      "bytes": 3769,
+      "sha256": "0a3695937eed2e06568b2af8e8024d8f577a2579ef65ba0909645b96af693b80"
+    },
+    {
+      "path": "app/src/iosMain/kotlin/com/kilombino/kilowallet/app/MainViewController.kt",
+      "bytes": 471,
+      "sha256": "34930cdc326c17c294d69faa5da46d0cc6172455fb7b850731c35310771792e1"
+    },
+    {
+      "path": "build.gradle.kts",
+      "bytes": 164,
+      "sha256": "3dbf489defbd762a8999719d24131b04616f84a6f6bf0d03998886da5e38d69c"
+    },
+    {
+      "path": "core/build.gradle.kts",
+      "bytes": 613,
+      "sha256": "83cbbf957bc8872a3485f85b3d907ac61f6bfc5a1857dea664fd2c07acabb6b6"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/chain/Chain.kt",
+      "bytes": 1128,
+      "sha256": "6cc63fe8db262fede4d2e56074195dbe51edcc6ec6021c122c65efa9b73bf7c6"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/chain/ElectrumClient.kt",
+      "bytes": 10373,
+      "sha256": "2cf0dddd170bdf818d43d4797722b35b2b082dc12bc6a19b97d437b66868398f"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/chain/Transport.kt",
+      "bytes": 1113,
+      "sha256": "12ec2245c2c77ad84fbeb92c4e1e6ca52426c8c084db6c9c016b946c29086519"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Address.kt",
+      "bytes": 5473,
+      "sha256": "4aa1a006eca8a623e16d7e0b45209c5b2694b3c9b693d7d569ffca372bfcfd37"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Base58.kt",
+      "bytes": 3075,
+      "sha256": "4f6c3395cc8129c2d1514daa96fb6deb30f132d63c19776c6d415d5eb81bf3b0"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Bech32.kt",
+      "bytes": 5530,
+      "sha256": "ec9a4b8e47f3590aa28a4e427624017a9050700a989635d613d493cb5ceba6ec"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Bip32.kt",
+      "bytes": 3627,
+      "sha256": "8f8ffc83811376c25a85339b12bbe3db37db256f045fce2e8ba5aee5a2b1b530"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Bip32Priv.kt",
+      "bytes": 3917,
+      "sha256": "13b706fd9ac3b1fd3d3739a5ca25be334c30e66f3da19c81d9edd4bae3210ce5"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Bip39.kt",
+      "bytes": 3694,
+      "sha256": "5be5b21bd6ef4f98b24ef3b06e1b39e125dd655768c2dd4e1af4d90652d211c3"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Bip39Wordlist.kt",
+      "bytes": 14892,
+      "sha256": "0aff5a05c5e0d12cbde0f0ac2f214eef7cf89171697ace3ed331c4f40e659998"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Blake2b.kt",
+      "bytes": 3324,
+      "sha256": "aa32419bb2415568063425546d502281ca1d72b119f8a468e46f0fa81d0c0320"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/BlockHeader.kt",
+      "bytes": 5628,
+      "sha256": "040e2ebd94002935a1628a46ca98a1c39654a72f1c219a3b1f1a23fdd9b46084"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/ByteWriter.kt",
+      "bytes": 702,
+      "sha256": "c55053b8efad194832acb50ee7018888814b7e0331900018b4aab58340a4a022"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Ec.kt",
+      "bytes": 3458,
+      "sha256": "52b517b834c692ee324a07249f415aad76218c5d7576cbdca26adbdfda4899c7"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Hashes.kt",
+      "bytes": 2602,
+      "sha256": "440929f222933a7ca0f8b8128835b72c2245fe397c818cbb38235a128d7ddf9b"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/Ripemd160.kt",
+      "bytes": 5000,
+      "sha256": "fd55aba455462d83328a6aae05e85705e881ea2fb7fab860e66cf4cbd4a2c747"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/TxBuilder.kt",
+      "bytes": 10889,
+      "sha256": "770105db413603e722b822d49e426c89cf7bcbee014a4b037a524df329aaf86d"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/crypto/TxParse.kt",
+      "bytes": 4266,
+      "sha256": "473669a3fc73893318d01a3255c7be53f5a6beac047449136a1167b9c480498f"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/platform/Platform.kt",
+      "bytes": 469,
+      "sha256": "5b36ced2ef1d8f6ada692b0b0894d66e1daf5a7afa7b5cb4c2f29e3157884f89"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/wallet/Scanner.kt",
+      "bytes": 14797,
+      "sha256": "47e9101d76feba12cf6412d46498255a0fc80d42aa2c5e31463ab0167f36f612"
+    },
+    {
+      "path": "core/src/commonMain/kotlin/com/kilombino/kilowallet/core/wallet/Send.kt",
+      "bytes": 7917,
+      "sha256": "7cdc4c396819c661f7e8efcf8faeeb8bfc37f7902dc407b4447cbdb3054d4f9a"
+    },
+    {
+      "path": "core/src/commonTest/kotlin/com/kilombino/kilowallet/core/AndroidVectors.kt",
+      "bytes": 61177,
+      "sha256": "b94f8a19a79b9bb17237b93a45b4bbbb51a02c3c435e908221917393ea091b01"
+    },
+    {
+      "path": "core/src/commonTest/kotlin/com/kilombino/kilowallet/core/AndroidVectorsTest.kt",
+      "bytes": 5927,
+      "sha256": "f9834fe543e8e79066ef33850192704e608a2303ab9a54661813d1348b0a3ce3"
+    },
+    {
+      "path": "core/src/commonTest/kotlin/com/kilombino/kilowallet/core/CoreTest.kt",
+      "bytes": 4310,
+      "sha256": "0c5abef52d72960dd6655a456ae30e545a4da911e7d5f3efdd1d738aacc9ba04"
+    },
+    {
+      "path": "core/src/commonTest/kotlin/com/kilombino/kilowallet/core/HeaderVectors.kt",
+      "bytes": 2196,
+      "sha256": "0efd41072a8f54d3153b9cafc2967927388ba3ca255d3e7382965061d6cefe42"
+    },
+    {
+      "path": "core/src/commonTest/kotlin/com/kilombino/kilowallet/core/KnotsUnifiedVectors.kt",
+      "bytes": 55935,
+      "sha256": "b4fb9e5da16d792904bc1f7125431eaed2dc84e676c8c45f703035b291cd640e"
+    },
+    {
+      "path": "core/src/commonTest/kotlin/com/kilombino/kilowallet/core/UnifiedSighashTest.kt",
+      "bytes": 2518,
+      "sha256": "8f6e3152ed97ff64576a312cee5fab3438fcf8d3c200c03c40d7b7f4f32e2218"
+    },
+    {
+      "path": "core/src/iosMain/kotlin/com/kilombino/kilowallet/core/platform/Platform.ios.kt",
+      "bytes": 1105,
+      "sha256": "0c799212f0f8db3d745622f9b3023333be232808b7cc0c70e9731e6c46237339"
+    },
+    {
+      "path": "core/src/jvmMain/kotlin/com/kilombino/kilowallet/core/chain/JvmTransport.kt",
+      "bytes": 3616,
+      "sha256": "704cf5add7394db475c7e938c3007fbbf4190ce5abfcb428d10ad2fa98af4ebe"
+    },
+    {
+      "path": "core/src/jvmMain/kotlin/com/kilombino/kilowallet/core/platform/Platform.jvm.kt",
+      "bytes": 472,
+      "sha256": "71c87bf3c0798ff461002a5b6fc1ec5e7b0de16ab3da7aeff35eed056868991e"
+    },
+    {
+      "path": "core/src/jvmTest/kotlin/com/kilombino/kilowallet/core/LiveServerTest.kt",
+      "bytes": 1240,
+      "sha256": "f06eb8ff62b8f67295f18cdb6911ad9dc42d03ac257749c573573f469a0c8b13"
+    },
+    {
+      "path": "gradle.properties",
+      "bytes": 360,
+      "sha256": "31efe4c4add0859a5f1b4d189ea163149fb90901d7459a198e2d29bb3f93d488"
+    },
+    {
+      "path": "gradle/libs.versions.toml",
+      "bytes": 1506,
+      "sha256": "91094fd3b26d7d2607f69a6bcabf6e3156638e6bd98dec3463aaa322e215400e"
+    },
+    {
+      "path": "gradle/wrapper/gradle-wrapper.jar",
+      "bytes": 45457,
+      "sha256": "76805e32c009c0cf0dd5d206bddc9fb22ea42e84db904b764f3047de095493f3"
+    },
+    {
+      "path": "gradle/wrapper/gradle-wrapper.properties",
+      "bytes": 252,
+      "sha256": "6009cea91ce8dbcc62cb2ea6dec6ddd4c87b65fc326872f5abfc7e77fd24aa36"
+    },
+    {
+      "path": "gradlew",
+      "bytes": 8618,
+      "sha256": "fb68debc1b1acf8ec55dc0d5e5495e1dedd0bd6b61f304bee61613eeb2bd9b92"
+    },
+    {
+      "path": "gradlew.bat",
+      "bytes": 2896,
+      "sha256": "fedad02c18e266ec094995a5751b7fe1eb6e74f66bf75db64fae2e50eb22c234"
+    },
+    {
+      "path": "iosApp/Configuration/Config.xcconfig",
+      "bytes": 258,
+      "sha256": "b3dac937f9773e1118ea3e52854501f0500bef4dda1416cfe2d25779b941eec3"
+    },
+    {
+      "path": "iosApp/iosApp.xcodeproj/project.pbxproj",
+      "bytes": 13137,
+      "sha256": "a9234298f80225cbc556b7de5f3b87c1489c8f0f41059b2437ab5d303fa36385"
+    },
+    {
+      "path": "iosApp/iosApp.xcodeproj/xcshareddata/xcschemes/iosApp.xcscheme",
+      "bytes": 2389,
+      "sha256": "dea8c3589416388a4af9757ef0e350088d446cc745fe7d35c57590a08c1a8553"
+    },
+    {
+      "path": "iosApp/iosApp/Assets.xcassets/AccentColor.colorset/Contents.json",
+      "bytes": 233,
+      "sha256": "769d26b597b0ce34dfbf3773a9b9353311bcc3fb04dd5f3b5d967d93eb9994cf"
+    },
+    {
+      "path": "iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
+      "bytes": 620886,
+      "sha256": "14b226acce96af4ab55a1ba9128c2824b47ff6f78a1f20557d38dc4d80993904"
+    },
+    {
+      "path": "iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/Contents.json",
+      "bytes": 178,
+      "sha256": "5165fc5cab3210346985a40a2eb2bca639039dfa106808a3f869f5477c7241e0"
+    },
+    {
+      "path": "iosApp/iosApp/Assets.xcassets/Contents.json",
+      "bytes": 51,
+      "sha256": "80b0b2e5ce5f42d06c9cea0234147e7f2bea58ef205c47ce3a82f0abe4b64465"
+    },
+    {
+      "path": "iosApp/iosApp/Assets.xcassets/LaunchBackground.colorset/Contents.json",
+      "bytes": 233,
+      "sha256": "e55361af8c329c74799964b1e0c9d137a0c91201838d95c0f649cffbf5741ff6"
+    },
+    {
+      "path": "iosApp/iosApp/Bridge.swift",
+      "bytes": 2610,
+      "sha256": "4e79b18907e2381c5258fc417c7a90e5ad241c4432a2324c615eaccd79f32612"
+    },
+    {
+      "path": "iosApp/iosApp/ContentView.swift",
+      "bytes": 1006,
+      "sha256": "5da8f7e21b81a2c2f5f94ab85e54ce5c07a047a64d8056820f967d7548be73d7"
+    },
+    {
+      "path": "iosApp/iosApp/ElectrumConnection.swift",
+      "bytes": 6032,
+      "sha256": "d33392db735a422b05e57998a411e18b412e538cf001dcc51f98fdeac37b0959"
+    },
+    {
+      "path": "iosApp/iosApp/Info.plist",
+      "bytes": 1771,
+      "sha256": "3304c336d520709a7c38f87be39c28f04ba6df3d8f94074cab9915f559312c87"
+    },
+    {
+      "path": "iosApp/iosApp/Keychain.swift",
+      "bytes": 4199,
+      "sha256": "0d5b69532f6fff5f1a11ee2c2d0ce144d324eb231016e1386ad1d924fec781a5"
+    },
+    {
+      "path": "iosApp/iosApp/PrivacyInfo.xcprivacy",
+      "bytes": 1033,
+      "sha256": "1f2b61b73d00d81cbc942ba97f465058e5c76697e1dbcc17df6e2d3b0fabb4c4"
+    },
+    {
+      "path": "iosApp/iosApp/QrCode.swift",
+      "bytes": 647,
+      "sha256": "32ad047d858ce5feb9cf16d6c12923612cdca63a1e8c553668cce1c2850b2d03"
+    },
+    {
+      "path": "iosApp/iosApp/QrScannerViewController.swift",
+      "bytes": 4082,
+      "sha256": "16ee9d452f7d905c6967a1c0d33d841c1275dc8b111ec1c337687f3476063273"
+    },
+    {
+      "path": "iosApp/iosApp/iOSApp.swift",
+      "bytes": 181,
+      "sha256": "55acbc05c7cd966a49ce360a662cbec363894f5365bd92271eedd0f23bc4d5de"
+    },
+    {
+      "path": "scripts/ci-screenshots.sh",
+      "bytes": 2077,
+      "sha256": "76e0d17a4c5bf856a7c18d4a81317842812f4d56a5f898e4cfa6ebef80603eff"
+    },
+    {
+      "path": "settings.gradle.kts",
+      "bytes": 231,
+      "sha256": "491abed9bff12debfa96360bf9d634b3aebab4e4cc0d967526b98e085142f3cd"
+    },
+    {
+      "path": "tools/android-vectors/build.gradle.kts",
+      "bytes": 1387,
+      "sha256": "2c67559b0a73ef9c8e20f402a87fab20d726adcb5cff3128d2edde1483c9593e"
+    },
+    {
+      "path": "tools/android-vectors/settings.gradle.kts",
+      "bytes": 179,
+      "sha256": "c1a617b92a44cecfe9d20a3f326bcccd3ac179e702eccf43bff965f034a7b3c7"
+    },
+    {
+      "path": "tools/android-vectors/src/main/kotlin/Generate.kt",
+      "bytes": 6598,
+      "sha256": "107be23c6f11f4e3e6e259b27c1dea135ea6f4642e33c31fece71ea4b2aedc96"
+    },
+    {
+      "path": "tools/android-vectors/src/main/kotlin/com/kilombino/pyblockwatch/ark/ArkNative.kt",
+      "bytes": 434,
+      "sha256": "e4a1f862d66a3325c9ceac761c93fc0805dd5d3a7d2de0c7df86fc30a6a5ece6"
+    }
+  ],
+  "secret_pattern_hits": [],
+  "unicode_controls": [],
+  "pngs": [
+    {
+      "path": "app/src/commonMain/composeResources/drawable/logo.png",
+      "chunks": [
+        "IHDR",
+        "IDAT",
+        "IDAT",
+        "IEND"
+      ],
+      "bytes_after_iend": 0,
+      "all_crc_valid": true
+    },
+    {
+      "path": "iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
+      "chunks": [
+        "IHDR",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IDAT",
+        "IEND"
+      ],
+      "bytes_after_iend": 0,
+      "all_crc_valid": true
+    }
+  ],
+  "wrapper_sha256": "76805e32c009c0cf0dd5d206bddc9fb22ea42e84db904b764f3047de095493f3",
+  "wrapper_checksum_source": "https://services.gradle.org/distributions/gradle-9.1.0-wrapper.jar.sha256",
+  "wrapper_matches_official": true,
+  "wrapper_script_diff": "gradlew and gradlew.bat differ from official v9.1.0 only by omitting -Dfile.encoding=UTF-8 in DEFAULT_JVM_OPTS (line endings normalized for bat).",
+  "limitations": "Pattern scan is not exhaustive secret detection. No proof of absence of malicious code. Transitive dependency source and downloaded compiled artifacts are not fully audited.",
+  "bip39_wordlist": {
+    "count": 2048,
+    "matches_official": true,
+    "canonical_sha256": "2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda"
+  }
+}
