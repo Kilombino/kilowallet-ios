@@ -38,7 +38,7 @@ for screen in welcome create restore watch home receive send review settings; do
     [ -f "$DATA/Documents/kw-ready-$screen" ] && break
     sleep 1
   done
-  if [ -f "$DATA/Documents/kw-ready-$screen" ]; then echo "$screen: ready after ${i}s"; else echo "$screen: NOT ready after ${limit}s (screenshot anyway)"; fi
+  if [ -f "$DATA/Documents/kw-ready-$screen" ]; then echo "$screen: ready after ${i}s"; else echo "$screen: NOT ready after ${limit}s"; exit 1; fi
   sleep 3
   xcrun simctl io "$UDID" screenshot "$OUT/$(printf %02d $n)-$screen.png"
   kill $LP 2>/dev/null || true

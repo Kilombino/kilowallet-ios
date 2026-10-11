@@ -23,8 +23,7 @@ import com.kilombino.kilowallet.app.Screen
 import com.kilombino.kilowallet.app.WalletModel
 
 @Composable
-fun App(platform: AppPlatform) {
-    val model = remember { WalletModel(platform) }
+fun App(platform: AppPlatform, model: WalletModel = remember { WalletModel(platform) }) {
     LaunchedEffect(Unit) { platform.demoScreen?.let { model.setUpDemo(it) } }
     val state by model.state.collectAsState()
 
@@ -55,11 +54,11 @@ fun App(platform: AppPlatform) {
             state.certChanged?.let { fp ->
                 AlertDialog(
                     onDismissRequest = {},
-                    title = { Text("Server certificate changed", style = MaterialTheme.typography.titleMedium) },
+                    title = { Text(if (state.pinned == null) "Trust this server certificate?" else "Server certificate changed", style = MaterialTheme.typography.titleMedium) },
                     text = {
                         Column {
-                            Text("${state.endpoint} now shows a different certificate. Nothing was sent to it. " +
-                                "If you did not expect this (the server's owner renewed it), someone may be in the middle.",
+                            Text("${state.endpoint}: verify this fingerprint with the server operator using a separate trusted channel. " +
+                                "No wallet queries have been sent. A wrong fingerprint could expose your addresses and allow false balance information.",
                                 style = MaterialTheme.typography.bodySmall, color = TextSoft)
                             Text("\nNew SHA-256 fingerprint:\n${chunked(fp)}", style = MaterialTheme.typography.bodySmall, color = Warn)
                             state.pinned?.let { Text("\nTrusted until now:\n${chunked(it)}", style = MaterialTheme.typography.bodySmall, color = TextFaint) }

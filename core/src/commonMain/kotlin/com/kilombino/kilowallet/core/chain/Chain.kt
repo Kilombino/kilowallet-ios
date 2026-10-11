@@ -7,7 +7,7 @@ package com.kilombino.kilowallet.core.chain
  */
 object Chain {
     const val DISPLAY = "BLAKE2b"
-    const val COIN = "BTC"
+    const val COIN = "XBT"
     const val TICKER = "XBT"
     /** The Android app's default Electrum server for this chain (Fulcrum with 164-byte headers, TLS). */
     const val DEFAULT_HOST = "fulcrum.kilombino.com"
@@ -19,6 +19,7 @@ object Chain {
 
 /** Where to reach the chain: the bundled default, or a server the user typed in. */
 data class NodeEndpoint(val host: String, val port: Int, val isCustom: Boolean = false) {
+    init { require(host.isNotBlank() && host.length <= 253 && host.none { it.isWhitespace() } && port in 1..65535) { "Invalid Electrum endpoint" } }
     override fun toString() = "$host:$port"
     companion object {
         val DEFAULT = NodeEndpoint(Chain.DEFAULT_HOST, Chain.DEFAULT_PORT, false)

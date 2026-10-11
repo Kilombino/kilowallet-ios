@@ -29,6 +29,10 @@ kotlin {
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)
         }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+        }
         val desktopMain by getting {
             dependencies {
                 implementation(compose.desktop.currentOs)

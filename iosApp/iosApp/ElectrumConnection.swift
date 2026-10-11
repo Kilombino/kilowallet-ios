@@ -16,8 +16,17 @@ final class ElectrumConnection: NSObject, IosConnection {
     private let box: TrustBox
     private var fp: String? { box.fingerprint }
     private var changed: Bool { box.changed }
-    private var err: String?
-    private var closed = false
+    private let stateLock = NSLock()
+    private var errorStorage: String?
+    private var closedStorage = false
+    private var err: String? {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return errorStorage }
+        set { stateLock.lock(); defer { stateLock.unlock() }; errorStorage = newValue }
+    }
+    private var closed: Bool {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return closedStorage }
+        set { stateLock.lock(); defer { stateLock.unlock() }; closedStorage = newValue }
+    }
 
     init(host: String, port: Int32, tls: Bool, pinnedFingerprint: String?) {
         let tcp = NWProtocolTCP.Options()
@@ -42,7 +51,6 @@ final class ElectrumConnection: NSObject, IosConnection {
                     hex = SHA256.hash(data: der).map { String(format: "%02x", $0) }.joined()
                 }
                 box.fingerprint = hex
-                NSLog("Kilowallet TLS: server certificate sha256=%@ (pinned: %@)", hex ?? "none", pin ?? "not yet")
                 if let pin = pin, pin != hex {
                     box.changed = true
                     complete(false)
@@ -101,12 +109,14 @@ final class ElectrumConnection: NSObject, IosConnection {
             if let e = e { sendErr = e.localizedDescription }
             done.signal()
         })
-        if done.wait(timeout: .now() + 60) == .timedOut { return "timed out sending" }
+        if done.wait(timeout: .now() + 60) == .timedOut { close(); return "timed out sending" }
         return sendErr
     }
 
     func readLine() -> String? {
+        let deadline = DispatchTime.now() + 90
         while true {
+            if buffer.count > 4 * 1024 * 1024 || DispatchTime.now() >= deadline { close(); return nil }
             if let nl = buffer.firstIndex(of: 0x0A) {
                 let lineData = buffer[buffer.startIndex..<nl]
                 buffer.removeSubrange(buffer.startIndex...nl)
@@ -121,7 +131,7 @@ final class ElectrumConnection: NSObject, IosConnection {
                 finished = isComplete || e != nil
                 got.signal()
             }
-            if got.wait(timeout: .now() + 90) == .timedOut { closed = true; conn.cancel(); return nil }
+            if got.wait(timeout: deadline) == .timedOut { closed = true; conn.cancel(); return nil }
             if let c = chunk { buffer.append(c) }
             if finished { closed = true }
             if finished && buffer.firstIndex(of: 0x0A) == nil { return nil }
@@ -136,6 +146,15 @@ final class ElectrumConnection: NSObject, IosConnection {
 
 /// What the TLS verify block saw (written on the verify queue before the connection is ready).
 private final class TrustBox {
-    var fingerprint: String?
-    var changed = false
+    private let lock = NSLock()
+    private var fingerprintStorage: String?
+    private var changedStorage = false
+    var fingerprint: String? {
+        get { lock.lock(); defer { lock.unlock() }; return fingerprintStorage }
+        set { lock.lock(); defer { lock.unlock() }; fingerprintStorage = newValue }
+    }
+    var changed: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return changedStorage }
+        set { lock.lock(); defer { lock.unlock() }; changedStorage = newValue }
+    }
 }

@@ -1,0 +1,9 @@
+{
+  "team_id": "PPG9C98EY9",
+  "observed_at": "2026-10-11T13:15:51Z",
+  "mode": "read-only",
+  "apps": [],
+  "bundleIds": {
+    "http_status": 403
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "reviewed_upstream": "e20e31edf63298d38f1b1fcc0a09a0922fa4abef",
+  "baseline_run": "https://github.com/romanmodin/kilowallet-ios/actions/runs/38139630578",
+  "baseline_tests": "passed; characterizations reproduce unsafe baseline behavior",
+  "baseline_unsigned_build": "passed",
+  "candidate_610c286": {
+    "sha": "610c2865a242c3b6f8041bd71fc0229657695876",
+    "run": "https://github.com/romanmodin/kilowallet-ios/actions/runs/38140297258",
+    "core_substantive_tests": 21,
+    "app_tests": 8,
+    "platforms": [
+      "JVM",
+      "iOS arm64 Simulator"
+    ],
+    "total_substantive_executions": 58,
+    "failures": 0,
+    "unsigned_iphoneos_release_build": "passed",
+    "live_test_noop_excluded": true
+  },
+  "candidate_70afec7": {
+    "sha": "70afec766f957b5e0c23b0f27d0101fefcc746ee",
+    "run": "https://github.com/romanmodin/kilowallet-ios/actions/runs/38142184037",
+    "status": "success",
+    "core_substantive_tests": 21,
+    "app_tests": 9,
+    "platforms": [
+      "JVM",
+      "iOS arm64 Simulator"
+    ],
+    "total_substantive_executions": 60,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "live_test_noop_excluded": true,
+    "unsigned_iphoneos_release_build": "passed",
+    "simulator_screens_ready_and_inspected": 9,
+    "test_artifact_id": 11704075891,
+    "test_artifact_sha256": "77cef3218968549b851aa9a41296d3c58bce83c39b36fcf9b80e76c9c0795e4d",
+    "screen_artifact_id": 11703298538,
+    "screen_artifact_sha256": "4e3748c4ebdea40384f44ab59bfde8e6cbbc988c07866ff7c9a46c955358d907",
+    "verified_at": "2026-10-11T13:27:21Z"
+  },
+  "apple_preflight": {
+    "run": "https://github.com/romanmodin/RedWallet/actions/runs/38142456389",
+    "observed_at": "2026-10-11T13:15:51Z",
+    "app_bundle": "com.kilombino.kilowallet",
+    "apps": [],
+    "bundle_identifiers_http_status": 403,
+    "browser_session": "After user reported completion, Developer still showed sign-in and App Store Connect still showed authResult=FAILED.",
+    "signed": false,
+    "testflight_uploaded": false,
+    "released": false,
+    "browser_rechecked_at": "2026-10-11T13:26Z",
+    "receipt": "apple-preflight-20261011.json"
+  }
+}

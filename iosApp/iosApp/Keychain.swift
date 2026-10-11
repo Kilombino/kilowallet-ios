@@ -20,7 +20,6 @@ enum Keychain {
     }
 
     static func save(_ secret: String) -> String? {
-        delete()
         var cfErr: Unmanaged<CFError>?
         guard let access = SecAccessControlCreateWithFlags(
             nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &cfErr) else {
@@ -31,6 +30,7 @@ enum Keychain {
         q[kSecAttrAccessControl as String] = access
         let status = SecItemAdd(q as CFDictionary, nil)
         if status == errSecSuccess { return nil }
+        if status == errSecDuplicateItem { return "A wallet already exists. Back it up and remove it explicitly before creating another." }
         #if targetEnvironment(simulator)
         // The Simulator usually has no passcode, so a passcode-bound item cannot be created there.
         // Simulator builds only: keep it this-device-only without the passcode requirement.
@@ -80,7 +80,8 @@ enum Keychain {
         return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
 
-    static func delete() {
-        SecItemDelete(baseQuery() as CFDictionary)
+    static func delete() -> String? {
+        let status = SecItemDelete(baseQuery() as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound ? nil : "Keychain error \(status)"
     }
 }

@@ -33,18 +33,44 @@ object SendPlanner {
     const val MIN_RATE = 0.1
     const val MAX_RATE = 1000.0
 
+    /** Reject corrupt server coin lists before arithmetic or signing. */
+    fun validateCoins(utxos: List<SpendableUtxo>): Long {
+        require(utxos.size <= 10_000) { "Too many inputs in one transaction" }
+        val seen = HashSet<String>()
+        var total = 0L
+        for (u in utxos) {
+            require(u.txid.length == 64 && u.txid.all { it in "0123456789abcdefABCDEF" }) { "Invalid coin transaction ID" }
+            require(u.vout >= 0 && u.value > 0 && u.chainIndex in 0..1 && u.index >= 0) { "Invalid coin" }
+            require(seen.add("${u.txid.lowercase()}:${u.vout}")) { "Duplicate coin in server response" }
+            total = checkedAdd(total, u.value)
+        }
+        return total
+    }
+
+    private fun checkedAdd(a: Long, b: Long): Long {
+        require(a >= 0 && b >= 0 && a <= Long.MAX_VALUE - b) { "Amount overflow" }
+        return a + b
+    }
+
     /** P2WPKH inputs and these exact outputs (8 + 1 + script bytes each). */
     fun estimateVbytes(nIn: Int, outputScripts: List<ByteArray>): Double =
-        10.5 + 68.0 * nIn + outputScripts.sumOf { 9.0 + it.size }
+        8.5 + compactSize(nIn) + compactSize(outputScripts.size) + 68.0 * nIn +
+            outputScripts.sumOf { 8.0 + compactSize(it.size) + it.size }
 
-    fun estimateFee(nIn: Int, outputScripts: List<ByteArray>, ratePerVb: Double): Long =
-        ceil(estimateVbytes(nIn, outputScripts) * ratePerVb).toLong()
+    private fun compactSize(n: Int): Int = if (n < 253) 1 else if (n <= 65535) 3 else 5
+
+    fun estimateFee(nIn: Int, outputScripts: List<ByteArray>, ratePerVb: Double): Long {
+        require(nIn in 1..10_000 && ratePerVb.isFinite() && ratePerVb in MIN_RATE..MAX_RATE) { "Invalid fee rate or input count" }
+        return ceil(estimateVbytes(nIn, outputScripts) * ratePerVb).toLong()
+    }
 
     /** The most a send can move from [utxos] at [ratePerVb]: everything minus a one-output fee (sized as Taproot). */
     fun maxSendable(ratePerVb: Double, utxos: List<SpendableUtxo>): Long {
+        require(ratePerVb.isFinite()) { "Invalid fee rate" }
+        val sum = validateCoins(utxos)
         if (utxos.isEmpty()) return 0
         val fee = estimateFee(utxos.size, listOf(ByteArray(34)), ratePerVb.coerceIn(MIN_RATE, MAX_RATE))
-        return (utxos.sumOf { it.value } - fee).coerceAtLeast(0)
+        return (sum - fee).coerceAtLeast(0)
     }
 
     /**
@@ -55,6 +81,9 @@ object SendPlanner {
         toAddress: String, amountSats: Long, feeRatePerVb: Double, utxos: List<SpendableUtxo>,
         changeScript: ByteArray, sendAll: Boolean = false,
     ): SendDraft {
+        val available = validateCoins(utxos)
+        require(feeRatePerVb.isFinite()) { "Invalid fee rate" }
+        Address.requireSpendableDestination(changeScript, "The change address")
         val to = toAddress.trim()
         require(!to.lowercase().startsWith("sp1")) { "Silent payment addresses are not supported in this version." }
         require(!to.contains("@")) { "Handles like user@domain are not supported in this version: paste the address." }
@@ -67,7 +96,7 @@ object SendPlanner {
         val noChange = listOf(toScript)
 
         if (sendAll) {
-            val sum = utxos.sumOf { it.value }
+            val sum = available
             val fee = estimateFee(utxos.size, noChange, rate)
             val amount = sum - fee
             require(amount > DUST_SATS) { "The coins ($sum sats) do not cover the fee ($fee sats)." }
@@ -79,13 +108,13 @@ object SendPlanner {
         val chosen = mutableListOf<SpendableUtxo>()
         var sum = 0L
         for (u in utxos.sortedByDescending { it.value }) {
-            chosen += u; sum += u.value
-            if (sum >= amountSats + estimateFee(chosen.size, withChange, rate)) break
+            chosen += u; sum = checkedAdd(sum, u.value)
+            if (sum >= checkedAdd(amountSats, estimateFee(chosen.size, withChange, rate))) break
         }
         var fee = estimateFee(chosen.size, withChange, rate)
         var noChangeOutput = false
-        if (sum < amountSats + fee) { fee = estimateFee(chosen.size, noChange, rate); noChangeOutput = true }
-        require(sum >= amountSats + fee) { "Not enough funds for the amount plus fee." }
+        if (sum < checkedAdd(amountSats, fee)) { fee = estimateFee(chosen.size, noChange, rate); noChangeOutput = true }
+        require(sum >= checkedAdd(amountSats, fee)) { "Not enough funds for the amount plus fee." }
         var change = sum - amountSats - fee
         val outputs = mutableListOf(TxBuilder.Output(toScript, amountSats))
         if (change > DUST_SATS && !noChangeOutput) {
@@ -103,7 +132,7 @@ object SendPlanner {
         val reasons = buildList {
             if (rate > 100) add("${rate.roundToLong()} sat/vB")
             if (d.fee > 100_000) add("${formatSats(d.fee)} sats")
-            if (d.totalSent > 0 && d.fee * 100 > d.totalSent * 5) add("${d.fee * 100 / d.totalSent}% of the amount")
+            if (d.totalSent > 0 && d.fee.toDouble() / d.totalSent > 0.05) add("${(d.fee.toDouble() * 100 / d.totalSent).roundToLong()}% of the amount")
         }
         return if (reasons.isEmpty()) null else "This fee is high: " + reasons.joinToString(", ") + "."
     }
@@ -122,12 +151,13 @@ object SendPlanner {
  */
 object Signer {
     fun sign(draft: SendDraft, words: List<String>, passphrase: String, zpub: String): TxBuilder.Signed {
+        SendPlanner.validateCoins(draft.inputs)
         val account = Bip32.parseExtendedPubKey(zpub)
         val seed = Bip39.toSeed(words, passphrase)
-        val master = Bip32Priv.fromSeed(seed)
-        seed.fill(0)
-        val nodes = draft.inputs.map { Bip32Priv.derivePath(master, "m/84'/0'/0'/${it.chainIndex}/${it.index}") }
+        val master = try { Bip32Priv.fromSeed(seed) } finally { seed.fill(0) }
+        val nodes = mutableListOf<Bip32Priv.ExtendedPrivKey>()
         try {
+            draft.inputs.forEach { nodes += Bip32Priv.derivePath(master, "m/84'/0'/0'/${it.chainIndex}/${it.index}") }
             val inputs = draft.inputs.mapIndexed { i, u ->
                 TxBuilder.Input(u.txid, u.vout, u.value, nodes[i].key, nodes[i].publicKey(), 0xfffffffdL)
             }
@@ -147,8 +177,7 @@ object Signer {
     /** The account zpub (BIP-84, account 0) for these words. */
     fun accountZpub(words: List<String>, passphrase: String): String {
         val seed = Bip39.toSeed(words, passphrase)
-        val master = Bip32Priv.fromSeed(seed)
-        seed.fill(0)
+        val master = try { Bip32Priv.fromSeed(seed) } finally { seed.fill(0) }
         return try { Bip32Priv.accountXpub(master, 84, 0) } finally { master.wipe() }
     }
 }

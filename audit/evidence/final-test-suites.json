@@ -1,0 +1,107 @@
+{
+  "commit": "70afec766f957b5e0c23b0f27d0101fefcc746ee",
+  "artifact_id": 11704075891,
+  "artifact_sha256": "77cef3218968549b851aa9a41296d3c58bce83c39b36fcf9b80e76c9c0795e4d",
+  "substantive_executions": 60,
+  "suites": [
+    {
+      "file": "app/build/test-results/desktopTest/TEST-com.kilombino.kilowallet.app.WalletModelTest.xml",
+      "name": "com.kilombino.kilowallet.app.WalletModelTest",
+      "tests": "9",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    },
+    {
+      "file": "app/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.app.WalletModelTest.xml",
+      "name": "com.kilombino.kilowallet.app.WalletModelTest",
+      "tests": "9",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    },
+    {
+      "file": "core/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.core.AndroidVectorsTest.xml",
+      "name": "com.kilombino.kilowallet.core.AndroidVectorsTest",
+      "tests": "5",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    },
+    {
+      "file": "core/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.core.CoreTest.xml",
+      "name": "com.kilombino.kilowallet.core.CoreTest",
+      "tests": "5",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    },
+    {
+      "file": "core/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.core.SecurityRegressionTest.xml",
+      "name": "com.kilombino.kilowallet.core.SecurityRegressionTest",
+      "tests": "10",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    },
+    {
+      "file": "core/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.core.UnifiedSighashTest.xml",
+      "name": "com.kilombino.kilowallet.core.UnifiedSighashTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    },
+    {
+      "file": "core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.AndroidVectorsTest.xml",
+      "name": "com.kilombino.kilowallet.core.AndroidVectorsTest",
+      "tests": "5",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    },
+    {
+      "file": "core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.CoreTest.xml",
+      "name": "com.kilombino.kilowallet.core.CoreTest",
+      "tests": "5",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    },
+    {
+      "file": "core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.LiveServerTest.xml",
+      "name": "com.kilombino.kilowallet.core.LiveServerTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": true
+    },
+    {
+      "file": "core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.SecurityRegressionTest.xml",
+      "name": "com.kilombino.kilowallet.core.SecurityRegressionTest",
+      "tests": "10",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    },
+    {
+      "file": "core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.UnifiedSighashTest.xml",
+      "name": "com.kilombino.kilowallet.core.UnifiedSighashTest",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "excluded_noop": false
+    }
+  ]
+}

@@ -157,7 +157,7 @@ private fun MovementDialog(tx: TxConf, onClose: () -> Unit) {
                 KeyValue("status", if (tx.pending) "in the mempool" else "${formatSats(tx.confirmations.toLong())} confirmations")
                 if (!tx.pending) KeyValue("block", formatSats(tx.height.toLong()))
                 tx.spv?.let {
-                    KeyValue("payment proof", if (it) "✓ checked against the block's proof of work" else "✗ did NOT verify",
+                    KeyValue("payment proof", if (it) "✓ matches one server-supplied header" else "✗ did NOT verify",
                         if (it) Good else Bad)
                 }
                 Text(tx.txid, style = MaterialTheme.typography.bodySmall, color = TextSoft)
