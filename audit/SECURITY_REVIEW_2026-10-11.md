@@ -2,6 +2,8 @@
 
 Reviewed for romanmodin on 2026-10-11. This is an engineering source review, not a security certification.
 
+This document describes the **upstream baseline**. Subsequent fixes and current release gates are tracked in [RELEASE_READINESS.md](RELEASE_READINESS.md); the findings below remain as the original evidence.
+
 ## Disposition
 
 **Keep for development; address the release blockers below before a real-funds release.** No deliberate backdoor, seed-exfiltration route, hidden executable payload, or unexplained network destination was identified in the reviewed first-party source. That is a bounded finding, not proof that the app and every dependency are free of malicious code or defects.
@@ -126,6 +128,6 @@ The original upstream run `38067020512` reports success for the reviewed commit;
 
 Independent fork workflow: https://github.com/romanmodin/kilowallet-ios/actions/runs/38139630578 . Final results are recorded separately in `evidence/validation.json`.
 
-The audit-only `repro/AuditCharacterizationTest.kt` contains five defect characterizations plus one pin-preservation control (six test methods). They use mocked transports and artificial inputs. **A passing characterization means the unsafe baseline behavior was reproduced.** They are not security regression tests and should be replaced by tests asserting rejection when fixes are implemented. The workflow copies them temporarily into `commonTest`; they are not included in production source sets.
+The audit-only `repro/AuditCharacterizationTest.kt` contains five defect characterizations plus one pin-preservation control (six test methods). They use mocked transports and artificial inputs. **A passing characterization means the unsafe baseline behavior was reproduced.** They are not security regression tests and should be replaced by tests asserting rejection when fixes are implemented. The baseline workflow at commit `53128fb` copied them temporarily into `commonTest`; they are not included in production source sets.
 
 Not completed: full third-party/transitive source review, binary-to-source reproducibility for dependencies, a signed IPA assessment, real-iPhone lifecycle/Keychain/QR testing, runtime network capture, an independent cryptographic audit, or App Store publication. No real wallet secrets or funded transactions were used. These limitations prevent any absolute “no hidden code” assurance.

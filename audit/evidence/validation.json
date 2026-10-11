@@ -1,9 +1,36 @@
 {
   "reviewed_upstream": "e20e31edf63298d38f1b1fcc0a09a0922fa4abef",
   "baseline_run": "https://github.com/romanmodin/kilowallet-ios/actions/runs/38139630578",
-  "baseline_tests": "completed success per GitHub run step",
-  "baseline_unsigned_build": "in_progress",
-  "candidate_tests": "pending",
-  "signed": false,
-  "released": false
+  "baseline_tests": "passed; characterizations reproduce unsafe baseline behavior",
+  "baseline_unsigned_build": "passed",
+  "candidate_610c286": {
+    "sha": "610c2865a242c3b6f8041bd71fc0229657695876",
+    "run": "https://github.com/romanmodin/kilowallet-ios/actions/runs/38140297258",
+    "core_substantive_tests": 21,
+    "app_tests": 8,
+    "platforms": [
+      "JVM",
+      "iOS arm64 Simulator"
+    ],
+    "total_substantive_executions": 58,
+    "failures": 0,
+    "unsigned_iphoneos_release_build": "passed",
+    "live_test_noop_excluded": true
+  },
+  "candidate_70afec7": {
+    "sha": "70afec766f957b5e0c23b0f27d0101fefcc746ee",
+    "run": "https://github.com/romanmodin/kilowallet-ios/actions/runs/38142184037",
+    "status": "in_progress"
+  },
+  "apple_preflight": {
+    "run": "https://github.com/romanmodin/RedWallet/actions/runs/38142456389",
+    "observed_at": "2026-10-11T13:15:51Z",
+    "app_bundle": "com.kilombino.kilowallet",
+    "apps": [],
+    "bundle_identifiers_http_status": 403,
+    "browser_session": "Developer returned sign-in; App Store Connect returned authResult=FAILED after user handoff",
+    "signed": false,
+    "testflight_uploaded": false,
+    "released": false
+  }
 }
