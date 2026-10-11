@@ -27,7 +27,7 @@ Apache-2.0 LICENSE and original NOTICE retained. No private credentials belong i
 | Simulator launch and visual inspection | All nine principal screens reached readiness; screenshots inspected on iPhone 16 Plus / iOS 26.2; see evidence/simulator-screens.json |
 | Physical iPhone Keychain / Face ID / passcode / background and recovery checks | Not performed |
 | Live-chain integration against an independently verified certificate and known node | Not performed on candidate |
-| Apple provisioning access | Live API preflight 2026-10-11 13:15Z: app query authenticated but no com.kilombino.kilowallet record; bundle-ID query denied with HTTP 403. Membership conversion was pending at last web verification (2026-10-10); browser rechecked after the user reported completion at 13:26Z and still showed sign-in / authResult=FAILED. |
+| Apple provisioning access | Browser sign-in restored 2026-10-11 about 13:33Z. Apple confirms membership benefits temporarily disabled while Individual-to-Organization migration awaits business website, phone and domain email. Kilowallet bundle identifier/app record not created. Earlier API 403 receipt retained as historical evidence. |
 | Signed archive / provisioning / TestFlight processing | Not performed |
 | App Store metadata and privacy information | Drafts prepared in distribution/app-store-metadata.json and PRIVACY.md; not entered in App Store Connect or submitted |
 

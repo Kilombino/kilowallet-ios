@@ -52,5 +52,16 @@
     "released": false,
     "browser_rechecked_at": "2026-10-11T13:26Z",
     "receipt": "apple-preflight-20261011.json"
+  },
+  "apple_latest_status": {
+    "observed_at": "2026-10-11T13:35:09.848512+00:00",
+    "browser_signin": "restored; authenticated App Store Connect and Apple Developer",
+    "membership": "Individual; organization migration incomplete",
+    "provisioning_blocker": "Apple explicitly states developer membership benefits are temporarily disabled during migration",
+    "migration_stage": "Organization recognized; website, phone and organization-domain work email are required before continuing",
+    "app_record": "Not created; Kilowallet bundle identifier absent from New App selector",
+    "signed": false,
+    "testflight_uploaded": false,
+    "released": false
   }
 }
