@@ -13,6 +13,7 @@ import com.kilombino.kilowallet.core.wallet.SendPlanner
 import com.kilombino.kilowallet.core.wallet.Signer
 import com.kilombino.kilowallet.core.wallet.SpendableUtxo
 import com.kilombino.kilowallet.core.wallet.TxConf
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
@@ -91,12 +92,15 @@ data class UiState(
  * what iOS 0.1 does: one wallet (hot from words, or watch-only from a zpub), the BLAKE2b chain,
  * Electrum only.
  */
-class WalletModel(private val platform: AppPlatform, private val cryptoDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default) {
+class WalletModel(private val platform: AppPlatform, private val cryptoDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default,
+    networkDispatcher: kotlinx.coroutines.CoroutineDispatcher = com.kilombino.kilowallet.core.platform.ioDispatcher) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val scanner = Scanner(platform.transports)
+    private val scanner = Scanner(platform.transports, dispatcher = networkDispatcher)
     private val prefs = platform.prefs
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
+    fun close() { cancelAction(); scope.cancel() }
+
     private var scanJob: Job? = null
     private var sendJob: Job? = null
     private var actionEpoch = 0L

@@ -3,6 +3,8 @@ package com.kilombino.kilowallet.app
 import androidx.compose.ui.graphics.ImageBitmap
 import com.kilombino.kilowallet.core.chain.*
 import com.kilombino.kilowallet.core.wallet.Signer
+import com.kilombino.kilowallet.core.crypto.TxParse
+import kotlinx.serialization.json.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import kotlin.test.*
@@ -19,6 +21,9 @@ class WalletModelTest {
         var deleteError: String? = null
         var unlock: ((String?, String?) -> Unit)? = null
         var connections = 0
+        val sent = mutableListOf<String>()
+        var reply: ((JsonObject) -> JsonElement)? = null
+        init { values["pin.${NodeEndpoint.DEFAULT.host}:${NodeEndpoint.DEFAULT.port}"] = "a".repeat(64) }
         override val seeds = object : SeedStore {
             override fun hasSeed() = saved != null
             override fun save(secret: String, done: (String?) -> Unit) {
@@ -33,7 +38,27 @@ class WalletModelTest {
             override fun get(key: String) = values[key]
             override fun put(key: String, value: String?) { if (value == null) values.remove(key) else values[key] = value }
         }
-        override val transports = TransportFactory { _, _, _, _ -> connections++; throw ElectrumException("Offline test") }
+        override val transports = TransportFactory { _, _, _, _ ->
+            connections++
+            val responder = reply ?: throw ElectrumException("Offline test")
+            object : LineTransport {
+                override val fingerprint = "a".repeat(64)
+                var request: JsonObject? = null
+                override fun writeLine(line: String) {
+                    request = Json.parseToJsonElement(line).jsonObject
+                    if (request!!["method"]!!.jsonPrimitive.content == "blockchain.transaction.broadcast") {
+                        val raw = request!!["params"]!!.jsonArray[0].jsonPrimitive.content
+                        check(values.values.contains(raw)) { "Transaction must be saved before broadcast" }
+                        sent += raw
+                    }
+                }
+                override fun readLine(): String {
+                    val q = request!!
+                    return buildJsonObject { put("id", q["id"]!!); put("result", responder(q)) }.toString()
+                }
+                override fun close() {}
+            }
+        }
         override val unlockName = "test authentication"
         override fun qrImage(text: String): ImageBitmap? = null
         override val canScanQr = false
@@ -46,9 +71,9 @@ class WalletModelTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(dispatcher)
         val platform = FakePlatform()
-        val model = WalletModel(platform, dispatcher)
+        val model = WalletModel(platform, dispatcher, dispatcher)
         try { block(model, platform) }
-        finally { model.onBackground(); Dispatchers.resetMain() }
+        finally { model.close(); advanceUntilIdle(); Dispatchers.resetMain() }
     }
 
     @Test fun rapidConfirmOnlyPromptsOnceAndBackgroundInvalidatesUnlock() = checkModel { model, p ->
@@ -120,4 +145,41 @@ class WalletModelTest {
         assertEquals(zpub, model.state.value.zpub)
         assertNotNull(model.state.value.message)
     }
+    @Test fun lostBroadcastReceiptRestoresAndResendsOnlyTheOriginalTransaction() = checkModel { model, p ->
+        p.reply = { q -> when (q["method"]!!.jsonPrimitive.content) {
+            "server.version" -> buildJsonArray { add("test"); add("1.4") }
+            "blockchain.headers.subscribe" -> buildJsonObject { put("height", 976086); put("hex", "000000a0700c8b9690014507c6c277900d743ac3ed6d814f90772d060000000000000000670caeac2404c80798669b242623ea7310be8f47166168e9734baab9dec80446b2c2c66a2ad80019be9815dad0f4b1da0000000000000000b10cf8578500000000000000b2c2c66a7501000000000000000000000000000000000000d6e40e000000000000000000000000000000000000000000000000000000000000000000") }
+            "blockchain.transaction.broadcast" -> {
+                if (p.sent.size == 1) throw ElectrumException("lost receipt")
+                JsonPrimitive(TxParse.txid(TxParse.parse(q["params"]!!.jsonArray[0].jsonPrimitive.content)))
+            }
+            "blockchain.transaction.get" -> throw ElectrumException("not found")
+            "blockchain.scripthash.get_history" -> JsonArray(emptyList())
+            else -> error("Unexpected mock request")
+        } }
+        model.setUpDemo("review"); advanceUntilIdle()
+        // Persist the demo public identity to exercise process restart; never real seed material.
+        p.values["wallet.kind"] = "HOT"
+        p.values["wallet.zpub"] = model.state.value.zpub!!
+        model.confirmSend()
+        p.unlock!!(encodeSecret(words, ""), null)
+        advanceUntilIdle()
+        assertIs<SendPhase.Pending>(model.state.value.send)
+        assertEquals(1, p.sent.size)
+        val original = p.sent.single()
+        model.close(); advanceUntilIdle()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val restarted = WalletModel(p, dispatcher, dispatcher)
+        try {
+            advanceUntilIdle()
+            restarted.go(Screen.Send)
+            assertIs<SendPhase.Pending>(restarted.state.value.send)
+            restarted.retryPendingSend(); restarted.retryPendingSend()
+            advanceUntilIdle()
+            assertEquals(listOf(original, original), p.sent)
+            assertEquals(TxParse.txid(TxParse.parse(original)), (restarted.state.value.send as SendPhase.Sent).txid)
+            assertTrue(p.values.keys.none { it.startsWith("pending.") })
+        } finally { restarted.close(); advanceUntilIdle() }
+    }
+
 }

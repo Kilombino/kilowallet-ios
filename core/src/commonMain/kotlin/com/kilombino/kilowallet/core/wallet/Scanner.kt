@@ -65,6 +65,7 @@ data class SpendableUtxo(
 class Scanner(
     private val transports: TransportFactory,
     private val gapLimit: Int = 20,
+    dispatcher: kotlinx.coroutines.CoroutineDispatcher = ioDispatcher,
 ) {
     private fun client(endpoint: NodeEndpoint, pin: String?) = ElectrumClient(endpoint, pin, transports)
 
@@ -74,7 +75,7 @@ class Scanner(
      * the wallet to a single connection at a time.
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private val worker = ioDispatcher.limitedParallelism(1)
+    private val worker = dispatcher.limitedParallelism(1)
 
     fun scan(xpub: String, endpoint: NodeEndpoint, pinnedFingerprint: String?, gap: Int = gapLimit): Flow<ScanEvent> = flow {
         val txHeights = HashMap<String, Int>()
