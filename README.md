@@ -152,7 +152,7 @@ JVM and in the iOS simulator. To re-check against a newer Android version:
 
 - `:core:jvmTest` and `:core:iosSimulatorArm64Test` — the Android vectors, Knots' unified sighash
   vectors, real BLAKE2b mainnet headers, BIP-39/BIP-84 official vectors, coin selection;
-- a live smoke test against the default Electrum server (allowed to fail if it is down);
+- an optional live smoke test only when an independently approved certificate pin is configured; failures are not ignored;
 - builds the Xcode app for the simulator (Debug, unsigned) and, in a second job, for devices
   (Release, unsigned);
 - boots a simulator, installs and launches the app and uploads screenshots of the main screens as
@@ -191,3 +191,32 @@ Public address high-water marks remain available for safe re-import, preventing
 accidental address reuse. A failed setup commit can be completed on restart from
 a journal containing only the new public wallet identity; recovery words never
 enter preferences.
+
+## Everyday tools
+
+- **Labels and notes:** tap a transaction to name it (80 characters) and add a note (500).
+  Notes are local to the account, survive renaming/restarting, and are removed when that
+  wallet is removed. They are not recovered from seed words; export CSV to keep a separate copy.
+- **Hide amounts:** the home-screen toggle persists across wallets and launches. It hides
+  balances, history amounts/notes, and spendable/send-all totals. An explicit payment review
+  still shows the amount, fee and change so a user can verify what they sign.
+- **Receive requests:** optionally enter a positive whole-satoshi amount. The QR and
+  Copy payment request encode an exact BIP21 amount plus `chain=xbt`; Copy address remains
+  available separately. Invalid or overflowing amounts never produce a request QR.
+  Amount edits keep the same reserved address. The chain label is advisory—use an
+  XBT-compatible sender; other Bitcoin wallets may ignore it.
+- **History CSV:** after a successful sync, export all loaded transactions for the selected
+  wallet via the iOS share/save sheet. The confirmation explains that amounts and notes are
+  included even when hidden. Columns include network, wallet name, txid, signed net sats,
+  confirmations/status, block height, label/note, and snapshot UTC time. Unknown amounts stay
+  blank. Net outgoing amounts include fees; there are no invented transaction dates or fiat
+  valuations. This is a loaded-history snapshot, not a tax report. Free text is escaped and
+  spreadsheet-formula prefixes are neutralized.
+- **Last successful sync:** shown in UTC for the currently loaded snapshot. Failed refreshes
+  do not advance it. Switching wallet/server or restarting clears it until a successful scan;
+  the app does not pretend an old timestamp proves a newly displayed balance is current.
+
+CSV preparation never reads recovery words. Files are created only after confirmation in a
+protected temporary directory; the share sheet controls the destination. Temporary files are
+removed after the sheet closes or on the next app launch after interruption. Physical-device
+share/save and authentication checks remain part of release validation.

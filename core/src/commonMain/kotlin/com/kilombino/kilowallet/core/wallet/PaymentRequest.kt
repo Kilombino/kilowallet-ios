@@ -2,6 +2,17 @@ package com.kilombino.kilowallet.core.wallet
 
 /** Strict BIP21 parsing; same-looking addresses alone do not identify the chain. */
 object PaymentRequest {
+    const val MAX_REQUEST_SATS = 2_100_000_000_000_000L
+
+    /** Optional integer-satoshi amount; use integer arithmetic so the QR never rounds a payment. */
+    fun create(address: String, sats: Long? = null): String {
+        require(address == address.trim() && com.kilombino.kilowallet.core.crypto.Address.isValid(address)) { "Invalid receive address" }
+        if (sats == null) return address
+        require(sats in 1..MAX_REQUEST_SATS) { "Enter a positive amount up to 21 million XBT" }
+        val decimal = (sats / 100_000_000).toString() + "." + (sats % 100_000_000).toString().padStart(8, '0')
+        return "bitcoin:$address?chain=xbt&amount=$decimal"
+    }
+
     fun parse(text: String): Pair<String, Long?> {
         val t = text.trim()
         require(t.length <= 4096) { "Payment request is too long" }

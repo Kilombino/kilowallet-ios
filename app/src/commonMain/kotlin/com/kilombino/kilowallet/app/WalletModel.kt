@@ -69,6 +69,9 @@ data class UiState(
     val walletId: String? = null,
     val newWalletName: String = "Wallet 1",
     val settingUp: Boolean = false,
+    val hideAmounts: Boolean = false,
+    val notes: Map<String, TransactionNote> = emptyMap(),
+    val lastSyncedAt: Long? = null,
     val kind: WalletKind? = null,
     val zpub: String? = null,
     val endpoint: NodeEndpoint = NodeEndpoint.DEFAULT,
@@ -104,6 +107,8 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
     private val scanner = Scanner(platform.transports, dispatcher = networkDispatcher)
     private val prefs = platform.prefs
     private val addresses = AddressBook(prefs)
+    private val transactionNotes = TransactionNotes(prefs)
+    private var exporting = false
     private var receiveSession: Pair<String, Int>? = null
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
@@ -136,6 +141,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
 
 
     private companion object {
+        const val K_HIDE = "privacy.hideAmounts"
         const val K_HOST = "server.host"
         const val K_PORT = "server.port"
         fun pinKey(e: NodeEndpoint) = "pin.${e.host}:${e.port}"
@@ -155,7 +161,8 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
             _state.value = UiState(screen = if (active == null) Screen.Welcome else Screen.Home,
                 wallets = saved.value.wallets, walletId = active?.id, kind = active?.kind, zpub = active?.zpub,
                 endpoint = endpoint, pinned = prefs.get(pinKey(endpoint)),
-                newWalletName = WalletCatalog.nextName(saved.value.wallets))
+                newWalletName = WalletCatalog.nextName(saved.value.wallets), hideAmounts = prefs.get(K_HIDE) == "true")
+            loadNotes()
             if (active != null) scan()
         } catch (e: Exception) {
             _state.value = UiState(endpoint = endpoint, pinned = prefs.get(pinKey(endpoint)),
@@ -171,8 +178,51 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         _state.value = UiState(screen = if (active == null) Screen.Welcome else Screen.Home,
             wallets = saved.wallets, walletId = active?.id, kind = active?.kind, zpub = active?.zpub,
             endpoint = previous.endpoint, pinned = prefs.get(pinKey(previous.endpoint)),
-            newWalletName = WalletCatalog.nextName(saved.wallets))
+            newWalletName = WalletCatalog.nextName(saved.wallets), hideAmounts = prefs.get(K_HIDE) == "true")
+        loadNotes()
         if (scanSelected && active != null) scan()
+    }
+
+    private fun loadNotes() {
+        val zpub = state.value.zpub ?: return
+        runCatching { transactionNotes.read(zpub) }
+            .onSuccess { notes -> _state.update { it.copy(notes = notes) } }
+            .onFailure { say("Could not read local notes. Existing notes were not changed.") }
+    }
+
+    fun toggleHideAmounts() {
+        val hide = !state.value.hideAmounts
+        runCatching { prefs.put(K_HIDE, hide.toString()) }
+            .onSuccess { _state.update { it.copy(hideAmounts = hide) } }
+            .onFailure { say("Could not save the privacy setting.") }
+    }
+
+    fun saveTransactionNote(walletId: String, txid: String, label: String, note: String): Boolean {
+        val s = state.value
+        if (s.walletId != walletId || s.txs.none { it.txid == txid }) return false
+        val zpub = s.zpub ?: return false
+        return runCatching {
+            val notes = transactionNotes.save(zpub, txid, label, note)
+            _state.update { it.copy(notes = notes) }
+            true
+        }.getOrElse { say(it.message ?: "Could not save the note."); false }
+    }
+
+    fun exportHistory() {
+        val s = state.value
+        if (exporting || s.send is SendPhase.Signing) return
+        val syncedAt = s.lastSyncedAt ?: run { say("Refresh this wallet successfully before exporting its history."); return }
+        val zpub = s.zpub ?: return
+        // Read storage again so unreadable notes cannot silently disappear from an export.
+        val csv = runCatching { transactionCsv(s.walletName, s.txs, transactionNotes.read(zpub), syncedAt) }
+            .getOrElse { say("Could not read local notes for export."); return }
+        exporting = true
+        try {
+            platform.shareCsv("kilowallet-history.csv", csv) { error ->
+                exporting = false
+                if (error != null && state.value.walletId == s.walletId) say(error)
+            }
+        } catch (e: Exception) { exporting = false; say("Could not open the share sheet.") }
     }
 
     fun selectWallet(id: String) {
@@ -302,7 +352,12 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         cancelAction(); scanJob?.cancel(); walletEpoch++
         // Watch-only removal must never touch a hot wallet's Keychain item.
         if (s.kind == WalletKind.HOT) platform.seeds.delete(id)?.let { say("Could not remove the wallet: $it"); return }
-        runCatching { requireNotNull(catalog).remove(id); showCatalog() }
+        runCatching {
+            requireNotNull(catalog).remove(id)
+            val cleared = runCatching { s.zpub?.let(transactionNotes::clear) }
+            showCatalog()
+            if (cleared.isFailure) say("Wallet removed, but its local notes could not be cleared.")
+        }
             .onFailure { say("Could not finish removing the wallet: ${it.message ?: "storage error"}") }
     }
 
@@ -355,7 +410,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
                     }
                     is ScanEvent.Done -> {
                         pinIfFirst(s.endpoint, ev.fingerprint)
-                        _state.update { it.copy(scan = ScanPhase.Done, rows = ev.rows, txs = ev.txs, height = ev.height) }
+                        _state.update { it.copy(scan = ScanPhase.Done, rows = ev.rows, txs = ev.txs, height = ev.height, lastSyncedAt = platform.nowMillis()) }
                         if (platform.demoScreen == "home") platform.markReady("home")
                     }
                     is ScanEvent.Failed -> _state.update { it.copy(scan = ScanPhase.Error(ev.message)) }
@@ -394,9 +449,9 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
                 when (ev) {
                     is ScanEvent.Done -> {
                         pinIfFirst(s.endpoint, ev.fingerprint)
-                        _state.update { it.copy(rows = ev.rows, txs = ev.txs, height = ev.height, refreshing = false, scan = ScanPhase.Done) }
+                        _state.update { it.copy(rows = ev.rows, txs = ev.txs, height = ev.height, refreshing = false, scan = ScanPhase.Done, lastSyncedAt = platform.nowMillis()) }
                     }
-                    is ScanEvent.Failed -> _state.update { it.copy(refreshing = false, message = ev.message) }
+                    is ScanEvent.Failed -> _state.update { it.copy(refreshing = false, scan = ScanPhase.Error(ev.message), message = ev.message) }
                     is ScanEvent.CertificateChanged -> _state.update {
                         it.copy(refreshing = false, scan = ScanPhase.Error(ev.message), certChanged = ev.fingerprint)
                     }
@@ -432,7 +487,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
                 else NodeEndpoint(host.trim(), port, !(host.trim() == NodeEndpoint.DEFAULT.host && port == NodeEndpoint.DEFAULT.port))
         prefs.put(K_HOST, if (e.isCustom) e.host else null)
         prefs.put(K_PORT, if (e.isCustom) e.port.toString() else null)
-        _state.update { it.copy(endpoint = e, pinned = prefs.get(pinKey(e)), rows = emptyList(), txs = emptyList()) }
+        _state.update { it.copy(endpoint = e, pinned = prefs.get(pinKey(e)), rows = emptyList(), txs = emptyList(), lastSyncedAt = null) }
         if (_state.value.zpub != null) scan()
     }
 
@@ -592,8 +647,20 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
                             WalletInfo(WalletCatalog.idFor(watch), "Watch-only", WalletKind.WATCH, watch))) }
                         go(Screen.Wallets); platform.markReady(screen)
                     }
+                    "history", "private", "note", "export" -> {
+                        val txid = "ab".repeat(32)
+                        val note = TransactionNote("Mining payout", "October test payout")
+                        val notes = transactionNotes.save(zpub, txid, note.label, note.note)
+                        _state.update { it.copy(
+                            rows = listOf(AddressRow(0, 0, "demo", "demo", "demo", confirmed = 250_000)),
+                            txs = listOf(TxConf(txid, 12, false, 250_000, height = 970_000),
+                                TxConf("cd".repeat(32), 0, true, -25_000)),
+                            height = 970_011, scan = ScanPhase.Done, lastSyncedAt = platform.nowMillis(),
+                            notes = notes, hideAmounts = screen == "private") }
+                        platform.markReady(screen)
+                    }
                     "home" -> scan()
-                    "receive" -> { go(Screen.Receive); platform.markReady(screen) }
+                    "receive", "request" -> { go(Screen.Receive); platform.markReady(screen) }
                     "settings" -> { go(Screen.Settings); platform.markReady(screen) }
                     "send" -> { go(Screen.Send); platform.markReady(screen) }
                     "review" -> {

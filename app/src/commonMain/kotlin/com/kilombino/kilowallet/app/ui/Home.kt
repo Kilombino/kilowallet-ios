@@ -1,6 +1,13 @@
 package com.kilombino.kilowallet.app.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.input.KeyboardType
+import com.kilombino.kilowallet.app.TransactionNote
+import com.kilombino.kilowallet.app.syncTimeText
+import com.kilombino.kilowallet.core.wallet.PaymentRequest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +59,10 @@ fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     // While the wallet is on screen it re-checks every minute (Android does the same in the foreground).
     LaunchedEffect(state.zpub) { while (true) { delay(60_000); model.refresh() } }
     var detail by remember(state.walletId) { mutableStateOf<TxConf?>(null) }
+    var exportConfirm by remember { mutableStateOf(platform.demoScreen == "export") }
+    LaunchedEffect(platform.demoScreen, state.txs) {
+        if (platform.demoScreen == "note") detail = state.txs.firstOrNull()
+    }
     val hot = state.kind == WalletKind.HOT
 
     ScreenColumn {
@@ -66,6 +77,7 @@ fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             Logo(40)
         }
 
+        LinkText(if (state.hideAmounts) "Show amounts" else "Hide amounts", color = TextSoft) { model.toggleHideAmounts() }
         Panel {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SectionLabel("Your ${Chain.COIN}")
@@ -75,14 +87,16 @@ fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                 PulseDot(if (live) Good else if (state.scan is ScanPhase.Error) Bad else Warn)
             }
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(formatSats(state.total), fontSize = BigNumber, fontWeight = FontWeight.Bold, color = Purple,
+                Text(if (state.hideAmounts) "••••" else formatSats(state.total), fontSize = BigNumber, fontWeight = FontWeight.Bold, color = Purple,
                     style = MaterialTheme.typography.displayLarge)
                 Text(" sats", style = MaterialTheme.typography.titleLarge, color = Purple.copy(alpha = 0.8f),
                     modifier = Modifier.padding(bottom = 8.dp))
             }
-            Text("${formatBtc(state.total)} ${Chain.COIN} (${Chain.TICKER})", style = MaterialTheme.typography.bodyMedium, color = TextSoft)
-            if (state.unconfirmed != 0L) Text("of which ${formatSats(state.unconfirmed)} sats unconfirmed",
+            Text(if (state.hideAmounts) "Balance hidden" else "${formatBtc(state.total)} ${Chain.COIN} (${Chain.TICKER})", style = MaterialTheme.typography.bodyMedium, color = TextSoft)
+            if (!state.hideAmounts && state.unconfirmed != 0L) Text("of which ${formatSats(state.unconfirmed)} sats unconfirmed",
                 style = MaterialTheme.typography.bodySmall, color = Warn)
+            Text(state.lastSyncedAt?.let { "Last successful sync: " + syncTimeText(it) }
+                ?: "No successful sync this session", style = MaterialTheme.typography.bodySmall, color = TextSoft)
             when (val s = state.scan) {
                 is ScanPhase.Scanning -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GapRing(s.gap, s.gapLimit, Purple)
@@ -110,23 +124,38 @@ fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                 Explain(if (state.scan is ScanPhase.Done) "No movements yet. Receive to an address from RECEIVE." else "…")
             } else {
                 Explain("tap a movement for its details")
-                state.txs.take(200).forEach { tx -> MovementRow(tx) { detail = tx } }
+                state.txs.take(200).forEach { tx -> MovementRow(tx, state.hideAmounts, state.notes[tx.txid]) { detail = tx } }
             }
         }
+        SecondaryButton("Export history CSV", Modifier.fillMaxWidth(), enabled = state.lastSyncedAt != null) { exportConfirm = true }
+        if (state.hideAmounts) Explain("Balance, history amounts and notes are hidden. Payment review and CSV exports show amounts.")
         Explain("block ${formatSats(state.height.toLong())} · ${state.endpoint}" + (state.serverVersion?.let { " · $it" } ?: ""))
     }
 
-    detail?.let { tx -> MovementDialog(tx) { detail = null } }
+    detail?.let { tx -> MovementDialog(tx, state.hideAmounts, state.notes[tx.txid] ?: TransactionNote(),
+        onSave = { label, note -> model.saveTransactionNote(state.walletId ?: "", tx.txid, label, note) },
+        onClose = { detail = null }) }
+    if (exportConfirm) AlertDialog(
+        onDismissRequest = { exportConfirm = false },
+        title = { Text("Export history?") },
+        text = { Text("Export the loaded history for ${state.walletName}, including amounts, labels and notes—even when hidden on screen. " +
+            "This is a snapshot from the last successful sync, not a tax report. Choose where to save or share the CSV.") },
+        confirmButton = { TextButton(onClick = { exportConfirm = false; model.exportHistory() }) { Text("EXPORT", color = Purple) } },
+        dismissButton = { TextButton(onClick = { exportConfirm = false }) { Text("CANCEL", color = TextSoft) } },
+        containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft,
+    )
 }
 
 @Composable
-private fun MovementRow(tx: TxConf, onClick: () -> Unit) {
+private fun MovementRow(tx: TxConf, hidden: Boolean, note: TransactionNote?, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             val a = tx.amount
-            Text(if (a == null) "? sats" else (if (a > 0) "+" else "") + formatSats(a) + " sats",
+            Text(if (hidden) "•••• sats" else if (a == null) "? sats" else (if (a > 0) "+" else "") + formatSats(a) + " sats",
                 style = MaterialTheme.typography.bodyLarge, color = if (a != null && a > 0) Good else TextMain)
+            if (!hidden && !note?.label.isNullOrEmpty()) Text(note.label,
+                style = MaterialTheme.typography.bodyMedium, color = TextMain, maxLines = 2)
             Text(shortTxid(tx.txid), style = MaterialTheme.typography.bodySmall, color = TextFaint)
         }
         ConfBadge(tx)
@@ -147,20 +176,29 @@ private fun ConfBadge(tx: TxConf) {
 }
 
 @Composable
-private fun MovementDialog(tx: TxConf, onClose: () -> Unit) {
+private fun MovementDialog(tx: TxConf, hidden: Boolean, saved: TransactionNote,
+    onSave: (String, String) -> Boolean, onClose: () -> Unit) {
+    var label by remember(tx.txid) { mutableStateOf(saved.label) }
+    var note by remember(tx.txid) { mutableStateOf(saved.note) }
     val clipboard = LocalClipboardManager.current
     val uri = LocalUriHandler.current
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(tx.amount?.let { (if (it > 0) "+" else "") + formatSats(it) + " sats" } ?: "Movement", style = MaterialTheme.typography.titleMedium) },
+        title = { Text(if (hidden) "Movement" else tx.amount?.let { (if (it > 0) "+" else "") + formatSats(it) + " sats" } ?: "Movement", style = MaterialTheme.typography.titleMedium) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 KeyValue("status", if (tx.pending) "in the mempool" else "${formatSats(tx.confirmations.toLong())} confirmations")
                 if (!tx.pending) KeyValue("block", formatSats(tx.height.toLong()))
                 tx.spv?.let {
                     KeyValue("payment proof", if (it) "✓ matches one server-supplied header" else "✗ did NOT verify",
                         if (it) Good else Bad)
                 }
+                if (!hidden) {
+                    Field(label, { label = it.take(80) }, "Label")
+                    Field(note, { note = it.take(500) }, "Note", singleLine = false, minLines = 3)
+                    Explain("Stored locally for this wallet. Not included in your recovery words backup.")
+                } else Explain("Show amounts on the home screen to view or edit notes.")
                 Text(tx.txid, style = MaterialTheme.typography.bodySmall, color = TextSoft)
                 LinkText("copy txid", color = Purple) { clipboard.setText(AnnotatedString(tx.txid)) }
                 LinkText("open on ${Chain.EXPLORER.removePrefix("https://")}", color = Purple) {
@@ -168,7 +206,9 @@ private fun MovementDialog(tx: TxConf, onClose: () -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onClose) { Text("CLOSE", color = TextSoft) } },
+        confirmButton = { TextButton(onClick = { if (hidden || onSave(label, note)) onClose() }) {
+            Text(if (hidden) "CLOSE" else "SAVE", color = Purple) } },
+        dismissButton = { if (!hidden) TextButton(onClick = onClose) { Text("CANCEL", color = TextSoft) } },
         containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextMain,
     )
 }
@@ -177,29 +217,41 @@ private fun MovementDialog(tx: TxConf, onClose: () -> Unit) {
 fun ReceiveScreen(model: WalletModel, platform: AppPlatform) {
     val clipboard = LocalClipboardManager.current
     val addr = remember { model.receiveAddress() }
-    var copied by remember { mutableStateOf(false) }
-    LaunchedEffect(copied) { if (copied) { delay(2000); copied = false } }
+    var amount by remember { mutableStateOf(if (platform.demoScreen == "request") "120000" else "") }
+    var copied by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(copied) { if (copied != null) { delay(2000); copied = null } }
     ScreenColumn {
         BackLink { model.back() }
         Text("Receive ${Chain.COIN}", style = MaterialTheme.typography.titleLarge, color = TextMain)
         if (addr == null) { Explain("No wallet."); return@ScreenColumn }
         val (address, path) = addr
+        val wantsAmount = amount.isNotEmpty()
+        val sats = amount.takeIf { it.all { c -> c in '0'..'9' } }?.toLongOrNull()
+        val valid = !wantsAmount || (sats != null && sats in 1..PaymentRequest.MAX_REQUEST_SATS)
+        val payload = if (valid) PaymentRequest.create(address, sats.takeIf { wantsAmount }) else null
+        Field(amount, { amount = it.take(32); copied = null }, "Requested amount · sats (optional)", keyboard = KeyboardType.Number)
+        if (!valid) Explain("Enter a whole number of sats from 1 to ${PaymentRequest.MAX_REQUEST_SATS}.", color = Bad)
+        if (valid && wantsAmount) Explain("Request: ${formatSats(sats!!)} sats", color = Purple)
         Panel {
-            val qr = remember(address) { platform.qrImage(address) }
+            val qr = remember(payload) { payload?.let(platform::qrImage) }
             if (qr != null) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Box(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White).padding(14.dp)) {
-                    Image(qr, contentDescription = "QR code of the address", modifier = Modifier.size(240.dp),
-                        contentScale = ContentScale.Fit, filterQuality = FilterQuality.None)
+                    Image(qr, contentDescription = if (wantsAmount) "XBT payment request QR" else "QR code of the address",
+                        modifier = Modifier.size(240.dp), contentScale = ContentScale.Fit, filterQuality = FilterQuality.None)
                 }
             }
             Text(chunked(address), style = MaterialTheme.typography.titleMedium, color = TextMain,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
             Text(path, style = MaterialTheme.typography.bodySmall, color = TextFaint)
         }
-        PrimaryButton(if (copied) "Copied" else "Copy address", Modifier.fillMaxWidth()) {
-            clipboard.setText(AnnotatedString(address)); copied = true
+        if (wantsAmount) PrimaryButton(if (copied == "request") "Copied" else "Copy payment request", Modifier.fillMaxWidth(), enabled = valid) {
+            payload?.let { clipboard.setText(AnnotatedString(it)); copied = "request" }
+        }
+        SecondaryButton(if (copied == "address") "Copied" else "Copy address", Modifier.fillMaxWidth()) {
+            clipboard.setText(AnnotatedString(address)); copied = "address"
         }
         Explain("Only send XBT on the BLAKE2b network.", color = TextSoft)
+        if (wantsAmount) Explain("Use an XBT-compatible wallet. Other Bitcoin wallets may ignore the request's chain label.")
         Explain("Previously issued addresses still work.")
     }
 }

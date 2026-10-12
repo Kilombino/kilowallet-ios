@@ -8,6 +8,17 @@ import KilowalletApp
 final class Bridge: NSObject, IosBridge {
     static let shared = Bridge()
 
+    private override init() {
+        super.init()
+        // Remove this app's abandoned export files after an interrupted share or process exit.
+        let fm = FileManager.default
+        if let entries = try? fm.contentsOfDirectory(at: fm.temporaryDirectory, includingPropertiesForKeys: nil) {
+            for url in entries where url.lastPathComponent.hasPrefix("kw-export-") {
+                try? fm.removeItem(at: url)
+            }
+        }
+    }
+
     // MARK: Keychain
 
     func keychainSave(walletId: String, secret: String) -> String? { Keychain.save(walletId: walletId, secret: secret) }
@@ -49,6 +60,38 @@ final class Bridge: NSObject, IosBridge {
         DispatchQueue.main.async {
             guard let top = Self.topViewController() else { completion(nil); return }
             QrScannerViewController.present(from: top, completion: completion)
+        }
+    }
+
+    // MARK: Export
+
+    func shareCsv(fileName: String, contents: String, completion: @escaping (String?) -> Void) {
+        DispatchQueue.main.async {
+            guard let top = Self.topViewController(), top.viewIfLoaded?.window != nil else {
+                completion("Could not open the share sheet."); return
+            }
+            // A unique, protected temporary directory avoids name collisions and is removed
+            // when the share sheet closes. The filename is fixed, never a wallet/user label.
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("kw-export-" + UUID().uuidString)
+            let file = dir.appendingPathComponent("kilowallet-history.csv")
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try Data(contents.utf8).write(to: file, options: [.atomic, .completeFileProtection])
+                let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+                sheet.completionWithItemsHandler = { _, _, _, error in
+                    try? FileManager.default.removeItem(at: dir)
+                    completion(error == nil ? nil : "The file could not be shared.")
+                }
+                if let popover = sheet.popoverPresentationController {
+                    popover.sourceView = top.view
+                    popover.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 1, height: 1)
+                    popover.permittedArrowDirections = []
+                }
+                top.present(sheet, animated: true)
+            } catch {
+                try? FileManager.default.removeItem(at: dir)
+                completion("Could not prepare the CSV file.")
+            }
         }
     }
 

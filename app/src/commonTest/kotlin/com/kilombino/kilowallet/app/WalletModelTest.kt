@@ -21,6 +21,15 @@ class WalletModelTest {
     private val words = List(11) { "abandon" } + "about"
     private class FakePlatform : AppPlatform {
         val values = HashMap<String, String>()
+        var now = 1_700_000_000_000L
+        var exported: String? = null
+        var exportCalls = 0
+        var shareCompletion: ((String?) -> Unit)? = null
+        override fun nowMillis() = now
+        override fun shareCsv(fileName: String, contents: String, done: (String?) -> Unit) {
+            assertEquals("kilowallet-history.csv", fileName)
+            exported = contents; exportCalls++; shareCompletion = done
+        }
         var loadCalls = 0
         var saveCalls = 0
         var saved: String? = null
@@ -467,6 +476,72 @@ class WalletModelTest {
             assertNotNull(WalletCatalog(p.prefs).value.pending)
             assertTrue(restarted.state.value.message!!.contains("Keychain"))
         } finally { restarted.close(); advanceUntilIdle() }
+    }
+
+    @Test fun privacyPreferencePersistsAcrossWalletSwitchAndRestart() = checkModel { model, p ->
+        model.restore(words, ""); advanceUntilIdle()
+        val first = model.state.value.walletId!!
+        model.toggleHideAmounts()
+        assertTrue(model.state.value.hideAmounts)
+        model.restore(words, "second"); advanceUntilIdle()
+        assertTrue(model.state.value.hideAmounts)
+        model.selectWallet(first); advanceUntilIdle()
+        assertTrue(model.state.value.hideAmounts)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val restarted = WalletModel(p, dispatcher, dispatcher)
+        try { assertTrue(restarted.state.value.hideAmounts) } finally { restarted.close() }
+        model.toggleHideAmounts()
+        assertFalse(model.state.value.hideAmounts)
+    }
+
+    @Test fun noteEditFromPreviousWalletIsRejected() = checkModel { model, p ->
+        model.setUpDemo("history"); advanceUntilIdle()
+        val oldId = model.state.value.walletId!!
+        val txid = model.state.value.txs.first().txid
+        assertTrue(model.saveTransactionNote(oldId, txid, "Changed", "Local"))
+        model.restore(words, "another"); advanceUntilIdle()
+        assertFalse(model.saveTransactionNote(oldId, txid, "Wrong wallet", ""))
+        assertTrue(model.state.value.notes.isEmpty())
+    }
+
+    @Test fun exportUsesOneWalletAndRequiresExplicitSuccessfulSnapshot() = checkModel { model, p ->
+        model.exportHistory()
+        assertEquals(0, p.exportCalls)
+        model.setUpDemo("history"); advanceUntilIdle()
+        model.toggleHideAmounts()
+        model.exportHistory(); model.exportHistory()
+        assertEquals(1, p.exportCalls)
+        assertTrue(p.exported!!.contains("Mining payout"))
+        assertTrue(p.exported!!.contains("250000"))
+        assertFalse(p.exported!!.contains(model.state.value.zpub!!))
+        assertFalse(p.exported!!.contains(words.joinToString(" ")))
+        p.shareCompletion!!(null)
+        model.restore(words, "separate"); advanceUntilIdle()
+        assertNull(model.state.value.lastSyncedAt)
+        model.exportHistory()
+        assertEquals(1, p.exportCalls)
+    }
+
+    @Test fun successfulSyncSetsTimeFailuresKeepItAndServerSwitchClearsIt() = checkModel { model, p ->
+        p.reply = { q -> when (q["method"]!!.jsonPrimitive.content) {
+            "server.version" -> buildJsonArray { add("test"); add("1.4") }
+            "blockchain.headers.subscribe" -> buildJsonObject { put("height", 976086); put("hex", "000000a0700c8b9690014507c6c277900d743ac3ed6d814f90772d060000000000000000670caeac2404c80798669b242623ea7310be8f47166168e9734baab9dec80446b2c2c66a2ad80019be9815dad0f4b1da0000000000000000b10cf8578500000000000000b2c2c66a7501000000000000000000000000000000000000d6e40e000000000000000000000000000000000000000000000000000000000000000000") }
+            "blockchain.scripthash.get_history" -> JsonArray(emptyList())
+            else -> error("Unexpected request")
+        } }
+        model.restore(words, ""); advanceUntilIdle()
+        assertIs<ScanPhase.Done>(model.state.value.scan)
+        assertEquals(p.now, model.state.value.lastSyncedAt)
+        p.now += 60000
+        model.refresh(); advanceUntilIdle()
+        assertEquals(p.now, model.state.value.lastSyncedAt)
+        p.reply = null
+        p.now += 60000
+        model.refresh(); advanceUntilIdle()
+        assertEquals(p.now - 60000, model.state.value.lastSyncedAt)
+        assertIs<ScanPhase.Error>(model.state.value.scan)
+        model.setServer("offline.invalid", 50002); advanceUntilIdle()
+        assertNull(model.state.value.lastSyncedAt)
     }
 
 }

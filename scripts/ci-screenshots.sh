@@ -29,7 +29,7 @@ xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --ba
 xcrun simctl install "$UDID" "$APP"
 
 n=0
-for screen in welcome create restore watch home receive send review settings wallets; do
+for screen in welcome create restore watch home receive send review settings wallets history private note request export; do
   n=$((n + 1))
   if [ -n "$ONLY" ] && [ "$screen" != "$ONLY" ]; then continue; fi
   xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
@@ -46,16 +46,27 @@ for screen in welcome create restore watch home receive send review settings wal
   sleep 3
   SHOT="$OUT/$(printf %02d $n)-$screen.png"
   xcrun simctl io "$UDID" screenshot "$SHOT"
-  if [ "$screen" = review ] || [ "$screen" = wallets ]; then
-    expected="Review payment"; [ "$screen" = wallets ] && expected="Wallets"
+  expected=""
+  case "$screen" in
+    review) expected="Review payment" ;;
+    wallets) expected="Wallets" ;;
+    history) expected="Mining payout" ;;
+    private) expected="Balance hidden" ;;
+    note) expected="October test payout" ;;
+    request) expected="Requested amount" ;;
+    export) expected="Export history?" ;;
+  esac
+  if [ -n "$expected" ]; then
+    check_args=("$SHOT" "$expected")
+    [ "$screen" = request ] && check_args+=("?chain=xbt&amount=0.00120000")
     rendered=false
     for attempt in 1 2 3; do
-      if "$CHECKER" "$SHOT" "$expected"; then rendered=true; break; fi
+      if "$CHECKER" "${check_args[@]}"; then rendered=true; break; fi
       sleep 3
       xcrun simctl io "$UDID" screenshot "$SHOT"
     done
-    if [ "$rendered" != true ]; then echo "review: rendered screen did not match readiness marker"; exit 1; fi
-    echo "review: visible title verified"
+    if [ "$rendered" != true ]; then echo "$screen: rendered screen did not match readiness marker"; exit 1; fi
+    echo "$screen: visible title verified"
   fi
   kill $LP 2>/dev/null || true
 done

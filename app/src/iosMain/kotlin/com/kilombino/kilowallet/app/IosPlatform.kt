@@ -59,6 +59,8 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
     override fun scanQr(done: (String?) -> Unit) = bridge.scanQr { done(it) }
     override fun markReady(name: String) = bridge.markReady(name)
     override val appVersion: String get() = bridge.appVersion()
+    override fun shareCsv(fileName: String, contents: String, done: (String?) -> Unit) =
+        bridge.shareCsv(fileName, contents) { error -> done(error) }
 }
 
 @OptIn(ExperimentalForeignApi::class)

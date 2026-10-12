@@ -39,4 +39,9 @@ interface AppPlatform {
     /** Screenshot mode: tell the CI script the screen has settled. */
     fun markReady(name: String) {}
     val appVersion: String
+    fun nowMillis(): Long = kotlin.time.Clock.System.now().toEpochMilliseconds()
+    /** Presents a user-controlled share/save sheet. Null means no error, including cancellation. */
+    fun shareCsv(fileName: String, contents: String, done: (String?) -> Unit) {
+        done("File sharing is unavailable on this platform.")
+    }
 }

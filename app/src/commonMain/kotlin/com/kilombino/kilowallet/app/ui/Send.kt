@@ -110,7 +110,7 @@ private fun SendForm(model: WalletModel, state: UiState, platform: AppPlatform) 
             SectionLabel("Amount")
             if (all) {
                 val max = model.maxSendable(rateValue)
-                Text("Everything: ${formatSats(max)} sats", style = MaterialTheme.typography.titleMedium, color = Purple)
+                Text(if (state.hideAmounts) "Everything: •••• sats" else "Everything: ${formatSats(max)} sats", style = MaterialTheme.typography.titleMedium, color = Purple)
                 Explain("All your coins minus the fee; no change output.")
             } else {
                 Field(amount, { amount = it.filter { c -> c.isDigit() } }, "sats", keyboard = KeyboardType.Number)
@@ -121,7 +121,7 @@ private fun SendForm(model: WalletModel, state: UiState, platform: AppPlatform) 
                 Text("send everything (MAX)", style = MaterialTheme.typography.bodyMedium, color = TextSoft)
             }
             val available = state.spendable?.sumOf { it.value }
-            Explain(if (available == null) "loading your coins…" else "spendable: ${formatSats(available)} sats in ${state.spendable.size} coins")
+            Explain(if (available == null) "loading your coins…" else if (state.hideAmounts) "spendable: •••• sats" else "spendable: ${formatSats(available)} sats in ${state.spendable.size} coins")
         }
         Panel {
             SectionLabel("Fee rate")
