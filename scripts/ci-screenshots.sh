@@ -4,7 +4,10 @@
 # in-memory "abandon … about" test wallet; the Keychain is never touched), and the app writes a
 # marker file into its Documents folder when the screen has settled.
 set -euo pipefail
-APP="$1"; OUT="$2"
+APP="$1"; OUT="$2"; ONLY="${3:-}"
+mkdir -p build
+CHECKER="build/check-screen"
+xcrun swiftc scripts/check-screen.swift -o "$CHECKER"
 BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist")
 mkdir -p "$OUT" screenshots-logs
 
@@ -28,6 +31,7 @@ xcrun simctl install "$UDID" "$APP"
 n=0
 for screen in welcome create restore watch home receive send review settings; do
   n=$((n + 1))
+  if [ -n "$ONLY" ] && [ "$screen" != "$ONLY" ]; then continue; fi
   xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
   DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE" data)
   rm -f "$DATA/Documents/kw-ready-$screen"
@@ -40,7 +44,18 @@ for screen in welcome create restore watch home receive send review settings; do
   done
   if [ -f "$DATA/Documents/kw-ready-$screen" ]; then echo "$screen: ready after ${i}s"; else echo "$screen: NOT ready after ${limit}s"; exit 1; fi
   sleep 3
-  xcrun simctl io "$UDID" screenshot "$OUT/$(printf %02d $n)-$screen.png"
+  SHOT="$OUT/$(printf %02d $n)-$screen.png"
+  xcrun simctl io "$UDID" screenshot "$SHOT"
+  if [ "$screen" = review ]; then
+    rendered=false
+    for attempt in 1 2 3; do
+      if "$CHECKER" "$SHOT" "Review the send"; then rendered=true; break; fi
+      sleep 3
+      xcrun simctl io "$UDID" screenshot "$SHOT"
+    done
+    if [ "$rendered" != true ]; then echo "review: rendered screen did not match readiness marker"; exit 1; fi
+    echo "review: visible title verified"
+  fi
   kill $LP 2>/dev/null || true
 done
 xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true

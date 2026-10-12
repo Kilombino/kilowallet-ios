@@ -2,12 +2,19 @@ name: Release readiness checks
 
 on:
   workflow_dispatch:
+    inputs:
+      screen:
+        description: 'Screen verification scope'
+        type: choice
+        options: [all, review]
+        default: all
 
 permissions:
   contents: read
 
 jobs:
   review:
+    if: ${{ inputs.screen != 'review' }}
     runs-on: macos-15
     timeout-minutes: 40
     steps:
@@ -59,6 +66,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
+      - name: Verify core JVM regression tests for focused screen run
+        if: ${{ inputs.screen == 'review' }}
+        run: ./gradlew --no-daemon :core:jvmTest --stacktrace
       - name: Verify wrapper and build simulator app
         run: |
           set -euo pipefail
@@ -69,7 +79,11 @@ jobs:
             -derivedDataPath build/dd ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build > build/simulator.log 2>&1
           test -x build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app/Kilowallet
       - name: Launch all principal screens with disposable demo data
-        run: ./scripts/ci-screenshots.sh build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app screenshots
+        env:
+          SCREEN_SCOPE: ${{ inputs.screen }}
+        run: |
+          if [ "$SCREEN_SCOPE" = review ]; then ONLY=review; else ONLY=; fi
+          ./scripts/ci-screenshots.sh build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app screenshots "$ONLY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -78,3 +92,5 @@ jobs:
             screenshots/
             screenshots-logs/
             build/simulator.log
+            core/build/test-results/
+            core/build/reports/tests/

@@ -37,11 +37,18 @@ jobs:
       - name: Unit tests (JVM and iOS simulator)
         run: ./gradlew :core:jvmTest :core:iosSimulatorArm64Test :app:desktopTest :app:iosSimulatorArm64Test --stacktrace
 
-      - name: Live smoke test against the default Electrum server
-        continue-on-error: true
+      - name: Preserve JVM regression evidence before optional live scan
+        if: always()
+        run: |
+          mkdir -p build/unit-test-results
+          if [ -d core/build/test-results/jvmTest ]; then cp -R core/build/test-results/jvmTest build/unit-test-results/core-jvm; fi
+
+      - name: Live scan using independently approved server certificate
+        if: ${{ vars.KW_LIVE_CERT_SHA256 != '' }}
         env:
           KW_LIVE: "1"
-        run: ./gradlew :core:jvmTest --tests '*LiveServerTest*' --rerun-tasks -i | grep -E "Connected|Done|FAIL|PASS|LiveServerTest" | head -40
+          KW_LIVE_PIN: ${{ vars.KW_LIVE_CERT_SHA256 }}
+        run: ./gradlew :core:jvmTest --tests '*LiveServerTest*' --rerun-tasks --stacktrace
 
       - name: Build the app for the iOS Simulator (no signing)
         run: |
@@ -71,6 +78,7 @@ jobs:
             core/build/test-results/
             app/build/reports/tests/
             app/build/test-results/
+            build/unit-test-results/
             build/xcodebuild.log
             screenshots-logs/
 
