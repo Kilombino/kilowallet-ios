@@ -372,12 +372,15 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         return runCatching {
             addresses.observe(zpub, s.rows)
             val cached = receiveSession?.takeIf { it.first == zpub }
-            val index = cached?.second ?: addresses.next(zpub, 0)
+            val progress = addresses.read(zpub)
+            val reuseLatest = cached == null && progress.receive - progress.usedReceive >= AddressBook.GAP
+            val index = cached?.second ?: if (reuseLatest) progress.receive - 1 else progress.receive
             val parsed = Bip32.parseExtendedPubKey(zpub)
             val pub = Bip32.derivePath(parsed, 0, index).pubkey()
             val address = Address.encode(pub, parsed.scriptType)
             if (cached == null) {
-                addresses.reserve(zpub, 0, index)
+                if (reuseLatest) say("Showing your latest unused address. 20 unused addresses are already reserved; refresh after a payment to create another.")
+                else addresses.reserve(zpub, 0, index)
                 receiveSession = zpub to index
             }
             address to "m/${Scanner.purposeFor(parsed.scriptType)}'/0'/0'/0/$index"

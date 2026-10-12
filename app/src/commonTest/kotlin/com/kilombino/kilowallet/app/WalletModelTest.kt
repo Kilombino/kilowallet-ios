@@ -258,4 +258,18 @@ class WalletModelTest {
         assertIs<ScanEvent.Failed>(invalid.single())
         assertEquals(connections, p.connections)
     }
+
+    @Test fun unusedReceiveLimitStillLetsUserReceiveOnLatestAddress() = checkModel { model, p ->
+        model.setUpDemo("receive"); advanceUntilIdle()
+        val issued = mutableListOf<Pair<String, String>>()
+        repeat(20) {
+            model.go(Screen.Home); model.go(Screen.Receive)
+            issued += model.receiveAddress()!!
+        }
+        assertEquals(20, issued.map { it.first }.toSet().size)
+        model.go(Screen.Home); model.go(Screen.Receive)
+        assertEquals(issued.last(), model.receiveAddress())
+        assertTrue(model.state.value.message!!.contains("latest unused address"))
+        assertEquals(20, AddressBook(p.prefs).next(model.state.value.zpub!!, 0))
+    }
 }
