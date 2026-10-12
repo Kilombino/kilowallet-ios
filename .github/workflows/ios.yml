@@ -35,21 +35,30 @@ jobs:
         run: xcodebuild -version
 
       - name: Unit tests (JVM and iOS simulator)
-        run: ./gradlew :core:jvmTest :core:iosSimulatorArm64Test --stacktrace
+        run: ./gradlew :core:jvmTest :core:iosSimulatorArm64Test :app:desktopTest :app:iosSimulatorArm64Test --stacktrace
 
-      - name: Live smoke test against the default Electrum server
-        continue-on-error: true
+      - name: Preserve JVM regression evidence before optional live scan
+        if: always()
+        run: |
+          mkdir -p build/unit-test-results
+          if [ -d core/build/test-results/jvmTest ]; then cp -R core/build/test-results/jvmTest build/unit-test-results/core-jvm; fi
+
+      - name: Live scan using independently approved server certificate
+        if: ${{ vars.KW_LIVE_CERT_SHA256 != '' }}
         env:
           KW_LIVE: "1"
-        run: ./gradlew :core:jvmTest --tests '*LiveServerTest*' --rerun-tasks -i | grep -E "Connected|Done|FAIL|PASS|LiveServerTest" | head -40
+          KW_LIVE_PIN: ${{ vars.KW_LIVE_CERT_SHA256 }}
+        run: ./gradlew :core:jvmTest --tests '*LiveServerTest*' --rerun-tasks --stacktrace
 
       - name: Build the app for the iOS Simulator (no signing)
         run: |
+          set -euo pipefail
+          mkdir -p build
           xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/dd ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build \
-            | tee build/xcodebuild.log | grep -E "error:|warning: .*swift|BUILD" || true
-          test -d build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app
+            > build/xcodebuild.log 2>&1
+          test -x build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app/Kilowallet
 
       - name: Boot a simulator, launch the app and take screenshots
         run: ./scripts/ci-screenshots.sh build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app screenshots
@@ -67,6 +76,9 @@ jobs:
           path: |
             core/build/reports/tests/
             core/build/test-results/
+            app/build/reports/tests/
+            app/build/test-results/
+            build/unit-test-results/
             build/xcodebuild.log
             screenshots-logs/
 
@@ -88,12 +100,13 @@ jobs:
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
       - name: Build Release for iphoneos without signing
         run: |
+          set -euo pipefail
           mkdir -p build
           xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/dd \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build \
-            | tee build/xcodebuild-release.log | grep -E "error:|BUILD" || true
-          test -d build/dd/Build/Products/Release-iphoneos/Kilowallet.app
+            > build/xcodebuild-release.log 2>&1
+          test -x build/dd/Build/Products/Release-iphoneos/Kilowallet.app/Kilowallet
           du -sh build/dd/Build/Products/Release-iphoneos/Kilowallet.app
       - uses: actions/upload-artifact@v4
         if: always()
