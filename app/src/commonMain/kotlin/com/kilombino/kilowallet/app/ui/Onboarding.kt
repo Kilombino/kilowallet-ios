@@ -142,7 +142,7 @@ fun RestoreScreen(model: WalletModel) {
     val unknown = words.filterIndexed { i, w -> !Bip39.isWord(w) && (i < words.size - 1 || text.endsWith(" ")) }
     val last = if (text.endsWith(" ")) "" else words.lastOrNull().orEmpty()
     val suggestions = if (last.isNotEmpty() && !Bip39.isWord(last)) Bip39.suggestions(last) else emptyList()
-    val valid = (words.size == 12 || words.size == 24) && Bip39.isValid(words)
+    val valid = Bip39.isValid(words)
     ScreenColumn {
         BackLink { model.back() }
         Text("Restore from words", style = MaterialTheme.typography.titleLarge, color = TextMain)
@@ -156,7 +156,7 @@ fun RestoreScreen(model: WalletModel) {
         }
         val status = when {
             unknown.isNotEmpty() -> "Not in the word list: ${unknown.joinToString(", ")}"
-            words.size != 12 && words.size != 24 -> "${words.size} words"
+            words.size !in setOf(12, 15, 18, 21, 24) -> "${words.size} words"
             !valid -> "${words.size} words, but the checksum does not match: check the order"
             else -> "${words.size} words · valid"
         }

@@ -4,6 +4,12 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.kilombino.kilowallet.core.chain.*
 import com.kilombino.kilowallet.core.wallet.Signer
 import com.kilombino.kilowallet.core.crypto.TxParse
+import com.kilombino.kilowallet.core.crypto.Bip39
+import com.kilombino.kilowallet.core.crypto.Bip32
+import com.kilombino.kilowallet.core.crypto.Address
+import com.kilombino.kilowallet.core.wallet.Scanner
+import com.kilombino.kilowallet.core.wallet.ScanEvent
+import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.json.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
@@ -167,6 +173,8 @@ class WalletModelTest {
         assertIs<SendPhase.Pending>(model.state.value.send)
         assertEquals(1, p.sent.size)
         val original = p.sent.single()
+        val identity = model.state.value.zpub!!
+        assertEquals(1, AddressBook(p.prefs).next(identity, 1))
         model.close(); advanceUntilIdle()
         val dispatcher = StandardTestDispatcher(testScheduler)
         val restarted = WalletModel(p, dispatcher, dispatcher)
@@ -177,9 +185,77 @@ class WalletModelTest {
             restarted.retryPendingSend(); restarted.retryPendingSend()
             advanceUntilIdle()
             assertEquals(listOf(original, original), p.sent)
+            assertEquals(1, AddressBook(p.prefs).next(identity, 1))
             assertEquals(TxParse.txid(TxParse.parse(original)), (restarted.state.value.send as SendPhase.Sent).txid)
             assertTrue(p.values.keys.none { it.startsWith("pending.") })
         } finally { restarted.close(); advanceUntilIdle() }
     }
 
+
+    @Test fun restoresAllFiveStandardWordCountsWithoutChangingPassphrase() = checkModel { model, p ->
+        for (bytes in listOf(16, 20, 24, 28, 32)) {
+            val recovery = Bip39.fromEntropy(ByteArray(bytes) { it.toByte() })
+            model.restore(recovery, " spaced passphrase ")
+            advanceUntilIdle()
+            assertEquals(recovery to " spaced passphrase ", decodeSecret(p.saved!!))
+            assertEquals(Signer.accountZpub(recovery, " spaced passphrase "), model.state.value.zpub)
+            model.deleteWallet()
+        }
+        assertEquals(5, p.saveCalls)
+    }
+    @Test fun receiveVisitIsStableButNextVisitAndRestartGetFreshAddresses() = checkModel { model, p ->
+        model.setUpDemo("receive"); advanceUntilIdle()
+        val first = model.receiveAddress()!!
+        assertEquals(first, model.receiveAddress())
+        model.go(Screen.Home); model.go(Screen.Receive)
+        val second = model.receiveAddress()!!
+        assertNotEquals(first.first, second.first)
+        assertTrue(second.second.endsWith("/0/1"))
+        p.values["wallet.kind"] = "HOT"; p.values["wallet.zpub"] = model.state.value.zpub!!
+        model.close(); advanceUntilIdle()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val restarted = WalletModel(p, dispatcher, dispatcher)
+        try {
+            advanceUntilIdle(); restarted.go(Screen.Receive)
+            assertTrue(restarted.receiveAddress()!!.second.endsWith("/0/2"))
+        } finally { restarted.close(); advanceUntilIdle() }
+    }
+    @Test fun cancellingAuthenticationDoesNotConsumeAChangeAddress() = checkModel { model, p ->
+        model.setUpDemo("review"); advanceUntilIdle()
+        val identity = model.state.value.zpub!!
+        model.confirmSend(); p.unlock!!(null, "Cancelled"); advanceUntilIdle()
+        assertEquals(0, AddressBook(p.prefs).next(identity, 1))
+        assertEquals(0, (model.state.value.send as SendPhase.Review).changeIndex)
+    }
+    @Test fun scannerFindsIssuedAddressesBeyondAnEmptyGapOnBothBranches() = checkModel { model, p ->
+        val zpub = Signer.accountZpub(words, "")
+        val parsed = Bip32.parseExtendedPubKey(zpub)
+        val late = (0..1).map { chain ->
+            Address.scriptHashFor(Bip32.derivePath(parsed, chain, 25).pubkey(), parsed.scriptType)
+        }.toSet()
+        val histories = mutableSetOf<String>()
+        p.reply = { q -> when(q["method"]!!.jsonPrimitive.content) {
+            "server.version" -> buildJsonArray { add("test"); add("1.4") }
+            "blockchain.headers.subscribe" -> buildJsonObject { put("height", 976086); put("hex", "000000a0700c8b9690014507c6c277900d743ac3ed6d814f90772d060000000000000000670caeac2404c80798669b242623ea7310be8f47166168e9734baab9dec80446b2c2c66a2ad80019be9815dad0f4b1da0000000000000000b10cf8578500000000000000b2c2c66a7501000000000000000000000000000000000000d6e40e000000000000000000000000000000000000000000000000000000000000000000") }
+            "blockchain.scripthash.get_history" -> {
+                val hash = q["params"]!!.jsonArray[0].jsonPrimitive.content
+                histories += hash
+                if (hash in late) buildJsonArray { add(buildJsonObject { put("tx_hash", "ab".repeat(32)); put("height", 0) }) }
+                else JsonArray(emptyList())
+            }
+            "blockchain.scripthash.get_balance" -> buildJsonObject { put("confirmed", 0); put("unconfirmed", 1000) }
+            "blockchain.transaction.get" -> throw ElectrumException("Synthetic history only")
+            else -> error("Unexpected request")
+        } }
+        val scanner = Scanner(p.transports, dispatcher = StandardTestDispatcher(testScheduler))
+        val events = scanner.scan(zpub, NodeEndpoint.DEFAULT, "a".repeat(64),
+            knownReceiveCount = 26, knownChangeCount = 26).toList()
+        val done = events.filterIsInstance<ScanEvent.Done>().single()
+        assertEquals(setOf(0 to 25, 1 to 25), done.rows.map { it.chainIndex to it.index }.toSet())
+        assertTrue(histories.containsAll(late))
+        val connections = p.connections
+        val invalid = scanner.scan(zpub, NodeEndpoint.DEFAULT, "a".repeat(64), knownReceiveCount = 10001).toList()
+        assertIs<ScanEvent.Failed>(invalid.single())
+        assertEquals(connections, p.connections)
+    }
 }

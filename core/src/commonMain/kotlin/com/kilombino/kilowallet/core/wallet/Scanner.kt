@@ -77,7 +77,11 @@ class Scanner(
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val worker = dispatcher.limitedParallelism(1)
 
-    fun scan(xpub: String, endpoint: NodeEndpoint, pinnedFingerprint: String?, gap: Int = gapLimit): Flow<ScanEvent> = flow {
+    fun scan(xpub: String, endpoint: NodeEndpoint, pinnedFingerprint: String?, gap: Int = gapLimit,
+        knownReceiveCount: Int = 0, knownChangeCount: Int = 0): Flow<ScanEvent> = flow {
+        if (gap !in 1..1000 || knownReceiveCount !in 0..10_000 || knownChangeCount !in 0..10_000) {
+            emit(ScanEvent.Failed("Invalid address scan range")); return@flow
+        }
         val txHeights = HashMap<String, Int>()
         val parsed = try {
             Bip32.parseExtendedPubKey(xpub)
@@ -107,7 +111,8 @@ class Scanner(
                 val branch = Bip32.deriveChild(parsed, chainIndex)
                 var index = 0
                 var consecutiveEmpty = 0
-                while (consecutiveEmpty < gap) {
+                val knownCount = if (chainIndex == 0) knownReceiveCount else knownChangeCount
+                while (index < knownCount || consecutiveEmpty < gap) {
                     require(index < 10_000) { "Address scan limit reached; use a trusted server" }
                     val path = "m/$purpose'/0'/0'/$chainIndex/$index"
                     emit(ScanEvent.Deriving(chainIndex, index, path))

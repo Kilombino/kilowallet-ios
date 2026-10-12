@@ -55,7 +55,7 @@ sealed interface ScanPhase {
 sealed interface SendPhase {
     data object Editing : SendPhase
     data object Preparing : SendPhase
-    data class Review(val draft: SendDraft, val concern: String?) : SendPhase
+    data class Review(val draft: SendDraft, val concern: String?, val changeIndex: Int? = null) : SendPhase
     data object Signing : SendPhase
     data class Pending(val txid: String, val message: String) : SendPhase
     data class Sent(val txid: String) : SendPhase
@@ -97,6 +97,8 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val scanner = Scanner(platform.transports, dispatcher = networkDispatcher)
     private val prefs = platform.prefs
+    private val addresses = AddressBook(prefs)
+    private var receiveSession: Pair<String, Int>? = null
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
     fun close() { cancelAction(); scope.cancel() }
@@ -150,6 +152,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
     fun go(screen: Screen) {
         if (setupBusy || _state.value.send is SendPhase.Signing) return
         cancelAction()
+        if (screen != Screen.Receive || state.value.screen != Screen.Receive) receiveSession = null
         _state.update { it.copy(screen = screen, message = null) }
         if (screen == Screen.Send) openSend()
     }
@@ -183,7 +186,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
 
     fun restore(words: List<String>, passphrase: String) {
         val clean = words.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-        if (clean.size != 12 && clean.size != 24) { say("Enter 12 or 24 words."); return }
+        if (clean.size !in setOf(12, 15, 18, 21, 24)) { say("Enter 12, 15, 18, 21 or 24 words."); return }
         clean.firstOrNull { !Bip39.isWord(it) }?.let { say("\"$it\" is not a recovery word."); return }
         if (!Bip39.isValid(clean)) { say("These words do not form a valid backup (the checksum does not match). Check their order."); return }
         storeHot(clean, passphrase)
@@ -253,8 +256,19 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         scanJob = scope.launch {
             _state.update { it.copy(scan = ScanPhase.Scanning("", 0, 0, 20, 0), certChanged = null) }
             var found = 0
-            scanner.scan(zpub, s.endpoint, s.pinned).collect { ev ->
+            val progress = runCatching { addresses.read(zpub) }.getOrElse {
+                _state.update { st -> st.copy(scan = ScanPhase.Error(it.message ?: "Invalid address progress"), refreshing = false) }
+                return@launch
+            }
+            scanner.scan(zpub, s.endpoint, s.pinned, knownReceiveCount = progress.receive,
+                knownChangeCount = progress.change).collect { ev ->
                 if (scanEpoch != walletEpoch) return@collect
+                if (ev is ScanEvent.Found) {
+                    runCatching { addresses.observe(zpub, listOf(ev.row)) }.exceptionOrNull()?.let { error ->
+                        _state.update { it.copy(scan = ScanPhase.Error(error.message ?: "Could not save address progress"), refreshing = false) }
+                        throw CancellationException("Address progress could not be saved")
+                    }
+                }
                 when (ev) {
                     is ScanEvent.Connecting -> Unit
                     is ScanEvent.Connected -> _state.update { it.copy(height = ev.height, serverVersion = ev.server) }
@@ -291,8 +305,19 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         val scanEpoch = walletEpoch
         scanJob = scope.launch {
             _state.update { it.copy(refreshing = true) }
-            scanner.scan(zpub, s.endpoint, s.pinned).collect { ev ->
+            val progress = runCatching { addresses.read(zpub) }.getOrElse {
+                _state.update { st -> st.copy(scan = ScanPhase.Error(it.message ?: "Invalid address progress"), refreshing = false) }
+                return@launch
+            }
+            scanner.scan(zpub, s.endpoint, s.pinned, knownReceiveCount = progress.receive,
+                knownChangeCount = progress.change).collect { ev ->
                 if (scanEpoch != walletEpoch) return@collect
+                if (ev is ScanEvent.Found) {
+                    runCatching { addresses.observe(zpub, listOf(ev.row)) }.exceptionOrNull()?.let { error ->
+                        _state.update { it.copy(scan = ScanPhase.Error(error.message ?: "Could not save address progress"), refreshing = false) }
+                        throw CancellationException("Address progress could not be saved")
+                    }
+                }
                 when (ev) {
                     is ScanEvent.Done -> {
                         pinIfFirst(s.endpoint, ev.fingerprint)
@@ -340,19 +365,23 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
 
     // ------------------------------------------------------------------ receive
 
-    /** The next unused receive address: one past the highest used (Android: `nextReceiveIndex`). */
+    /** One address per Receive visit, stable across recomposition and reserved before display. */
     fun receiveAddress(): Pair<String, String>? {
         val s = _state.value
         val zpub = s.zpub ?: return null
-        val scannedIndex = s.rows.filter { it.chainIndex == 0 }.maxOfOrNull { it.index }?.plus(1) ?: 0
-        val key = "receiveIndex.$zpub"
-        val index = maxOf(scannedIndex, prefs.get(key)?.toIntOrNull() ?: 0)
-        prefs.put(key, index.toString())
         return runCatching {
+            addresses.observe(zpub, s.rows)
+            val cached = receiveSession?.takeIf { it.first == zpub }
+            val index = cached?.second ?: addresses.next(zpub, 0)
             val parsed = Bip32.parseExtendedPubKey(zpub)
             val pub = Bip32.derivePath(parsed, 0, index).pubkey()
-            Address.encode(pub, parsed.scriptType) to "m/${Scanner.purposeFor(parsed.scriptType)}'/0'/0'/0/$index"
-        }.getOrNull()
+            val address = Address.encode(pub, parsed.scriptType)
+            if (cached == null) {
+                addresses.reserve(zpub, 0, index)
+                receiveSession = zpub to index
+            }
+            address to "m/${Scanner.purposeFor(parsed.scriptType)}'/0'/0'/0/$index"
+        }.onFailure { say(it.message ?: "Could not reserve a receive address.") }.getOrNull()
     }
 
     // ------------------------------------------------------------------ send
@@ -385,13 +414,15 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         sendJob = scope.launch {
             runCatching {
                 val utxos = s.spendable ?: scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned)
-                val changeIndex = s.rows.filter { it.chainIndex == 1 }.maxOfOrNull { it.index }?.plus(1) ?: 0
+                addresses.observe(zpub, s.rows)
+                val changeIndex = addresses.next(zpub, 1)
                 val draft = withContext(cryptoDispatcher) {
                     SendPlanner.plan(to, amountSats, rate, utxos, SendPlanner.changeScript(zpub, changeIndex), sendAll)
                 }
                 scanner.verifyCoins(zpub, draft.inputs, s.endpoint, s.pinned)
-                draft
-            }.onSuccess { d -> if (isCurrent(epoch, s)) _state.update { it.copy(send = SendPhase.Review(d, SendPlanner.feeConcern(d))) } }
+                if (draft.change > 0) addresses.checkAvailable(zpub, 1, changeIndex)
+                draft to changeIndex.takeIf { draft.change > 0 }
+            }.onSuccess { (d, index) -> if (isCurrent(epoch, s)) _state.update { it.copy(send = SendPhase.Review(d, SendPlanner.feeConcern(d), index)) } }
              .onFailure { e -> if (e is CancellationException) throw e; if (isCurrent(epoch, s)) _state.update { it.copy(send = SendPhase.Failed(e.message ?: "Could not prepare the send.")) } }
         }
     }
@@ -399,7 +430,8 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
     /** Unlock the words, sign with the unified sighash (0x21) and broadcast. */
     fun confirmSend() {
         val s = _state.value
-        val draft = (s.send as? SendPhase.Review)?.draft ?: return
+        val review = s.send as? SendPhase.Review ?: return
+        val draft = review.draft
         val zpub = s.zpub ?: return
         if (s.kind != WalletKind.HOT || pending(zpub) != null) return
         cancelAction()
@@ -409,7 +441,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         platform.seeds.load("Sign and send ${com.kilombino.kilowallet.core.wallet.formatSats(draft.amount)} sats") { secret, error ->
             if (!isCurrent(epoch, s)) return@load
             if (secret == null) {
-                _state.update { it.copy(send = SendPhase.Review(draft, SendPlanner.feeConcern(draft))) }
+                _state.update { it.copy(send = review) }
                 say(error ?: "Not unlocked: nothing was sent.")
                 return@load
             }
@@ -421,6 +453,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
                     if (!isCurrent(epoch, s)) return@launch
                     // Keep the exact signed transaction before the first send. A lost receipt
                     // must not invite a second, different payment.
+                    review.changeIndex?.let { addresses.reserve(zpub, 1, it) }
                     prefs.put(pendingKey(zpub), signed.rawHex)
                     val txid = scanner.broadcast(signed.rawHex, s.endpoint, s.pinned)
                     prefs.put(pendingKey(zpub), null)
@@ -483,7 +516,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
                         val coin = SpendableUtxo("4f".repeat(32), 0, 250_000, 0, 0, 970_000)
                         val draft = SendPlanner.plan("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", 120_000, 2.0,
                             listOf(coin), SendPlanner.changeScript(zpub, 0))
-                        _state.update { it.copy(screen = Screen.Send, send = SendPhase.Review(draft, SendPlanner.feeConcern(draft))) }
+                        _state.update { it.copy(screen = Screen.Send, send = SendPhase.Review(draft, SendPlanner.feeConcern(draft), 0)) }
                         platform.markReady(screen)
                     }
                 }
