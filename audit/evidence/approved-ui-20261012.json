@@ -1,0 +1,170 @@
+{
+  "run": 38230151190,
+  "suites": [
+    {
+      "file": "reports/app/build/test-results/desktopTest/TEST-com.kilombino.kilowallet.app.AddressBookTest.xml",
+      "suite": "com.kilombino.kilowallet.app.AddressBookTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/app/build/test-results/desktopTest/TEST-com.kilombino.kilowallet.app.WalletModelTest.xml",
+      "suite": "com.kilombino.kilowallet.app.WalletModelTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/app/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.app.AddressBookTest.xml",
+      "suite": "com.kilombino.kilowallet.app.AddressBookTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/app/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.app.WalletModelTest.xml",
+      "suite": "com.kilombino.kilowallet.app.WalletModelTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.core.AndroidVectorsTest.xml",
+      "suite": "com.kilombino.kilowallet.core.AndroidVectorsTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.core.BoundaryPropertyTest.xml",
+      "suite": "com.kilombino.kilowallet.core.BoundaryPropertyTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.core.CoreTest.xml",
+      "suite": "com.kilombino.kilowallet.core.CoreTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.core.SecurityRegressionTest.xml",
+      "suite": "com.kilombino.kilowallet.core.SecurityRegressionTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/iosSimulatorArm64Test/TEST-com.kilombino.kilowallet.core.UnifiedSighashTest.xml",
+      "suite": "com.kilombino.kilowallet.core.UnifiedSighashTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.AndroidVectorsTest.xml",
+      "suite": "com.kilombino.kilowallet.core.AndroidVectorsTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.BoundaryPropertyTest.xml",
+      "suite": "com.kilombino.kilowallet.core.BoundaryPropertyTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.CoreTest.xml",
+      "suite": "com.kilombino.kilowallet.core.CoreTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.SecurityRegressionTest.xml",
+      "suite": "com.kilombino.kilowallet.core.SecurityRegressionTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "file": "reports/core/build/test-results/jvmTest/TEST-com.kilombino.kilowallet.core.UnifiedSighashTest.xml",
+      "suite": "com.kilombino.kilowallet.core.UnifiedSighashTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "substantive_executions": 96,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "screenshots": [
+    {
+      "file": "screenshots/01-welcome.png",
+      "sha256": "0b0a5f3c86a436f6390e2225da79607ba50bfb7ea947776ed13b8c930bc1cec1"
+    },
+    {
+      "file": "screenshots/02-create.png",
+      "sha256": "ccee9431efdd377142615b01330d8e326690c4c338a7afe0958877d9a9e4c4d2"
+    },
+    {
+      "file": "screenshots/03-restore.png",
+      "sha256": "9af5de59d608620cf687091eb4af96e45007733aaf703adf74168817d20023b4"
+    },
+    {
+      "file": "screenshots/04-watch.png",
+      "sha256": "8e77ec7cfca6d5f9b4342f0ccd6e7123b249b8ddb0b12e56568288d5b96fb7b2"
+    },
+    {
+      "file": "screenshots/05-home.png",
+      "sha256": "cc24c5069cede5753dc8adbfd7b7542390b13d323bd43c313fa5b75715cb30d4"
+    },
+    {
+      "file": "screenshots/06-receive.png",
+      "sha256": "72db1761bbbcec03893d3c4538ed5f724c08b4f2d531a6c62d8ead85aeb5bc6e"
+    },
+    {
+      "file": "screenshots/07-send.png",
+      "sha256": "10b03b3e167584c2065eb88ad8048b1cb75073f706fab963738047759dfd4b59"
+    },
+    {
+      "file": "screenshots/08-review.png",
+      "sha256": "38ccd3e8b28b8c973aa3351cbbff1ce6a70107a9334024f078c0b42b5b15136d"
+    },
+    {
+      "file": "screenshots/09-settings.png",
+      "sha256": "81d5ccdb9cea801dfc1c8505e015cd47267c4c37c30988dfb79f2ef0366dd517"
+    }
+  ],
+  "commit": "f804e3b9f163bdb2c4ffca47e4994fbb0c13153c",
+  "run_url": "https://github.com/romanmodin/kilowallet-ios/actions/runs/38230151190",
+  "result": "success",
+  "unsigned_device_release": "passed",
+  "simulator_build": "passed",
+  "screenshots_visually_inspected": true,
+  "live_network_test": "skipped: no independently approved pin configured",
+  "signed": false,
+  "uploaded": false,
+  "contrast_min_secondary_text": 7.66,
+  "signing_script_validation": "bash -n passed; Apple-dependent steps not run"
+}

@@ -10,7 +10,7 @@ The iOS sibling of [Kilowallet for Android](https://github.com/Kilombino/kilowal
 Version 0.1 (BTC only):
 
 - Create a wallet (12 or 24 words; the words are shown and then checked), restore from words
-  (optional BIP-39 passphrase), or watch-only from a zpub (also ypub / xpub).
+  (12, 15, 18, 21 or 24 English BIP-39 words; first BIP-84 account only, optional passphrase), or watch-only from a zpub (also ypub / xpub).
 - Balance and movements with confirmations, with an SPV check of recent incoming payments against
   the block header's BLAKE2b proof of work (164-byte headers).
 - Receive: next unused address with a QR code (CoreImage) and copy.
@@ -19,13 +19,16 @@ Version 0.1 (BTC only):
   (replay protection: the transaction is invalid on the SHA-256 chain), broadcast over Electrum TLS.
   Every coin is checked against the transaction that created it before anything is signed.
 - Electrum server: `fulcrum.kilombino.com:17717` (TLS) by default, or your own. Certificates are
-  self-signed, so they are pinned on first use; a changed certificate is refused until you accept it.
+  pinned only after explicit fingerprint approval; verify the fingerprint independently before accepting it.
+  A changed certificate is refused until you explicitly accept the replacement.
   The app refuses a server whose headers are not 164 bytes (i.e. not on the BLAKE2b chain).
 - Recovery words in the iOS Keychain, unlocked by Face ID / Touch ID / the device passcode.
 
 Not in 0.1: other chains, coinjoin, Ark, Lightning, notifications, fiat prices, PSBT.
 
 ## Hand-off: build, sign and upload (for the iOS developer)
+
+See [the current signing runbook](distribution/SIGNING.md) for the prepared archive/export command and remaining Apple prerequisites.
 
 Requirements: an Apple Developer account **enrolled as an organization** (App Store Review
 Guideline 3.1.5(b): wallet apps for virtual currencies must come from an organization account, not
@@ -37,7 +40,7 @@ Kotlin code is built by Gradle from Xcode's "Compile Kotlin Framework" build pha
    needs (a few minutes the first time):
 
    ```sh
-   git clone https://github.com/Kilombino/kilowallet-ios.git && cd kilowallet-ios
+   git clone https://github.com/romanmodin/kilowallet-ios.git && cd kilowallet-ios
    ./gradlew :core:jvmTest :app:linkDebugFrameworkIosSimulatorArm64
    ```
 
@@ -59,9 +62,10 @@ Kotlin code is built by Gradle from Xcode's "Compile Kotlin Framework" build pha
    opens: **Distribute App → App Store Connect → Upload**. Then in App Store Connect add it to
    TestFlight, and later submit for review.
 
-   The app is iPhone-only, portrait, dark; it declares no third-party SDKs, no tracking and only
-   exempt encryption (`ITSAppUsesNonExemptEncryption = NO`: it uses the OS's TLS and digital
-   signatures, which are exempt — confirm this in App Store Connect's export compliance questions).
+   The app is iPhone-only, portrait and dark. Review the actual crypto implementation and dependencies
+   when answering Apple's export-compliance questions. The inherited
+   `ITSAppUsesNonExemptEncryption = NO` value still needs confirmation before upload;
+   it is not evidence that the declaration has been reviewed.
    A privacy manifest (`PrivacyInfo.xcprivacy`) lists the "required reason" APIs it uses.
 
 ### App Store review notes (suggested text)
@@ -81,14 +85,14 @@ Kotlin code is built by Gradle from Xcode's "Compile Kotlin Framework" build pha
 
 ### Privacy (for the App Store privacy label)
 
-- **Data not collected.** No analytics, no crash reporting service, no advertising, no tracking.
+- No first-party analytics, crash reporting service, advertising or tracking was identified in the reviewed source. Review the selected server's data practices before completing Apple's privacy label; see [PRIVACY.md](PRIVACY.md).
 - Network: only the Electrum server the user chooses (default `fulcrum.kilombino.com:17717`). As
   with any light wallet, that server learns which addresses the wallet asks about; Settings explains
   this and lets the user use their own server. Tapping "open on mempool.kilombino.com" opens the
   browser, only on that tap.
 - Camera: only to scan a QR code, only when the user taps "Scan QR".
 - On device: the recovery words (Keychain, this device only, user presence required), and in
-  `UserDefaults` the wallet's public key, the server and its certificate fingerprint.
+  `UserDefaults` the wallet's public key, server/pins, receive/change progress and unresolved signed transaction. Preferences may be included in operating-system backups.
 
 ## How it is built
 

@@ -144,19 +144,21 @@ private fun fmtRate(r: Double): String {
 private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatform) {
     val d = p.draft
     var ack by remember(d) { mutableStateOf(false) }
+    var showDetails by remember(d) { mutableStateOf(false) }
     ScreenColumn {
         BackLink("← edit") { model.editSend() }
-        Text("Review the send", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Text("Review payment", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Text("${formatSats(d.amount)} sats", style = MaterialTheme.typography.headlineMedium, color = Purple)
+        SectionLabel("XBT · BLAKE2b", color = TextSoft)
         Panel {
-            SectionLabel("To")
+            SectionLabel("Recipient")
             Text(chunked(d.to), style = MaterialTheme.typography.titleMedium, color = TextMain)
         }
         Panel {
-            KeyValue("amount", "${formatSats(d.amount)} sats")
-            KeyValue("fee", "${formatSats(d.fee)} sats · ${fmtRate(d.effectiveRate)} sat/vB")
-            KeyValue("total", "${formatSats(d.totalSent)} sats", Purple)
-            KeyValue("change back to you", if (d.change > 0) "${formatSats(d.change)} sats" else "none")
-            KeyValue("coins spent", "${d.inputs.size}")
+            KeyValue("Amount", "${formatSats(d.amount)} sats")
+            KeyValue("Network fee", "${formatSats(d.fee)} sats")
+            KeyValue("Total", "${formatSats(d.totalSent)} sats", Purple)
+            KeyValue("Change back to you", if (d.change > 0) "${formatSats(d.change)} sats" else "none")
         }
         p.concern?.let { c ->
             Panel(accent = Warn) {
@@ -167,9 +169,17 @@ private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatfor
                 }
             }
         }
-        Explain("Confirm that the recipient expects XBT on the BLAKE2b chain. Address format alone cannot distinguish it from Bitcoin SHA-256.")
-        Explain("Signed with the unified sighash (0x21): this transaction is valid on the ${Chain.DISPLAY} chain only and " +
-            "cannot be replayed on the SHA-256 chain. It signals replace-by-fee.")
+        Explain("Confirm the recipient uses the XBT BLAKE2b network.", color = TextSoft)
+        LinkText(if (showDetails) "− Technical details" else "+ Technical details", modifier = Modifier.fillMaxWidth()) {
+            showDetails = !showDetails
+        }
+        if (showDetails) Panel {
+            KeyValue("Fee rate", "${fmtRate(d.effectiveRate)} sat/vB")
+            KeyValue("Coins spent", "${d.inputs.size}")
+            Explain("Address format alone cannot distinguish XBT BLAKE2b from Bitcoin SHA-256.")
+            Explain("Signed with unified sighash (0x21) for the ${Chain.DISPLAY} chain only. " +
+                "This transaction cannot be replayed on the SHA-256 chain. It signals replace-by-fee.")
+        }
         PrimaryButton("Send with ${platform.unlockName}", Modifier.fillMaxWidth(), enabled = p.concern == null || ack) {
             model.confirmSend()
         }

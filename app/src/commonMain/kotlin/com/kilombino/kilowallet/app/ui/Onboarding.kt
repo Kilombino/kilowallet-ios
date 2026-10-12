@@ -146,8 +146,8 @@ fun RestoreScreen(model: WalletModel) {
     ScreenColumn {
         BackLink { model.back() }
         Text("Restore from words", style = MaterialTheme.typography.titleLarge, color = TextMain)
-        Explain("Type your 12 or 24 recovery words in order, separated by spaces. A BIP-39 / BIP-84 backup from " +
-            "Kilowallet for Android or any standard wallet works.", color = TextSoft)
+        Explain("Enter 12, 15, 18, 21 or 24 English BIP-39 recovery words in order. " +
+            "Restores the first BIP-84 account (account 0) on XBT BLAKE2b. Other account types or additional accounts are not restored.", color = TextSoft)
         Field(text, { text = it }, "recovery words", singleLine = false, minLines = 4)
         if (suggestions.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             suggestions.forEach { s ->
