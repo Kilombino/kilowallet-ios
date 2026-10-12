@@ -10,14 +10,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// The Android app's palette (ui/Theme.kt), unchanged.
+// Preserve Kilombino's black/purple identity with readable secondary text.
 val Ink = Color(0xFF000000)
 val PanelBg = Color(0xFF0A0510)
 val PanelSoft = Color(0xFF0D0716)
 val Line = Color(0x2EB96BFF)
 val TextMain = Color(0xFFDCD0EC)
-val TextSoft = Color(0xFFA99CC4)
-val TextFaint = Color(0xFF6C5C86)
+val TextSoft = Color(0xFFB9ACCC)
+val TextFaint = Color(0xFFAA9BBB)
 val Purple = Color(0xFFB96BFF)
 val Orange = Color(0xFFF7931A)
 val Good = Color(0xFF34D399)

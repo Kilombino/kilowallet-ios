@@ -49,7 +49,7 @@ for screen in welcome create restore watch home receive send review settings; do
   if [ "$screen" = review ]; then
     rendered=false
     for attempt in 1 2 3; do
-      if "$CHECKER" "$SHOT" "Review the send"; then rendered=true; break; fi
+      if "$CHECKER" "$SHOT" "Review payment"; then rendered=true; break; fi
       sleep 3
       xcrun simctl io "$UDID" screenshot "$SHOT"
     done

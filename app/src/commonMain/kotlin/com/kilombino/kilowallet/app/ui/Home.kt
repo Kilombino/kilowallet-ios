@@ -198,8 +198,8 @@ fun ReceiveScreen(model: WalletModel, platform: AppPlatform) {
         PrimaryButton(if (copied) "Copied" else "Copy address", Modifier.fillMaxWidth()) {
             clipboard.setText(AnnotatedString(address)); copied = true
         }
-        Explain("This is your next unused address. Send only ${Chain.COIN} on the ${Chain.DISPLAY} chain (${Chain.TICKER}) to it. " +
-            "A fresh address for every payment keeps your history private; old addresses keep working.")
+        Explain("Only send XBT on the BLAKE2b network.", color = TextSoft)
+        Explain("Previously issued addresses still work.")
     }
 }
 
