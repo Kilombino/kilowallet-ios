@@ -38,6 +38,7 @@ sealed interface Screen {
     data class CreateConfirm(val words: List<String>, val positions: List<Int>) : Screen
     data object Restore : Screen
     data object Watch : Screen
+    data object Wallets : Screen
     data object Home : Screen
     data object Receive : Screen
     data object Send : Screen
@@ -64,6 +65,10 @@ sealed interface SendPhase {
 
 data class UiState(
     val screen: Screen = Screen.Welcome,
+    val wallets: List<WalletInfo> = emptyList(),
+    val walletId: String? = null,
+    val newWalletName: String = "Wallet 1",
+    val settingUp: Boolean = false,
     val kind: WalletKind? = null,
     val zpub: String? = null,
     val endpoint: NodeEndpoint = NodeEndpoint.DEFAULT,
@@ -81,6 +86,7 @@ data class UiState(
     val spendable: List<SpendableUtxo>? = null,
     val message: String? = null,
 ) {
+    val walletName: String get() = wallets.firstOrNull { it.id == walletId }?.name ?: "Wallet"
     val confirmed: Long get() = rows.sumOf { it.confirmed }
     val unconfirmed: Long get() = rows.sumOf { it.unconfirmed }
     val total: Long get() = confirmed + unconfirmed
@@ -89,7 +95,7 @@ data class UiState(
 
 /**
  * The app's state and actions — a trimmed port of the Android app's `ui/WalletViewModel.kt` to
- * what iOS 0.1 does: one wallet (hot from words, or watch-only from a zpub), the BLAKE2b chain,
+ * multiple independent wallets (hot from words, or watch-only from a zpub), the BLAKE2b chain,
  * Electrum only.
  */
 class WalletModel(private val platform: AppPlatform, private val cryptoDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default,
@@ -108,10 +114,11 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
     private var actionEpoch = 0L
     private var walletEpoch = 0L
     private var setupBusy = false
+    private var catalog: WalletCatalog? = null
 
     private fun cancelAction() { actionEpoch++; sendJob?.cancel(); sendJob = null }
     private fun isCurrent(epoch: Long, snapshot: UiState) =
-        epoch == actionEpoch && state.value.zpub == snapshot.zpub && state.value.endpoint == snapshot.endpoint
+        epoch == actionEpoch && state.value.walletId == snapshot.walletId && state.value.zpub == snapshot.zpub && state.value.endpoint == snapshot.endpoint
     private fun pendingKey(zpub: String) = "pending.$zpub"
     private fun pending(zpub: String): SendPhase.Pending? = prefs.get(pendingKey(zpub))?.let { raw ->
         runCatching { SendPhase.Pending(TxParse.txid(TxParse.parse(raw)), "Delivery is unconfirmed. Check or resend this same transaction before making a new payment.") }
@@ -129,8 +136,6 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
 
 
     private companion object {
-        const val K_KIND = "wallet.kind"
-        const val K_ZPUB = "wallet.zpub"
         const val K_HOST = "server.host"
         const val K_PORT = "server.port"
         fun pinKey(e: NodeEndpoint) = "pin.${e.host}:${e.port}"
@@ -140,18 +145,69 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         val host = prefs.get(K_HOST)
         val port = prefs.get(K_PORT)?.toIntOrNull()
         val endpoint = if (host != null && port != null) NodeEndpoint(host, port, true) else NodeEndpoint.DEFAULT
-        val kind = prefs.get(K_KIND)?.let { k -> WalletKind.entries.firstOrNull { it.name == k } }
-        val zpub = prefs.get(K_ZPUB)
-        _state.value = UiState(
-            screen = if (kind != null && zpub != null) Screen.Home else Screen.Welcome,
-            kind = if (zpub != null) kind else null, zpub = zpub, endpoint = endpoint, pinned = prefs.get(pinKey(endpoint)),
-        )
-        if (kind != null && zpub != null) scan()
+        try {
+            val saved = WalletCatalog(prefs)
+            saved.value.pending?.let {
+                if (platform.seeds.hasSeed(it.id)) saved.finish(select = false) else saved.abort()
+            }
+            catalog = saved
+            val active = saved.value.wallets.firstOrNull { it.id == saved.value.active }
+            _state.value = UiState(screen = if (active == null) Screen.Welcome else Screen.Home,
+                wallets = saved.value.wallets, walletId = active?.id, kind = active?.kind, zpub = active?.zpub,
+                endpoint = endpoint, pinned = prefs.get(pinKey(endpoint)),
+                newWalletName = WalletCatalog.nextName(saved.value.wallets))
+            if (active != null) scan()
+        } catch (e: Exception) {
+            _state.value = UiState(endpoint = endpoint, pinned = prefs.get(pinKey(endpoint)),
+                message = "Could not open the wallet list. Existing data was not changed. ${e.message ?: ""}")
+        }
+    }
+
+    private fun showCatalog(scanSelected: Boolean = true) {
+        val saved = catalog?.value ?: return
+        cancelAction(); scanJob?.cancel(); walletEpoch++; receiveSession = null
+        val active = saved.wallets.firstOrNull { it.id == saved.active }
+        val previous = state.value
+        _state.value = UiState(screen = if (active == null) Screen.Welcome else Screen.Home,
+            wallets = saved.wallets, walletId = active?.id, kind = active?.kind, zpub = active?.zpub,
+            endpoint = previous.endpoint, pinned = prefs.get(pinKey(previous.endpoint)),
+            newWalletName = WalletCatalog.nextName(saved.wallets))
+        if (scanSelected && active != null) scan()
+    }
+
+    fun selectWallet(id: String) {
+        if (setupBusy || state.value.send is SendPhase.Signing) return
+        runCatching { requireNotNull(catalog).select(id); showCatalog() }
+            .onFailure { say(it.message ?: "Could not select wallet.") }
+    }
+
+    fun renameWallet(id: String, name: String) {
+        if (setupBusy || state.value.send is SendPhase.Signing) return
+        runCatching {
+            requireNotNull(catalog).rename(id, name)
+            _state.update { it.copy(wallets = catalog!!.value.wallets) }
+        }.onFailure { say(it.message ?: "Could not rename wallet.") }
+    }
+
+    fun addWallet() {
+        if (setupBusy || state.value.send is SendPhase.Signing) return
+        if (catalog == null) { say("Wallet storage is unavailable. Restart the app before adding a wallet."); return }
+        if (state.value.wallets.size >= WalletCatalog.LIMIT) { say("This device supports up to 20 wallets."); return }
+        go(Screen.Welcome)
+        _state.update { it.copy(newWalletName = WalletCatalog.nextName(it.wallets)) }
+    }
+
+    fun setNewWalletName(name: String) {
+        if (!setupBusy) _state.update { it.copy(newWalletName = name.take(40)) }
     }
 
     fun go(screen: Screen) {
         if (setupBusy || _state.value.send is SendPhase.Signing) return
         cancelAction()
+        if (screen in listOf(Screen.Wallets, Screen.Welcome, Screen.Restore, Screen.Watch) || screen is Screen.CreateShow || screen is Screen.CreateConfirm) {
+            scanJob?.cancel(); walletEpoch++
+            _state.update { it.copy(scan = ScanPhase.Idle, refreshing = false, certChanged = null) }
+        }
         if (screen != Screen.Receive || state.value.screen != Screen.Receive) receiveSession = null
         _state.update { it.copy(screen = screen, message = null) }
         if (screen == Screen.Send) openSend()
@@ -193,44 +249,61 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
     }
 
     private fun storeHot(words: List<String>, passphrase: String) {
-        if (setupBusy || state.value.kind != null) return
+        if (setupBusy || state.value.send is SendPhase.Signing) return
+        val saved = catalog ?: run { say("Wallet storage is unavailable. Restart the app."); return }
+        val name = runCatching { WalletCatalog.cleanName(state.value.newWalletName) }
+            .getOrElse { say(it.message ?: "Invalid wallet name."); return }
         setupBusy = true
+        _state.update { it.copy(settingUp = true) }
+        val epoch = walletEpoch
         scope.launch {
+            var seedStored = false
+            var staged = false
             try {
                 val zpub = withContext(cryptoDispatcher) { Signer.accountZpub(words, passphrase) }
-                val err = suspendCancellableCoroutine { c -> platform.seeds.save(encodeSecret(words, passphrase)) { if (c.isActive) c.resume(it) } }
-                if (err != null) { say("Could not store the words: $err"); return@launch }
-                openWallet(WalletKind.HOT, zpub)
+                if (epoch != walletEpoch) return@launch
+                val candidate = saved.candidate(name, WalletKind.HOT, zpub)
+                // Journal the public identity before saving words. A restart can finish the
+                // commit without copying, replacing or revealing any existing seed.
+                saved.begin(candidate); staged = true
+                val err = suspendCancellableCoroutine { c ->
+                    platform.seeds.save(candidate.id, encodeSecret(words, passphrase)) { if (c.isActive) c.resume(it) }
+                }
+                if (err != null) { saved.abort(); staged = false; say("Could not store the words: $err"); return@launch }
+                seedStored = true
+                saved.finish(select = epoch == walletEpoch); staged = false
+                showCatalog(scanSelected = epoch == walletEpoch)
             } catch (e: CancellationException) { throw e }
-              catch (e: Exception) { say(e.message ?: "Could not create the wallet") }
-            finally { setupBusy = false }
+              catch (e: Exception) {
+                if (staged && !seedStored) runCatching { saved.abort() }
+                say(if (seedStored) "Words were saved safely. Restart the app to finish adding this wallet."
+                    else e.message ?: "Could not create the wallet")
+            } finally { setupBusy = false; _state.update { it.copy(settingUp = false) } }
         }
     }
 
     fun watch(xpub: String) {
-        if (setupBusy || state.value.kind != null) return
+        if (setupBusy || state.value.send is SendPhase.Signing) return
+        val saved = catalog ?: run { say("Wallet storage is unavailable. Restart the app."); return }
         val key = xpub.trim()
         val parsed = runCatching { Bip32.parseExtendedPubKey(key) }.getOrElse { say(it.message ?: "Not a valid key."); return }
-        if (parsed.depth != 3) say("Note: this key is not at account depth (m/purpose'/0'/0').")
-        openWallet(WalletKind.WATCH, key)
-    }
-
-    private fun openWallet(kind: WalletKind, zpub: String) {
-        cancelAction(); scanJob?.cancel(); walletEpoch++
-        prefs.put(K_KIND, kind.name)
-        prefs.put(K_ZPUB, zpub)
-        _state.update {
-            it.copy(kind = kind, zpub = zpub, rows = emptyList(), txs = emptyList(), screen = Screen.Home, send = SendPhase.Editing)
-        }
-        scan()
+        runCatching {
+            saved.addWatch(saved.candidate(state.value.newWalletName, WalletKind.WATCH, key))
+            showCatalog()
+            if (parsed.depth != 3) say("Note: this key is not at account depth (m/purpose'/0'/0').")
+        }.onFailure { say(it.message ?: "Could not add watch-only wallet.") }
     }
 
     fun deleteWallet() {
         if (setupBusy || state.value.send is SendPhase.Signing) return
+        val s = state.value
+        val id = s.walletId ?: WalletCatalog.LEGACY_ID
+        if (s.zpub?.let { pending(it) } != null) { say("Resolve the pending payment before removing this wallet."); return }
         cancelAction(); scanJob?.cancel(); walletEpoch++
-        platform.seeds.delete()?.let { say("Could not remove the wallet: $it"); return }
-        prefs.put(K_KIND, null); prefs.put(K_ZPUB, null)
-        _state.update { UiState(endpoint = it.endpoint, pinned = it.pinned) }
+        // Watch-only removal must never touch a hot wallet's Keychain item.
+        if (s.kind == WalletKind.HOT) platform.seeds.delete(id)?.let { say("Could not remove the wallet: $it"); return }
+        runCatching { requireNotNull(catalog).remove(id); showCatalog() }
+            .onFailure { say("Could not finish removing the wallet: ${it.message ?: "storage error"}") }
     }
 
     /** Show the recovery words after Face ID / Touch ID / passcode. */
@@ -239,7 +312,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         cancelAction()
         val epoch = actionEpoch
         val snapshot = state.value
-        platform.seeds.load("Show your recovery words") { secret, error ->
+        platform.seeds.load(snapshot.walletId ?: WalletCatalog.LEGACY_ID, "Show recovery words for ${snapshot.walletName}") { secret, error ->
             if (!isCurrent(epoch, snapshot)) return@load
             if (secret == null) { say(error ?: "Not unlocked."); return@load }
             go(Screen.ShowWords(decodeSecret(secret).first))
@@ -330,7 +403,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
                     else -> Unit
                 }
             }
-            _state.update { it.copy(refreshing = false) }
+            if (scanEpoch == walletEpoch) _state.update { it.copy(refreshing = false) }
         }
     }
 
@@ -441,7 +514,7 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
         val epoch = actionEpoch
         // Set busy BEFORE authentication: rapid taps cannot queue multiple unlocks or broadcasts.
         _state.update { it.copy(send = SendPhase.Signing) }
-        platform.seeds.load("Sign and send ${com.kilombino.kilowallet.core.wallet.formatSats(draft.amount)} sats") { secret, error ->
+        platform.seeds.load(s.walletId ?: WalletCatalog.LEGACY_ID, "Sign and send ${com.kilombino.kilowallet.core.wallet.formatSats(draft.amount)} sats from ${s.walletName}") { secret, error ->
             if (!isCurrent(epoch, s)) return@load
             if (secret == null) {
                 _state.update { it.copy(send = review) }
@@ -508,8 +581,17 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
             "watch" -> { go(Screen.Watch); platform.markReady(screen) }
             else -> scope.launch {
                 val zpub = withContext(cryptoDispatcher) { Signer.accountZpub(words, "") }
-                _state.update { it.copy(kind = WalletKind.HOT, zpub = zpub, screen = Screen.Home) }
+                _state.update { it.copy(kind = WalletKind.HOT, zpub = zpub, walletId = WalletCatalog.LEGACY_ID,
+                    wallets = listOf(WalletInfo(WalletCatalog.LEGACY_ID, "Everyday", WalletKind.HOT, zpub)), screen = Screen.Home) }
                 when (screen) {
+                    "wallets" -> {
+                        val savings = withContext(cryptoDispatcher) { Signer.accountZpub(words, "demo-savings") }
+                        val watch = withContext(cryptoDispatcher) { Signer.accountZpub(words, "demo-watch") }
+                        _state.update { it.copy(wallets = it.wallets + listOf(
+                            WalletInfo(WalletCatalog.idFor(savings), "Savings", WalletKind.HOT, savings),
+                            WalletInfo(WalletCatalog.idFor(watch), "Watch-only", WalletKind.WATCH, watch))) }
+                        go(Screen.Wallets); platform.markReady(screen)
+                    }
                     "home" -> scan()
                     "receive" -> { go(Screen.Receive); platform.markReady(screen) }
                     "settings" -> { go(Screen.Settings); platform.markReady(screen) }

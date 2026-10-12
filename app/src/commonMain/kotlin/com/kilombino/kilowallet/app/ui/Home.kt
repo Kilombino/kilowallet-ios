@@ -51,10 +51,11 @@ import kotlinx.coroutines.delay
 fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     // While the wallet is on screen it re-checks every minute (Android does the same in the foreground).
     LaunchedEffect(state.zpub) { while (true) { delay(60_000); model.refresh() } }
-    var detail by remember { mutableStateOf<TxConf?>(null) }
+    var detail by remember(state.walletId) { mutableStateOf<TxConf?>(null) }
     val hot = state.kind == WalletKind.HOT
 
     ScreenColumn {
+        LinkText(state.walletName + "  ▾ wallets", color = TextMain) { model.go(Screen.Wallets) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.clip(RoundedCornerShape(10.dp)).background(if (hot) Purple else Orange).padding(horizontal = 14.dp, vertical = 8.dp)) {
                 Text(if (hot) "HOT WALLET" else "WATCH-ONLY", style = MaterialTheme.typography.labelLarge, color = Ink)

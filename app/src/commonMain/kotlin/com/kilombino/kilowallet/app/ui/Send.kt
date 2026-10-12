@@ -36,7 +36,7 @@ fun SendScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     when (val p = state.send) {
         SendPhase.Editing -> SendForm(model, state, platform)
         SendPhase.Preparing -> Busy(model, "Choosing coins and checking each one against its transaction…")
-        is SendPhase.Review -> Review(model, p, platform)
+        is SendPhase.Review -> Review(model, p, platform, state.walletName)
         SendPhase.Signing -> Busy(model, "Signing (unified sighash) and broadcasting…", allowBack = false)
         is SendPhase.Sent -> Sent(model, p.txid)
         is SendPhase.Pending -> ScreenColumn {
@@ -93,6 +93,7 @@ private fun SendForm(model: WalletModel, state: UiState, platform: AppPlatform) 
     ScreenColumn {
         BackLink { model.back() }
         Text("Send ${Chain.COIN}", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Explain("From ${state.walletName}", color = TextSoft)
         Panel {
             SectionLabel("To")
             paymentError?.let { Text(it, color = Bad) }
@@ -141,13 +142,14 @@ private fun fmtRate(r: Double): String {
 }
 
 @Composable
-private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatform) {
+private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatform, walletName: String) {
     val d = p.draft
     var ack by remember(d) { mutableStateOf(false) }
     var showDetails by remember(d) { mutableStateOf(false) }
     ScreenColumn {
         BackLink("← edit") { model.editSend() }
         Text("Review payment", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Explain("From $walletName", color = TextSoft)
         Text("${formatSats(d.amount)} sats", style = MaterialTheme.typography.headlineMedium, color = Purple)
         SectionLabel("XBT · BLAKE2b", color = TextSoft)
         Panel {

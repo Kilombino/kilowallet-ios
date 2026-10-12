@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.kilombino.kilowallet.app.AppPlatform
@@ -30,17 +31,20 @@ fun App(platform: AppPlatform, model: WalletModel = remember { WalletModel(platf
     KilowalletTheme {
         Surface(Modifier.fillMaxSize(), color = Ink) {
             Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                when (val s = state.screen) {
-                    Screen.Welcome -> WelcomeScreen(model)
-                    is Screen.CreateShow -> CreateShowScreen(model, s.words)
-                    is Screen.CreateConfirm -> CreateConfirmScreen(model, s.words, s.positions)
-                    Screen.Restore -> RestoreScreen(model)
-                    Screen.Watch -> WatchScreen(model, platform)
-                    Screen.Home -> HomeScreen(model, state, platform)
-                    Screen.Receive -> ReceiveScreen(model, platform)
-                    Screen.Send -> SendScreen(model, state, platform)
-                    Screen.Settings -> SettingsScreen(model, state, platform)
-                    is Screen.ShowWords -> ShowWordsScreen(model, s.words)
+                key(state.walletId) {
+                    when (val s = state.screen) {
+                        Screen.Welcome -> WelcomeScreen(model)
+                        is Screen.CreateShow -> CreateShowScreen(model, s.words)
+                        is Screen.CreateConfirm -> CreateConfirmScreen(model, s.words, s.positions)
+                        Screen.Restore -> RestoreScreen(model)
+                        Screen.Watch -> WatchScreen(model, platform)
+                        Screen.Wallets -> WalletsScreen(model, state)
+                        Screen.Home -> HomeScreen(model, state, platform)
+                        Screen.Receive -> ReceiveScreen(model, platform)
+                        Screen.Send -> SendScreen(model, state, platform)
+                        Screen.Settings -> SettingsScreen(model, state, platform)
+                        is Screen.ShowWords -> ShowWordsScreen(model, s.words)
+                    }
                 }
             }
             state.message?.let { msg ->

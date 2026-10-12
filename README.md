@@ -168,3 +168,26 @@ shipped).
 ## License
 
 Apache-2.0, like the Android app. See `LICENSE` and `NOTICE`.
+
+
+## Multiple wallets
+
+Open **Wallets** from the home-screen wallet name or Settings. Add a new wallet,
+restore a separate backup, or import a watch-only public key; name and switch
+between up to 20 wallets. Each hot wallet has its own device-only,
+authentication-protected Keychain item. Back up each wallet separately.
+
+The existing single wallet migrates automatically without moving or reading its
+recovery words. Public receive/change progress and pending transactions remain
+associated with their account key. Switching clears displayed balances, send
+drafts and unlock callbacks, then refreshes only the selected wallet. Sending
+cannot switch wallets while signing/broadcasting. Server selection and
+certificate approvals are shared across wallets and are labelled accordingly.
+
+Remove the selected wallet in Settings after backing it up. Removing watch-only
+wallets never deletes recovery words; removing one hot wallet does not affect
+another. A pending payment must be resolved before its wallet can be removed.
+Public address high-water marks remain available for safe re-import, preventing
+accidental address reuse. A failed setup commit can be completed on restart from
+a journal containing only the new public wallet identity; recovery words never
+enter preferences.

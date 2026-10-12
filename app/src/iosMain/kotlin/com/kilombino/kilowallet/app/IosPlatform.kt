@@ -16,10 +16,14 @@ import platform.posix.memcpy
 class IosPlatform(private val bridge: IosBridge, override val demoScreen: String?) : AppPlatform {
 
     override val seeds: SeedStore = if (demoScreen != null) MemorySeedStore() else object : SeedStore {
-        override fun hasSeed() = bridge.keychainHas()
-        override fun save(secret: String, done: (String?) -> Unit) = done(bridge.keychainSave(secret))
-        override fun load(reason: String, done: (String?, String?) -> Unit) = bridge.keychainLoad(reason) { s, e -> done(s, e) }
-        override fun delete() = bridge.keychainDelete()
+        override fun hasSeed(walletId: String) = when (bridge.keychainStatus(walletId)) {
+            "present" -> true
+            "missing" -> false
+            else -> error("Keychain is unavailable. Unlock the device and reopen the app.")
+        }
+        override fun save(walletId: String, secret: String, done: (String?) -> Unit) = done(bridge.keychainSave(walletId, secret))
+        override fun load(walletId: String, reason: String, done: (String?, String?) -> Unit) = bridge.keychainLoad(walletId, reason) { s, e -> done(s, e) }
+        override fun delete(walletId: String) = bridge.keychainDelete(walletId)
     }
 
     override val prefs: Prefs = if (demoScreen != null) MemoryPrefs() else object : Prefs {
@@ -67,11 +71,11 @@ private fun NSData.toByteArray(): ByteArray {
 
 /** Screenshot mode never touches the real Keychain or settings. */
 private class MemorySeedStore : SeedStore {
-    private var s: String? = null
-    override fun hasSeed() = s != null
-    override fun save(secret: String, done: (String?) -> Unit) { s = secret; done(null) }
-    override fun load(reason: String, done: (String?, String?) -> Unit) = done(s, if (s == null) "no words" else null)
-    override fun delete(): String? { s = null; return null }
+    private val secrets = HashMap<String, String>()
+    override fun hasSeed(walletId: String) = secrets.containsKey(walletId)
+    override fun save(walletId: String, secret: String, done: (String?) -> Unit) { secrets[walletId] = secret; done(null) }
+    override fun load(walletId: String, reason: String, done: (String?, String?) -> Unit) = done(secrets[walletId], if (secrets[walletId] == null) "no words" else null)
+    override fun delete(walletId: String): String? { secrets.remove(walletId); return null }
 }
 
 private class MemoryPrefs : Prefs {

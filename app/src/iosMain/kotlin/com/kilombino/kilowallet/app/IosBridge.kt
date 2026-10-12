@@ -9,11 +9,12 @@ import platform.Foundation.NSData
  */
 interface IosBridge {
     /** Store the secret in the Keychain behind user presence; returns an error message or null. */
-    fun keychainSave(secret: String): String?
+    fun keychainSave(walletId: String, secret: String): String?
     /** Face ID / Touch ID / passcode, then the secret (or null and an error message). Called back on the main thread. */
-    fun keychainLoad(reason: String, completion: (String?, String?) -> Unit)
-    fun keychainHas(): Boolean
-    fun keychainDelete(): String?
+    fun keychainLoad(walletId: String, reason: String, completion: (String?, String?) -> Unit)
+    /** "present", "missing", or "unavailable"; an error is never treated as a missing seed. */
+    fun keychainStatus(walletId: String): String
+    fun keychainDelete(walletId: String): String?
     /** "Face ID", "Touch ID" or "passcode". */
     fun unlockName(): String
 

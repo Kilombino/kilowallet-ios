@@ -2,7 +2,7 @@ import Foundation
 import LocalAuthentication
 import Security
 
-/// The recovery words, as ONE generic-password Keychain item:
+/// The recovery words, in a separate generic-password Keychain item for each wallet:
 ///  - `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`: only on this device (never in iCloud Keychain
 ///    or an unencrypted backup), only while the device has a passcode — iOS deletes it if the passcode
 ///    is removed;
@@ -11,30 +11,29 @@ import Security
 /// anywhere else, and the app only reads them to show them or to sign.
 enum Keychain {
     private static let service = "com.kilombino.kilowallet.recovery-words"
-    private static let account = "wallet-0"
 
-    private static func baseQuery() -> [String: Any] {
+    private static func baseQuery(walletId: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: service,
-         kSecAttrAccount as String: account]
+         kSecAttrAccount as String: walletId]
     }
 
-    static func save(_ secret: String) -> String? {
+    static func save(walletId: String, secret: String) -> String? {
         var cfErr: Unmanaged<CFError>?
         guard let access = SecAccessControlCreateWithFlags(
             nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, &cfErr) else {
             return "could not create the access control (\(cfErr?.takeRetainedValue().localizedDescription ?? "?"))"
         }
-        var q = baseQuery()
+        var q = baseQuery(walletId: walletId)
         q[kSecValueData as String] = Data(secret.utf8)
         q[kSecAttrAccessControl as String] = access
         let status = SecItemAdd(q as CFDictionary, nil)
         if status == errSecSuccess { return nil }
-        if status == errSecDuplicateItem { return "A wallet already exists. Back it up and remove it explicitly before creating another." }
+        if status == errSecDuplicateItem { return "Recovery words already exist for this wallet. They were not overwritten." }
         #if targetEnvironment(simulator)
         // The Simulator usually has no passcode, so a passcode-bound item cannot be created there.
         // Simulator builds only: keep it this-device-only without the passcode requirement.
-        var sim = baseQuery()
+        var sim = baseQuery(walletId: walletId)
         sim[kSecValueData as String] = Data(secret.utf8)
         sim[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         if SecItemAdd(sim as CFDictionary, nil) == errSecSuccess { return nil }
@@ -46,11 +45,11 @@ enum Keychain {
     }
 
     /// Prompts for Face ID / Touch ID / passcode, off the main thread; calls back on the main thread.
-    static func load(reason: String, completion: @escaping (String?, String?) -> Void) {
+    static func load(walletId: String, reason: String, completion: @escaping (String?, String?) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let ctx = LAContext()
             ctx.localizedReason = reason
-            var q = baseQuery()
+            var q = baseQuery(walletId: walletId)
             q[kSecReturnData as String] = true
             q[kSecMatchLimit as String] = kSecMatchLimitOne
             q[kSecUseAuthenticationContext as String] = ctx
@@ -71,17 +70,19 @@ enum Keychain {
     }
 
     /// Whether the item exists, without prompting.
-    static func has() -> Bool {
+    static func status(walletId: String) -> String {
         let ctx = LAContext()
         ctx.interactionNotAllowed = true
-        var q = baseQuery()
+        var q = baseQuery(walletId: walletId)
         q[kSecUseAuthenticationContext as String] = ctx
         let status = SecItemCopyMatching(q as CFDictionary, nil)
-        return status == errSecSuccess || status == errSecInteractionNotAllowed
+        if status == errSecSuccess || status == errSecInteractionNotAllowed { return "present" }
+        if status == errSecItemNotFound { return "missing" }
+        return "unavailable"
     }
 
-    static func delete() -> String? {
-        let status = SecItemDelete(baseQuery() as CFDictionary)
+    static func delete(walletId: String) -> String? {
+        let status = SecItemDelete(baseQuery(walletId: walletId) as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound ? nil : "Keychain error \(status)"
     }
 }

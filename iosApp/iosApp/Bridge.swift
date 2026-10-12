@@ -10,15 +10,15 @@ final class Bridge: NSObject, IosBridge {
 
     // MARK: Keychain
 
-    func keychainSave(secret: String) -> String? { Keychain.save(secret) }
+    func keychainSave(walletId: String, secret: String) -> String? { Keychain.save(walletId: walletId, secret: secret) }
 
-    func keychainLoad(reason: String, completion: @escaping (String?, String?) -> Void) {
-        Keychain.load(reason: reason, completion: completion)
+    func keychainLoad(walletId: String, reason: String, completion: @escaping (String?, String?) -> Void) {
+        Keychain.load(walletId: walletId, reason: reason, completion: completion)
     }
 
-    func keychainHas() -> Bool { Keychain.has() }
+    func keychainStatus(walletId: String) -> String { Keychain.status(walletId: walletId) }
 
-    func keychainDelete() -> String? { Keychain.delete() }
+    func keychainDelete(walletId: String) -> String? { Keychain.delete(walletId: walletId) }
 
     func unlockName() -> String {
         let ctx = LAContext()

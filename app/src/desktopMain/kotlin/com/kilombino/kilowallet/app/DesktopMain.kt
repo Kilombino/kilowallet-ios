@@ -16,12 +16,12 @@ import com.kilombino.kilowallet.core.chain.TransportFactory
 fun main() = application {
     val platform = object : AppPlatform {
         private val mem = HashMap<String, String>()
-        private var seed: String? = null
+        private val secrets = HashMap<String, String>()
         override val seeds = object : SeedStore {
-            override fun hasSeed() = seed != null
-            override fun save(secret: String, done: (String?) -> Unit) { seed = secret; done(null) }
-            override fun load(reason: String, done: (String?, String?) -> Unit) = done(seed, if (seed == null) "no words" else null)
-            override fun delete(): String? { seed = null; return null }
+            override fun hasSeed(walletId: String) = secrets.containsKey(walletId)
+            override fun save(walletId: String, secret: String, done: (String?) -> Unit) { secrets[walletId] = secret; done(null) }
+            override fun load(walletId: String, reason: String, done: (String?, String?) -> Unit) = done(secrets[walletId], if (secrets[walletId] == null) "no words" else null)
+            override fun delete(walletId: String): String? { secrets.remove(walletId); return null }
         }
         override val prefs = object : Prefs {
             override fun get(key: String) = mem[key]

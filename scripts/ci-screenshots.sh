@@ -29,7 +29,7 @@ xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --ba
 xcrun simctl install "$UDID" "$APP"
 
 n=0
-for screen in welcome create restore watch home receive send review settings; do
+for screen in welcome create restore watch home receive send review settings wallets; do
   n=$((n + 1))
   if [ -n "$ONLY" ] && [ "$screen" != "$ONLY" ]; then continue; fi
   xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
@@ -46,10 +46,11 @@ for screen in welcome create restore watch home receive send review settings; do
   sleep 3
   SHOT="$OUT/$(printf %02d $n)-$screen.png"
   xcrun simctl io "$UDID" screenshot "$SHOT"
-  if [ "$screen" = review ]; then
+  if [ "$screen" = review ] || [ "$screen" = wallets ]; then
+    expected="Review payment"; [ "$screen" = wallets ] && expected="Wallets"
     rendered=false
     for attempt in 1 2 3; do
-      if "$CHECKER" "$SHOT" "Review payment"; then rendered=true; break; fi
+      if "$CHECKER" "$SHOT" "$expected"; then rendered=true; break; fi
       sleep 3
       xcrun simctl io "$UDID" screenshot "$SHOT"
     done

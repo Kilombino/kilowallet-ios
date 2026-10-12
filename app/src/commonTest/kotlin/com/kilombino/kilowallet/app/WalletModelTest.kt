@@ -6,6 +6,7 @@ import com.kilombino.kilowallet.core.wallet.Signer
 import com.kilombino.kilowallet.core.crypto.TxParse
 import com.kilombino.kilowallet.core.crypto.Bip39
 import com.kilombino.kilowallet.core.crypto.Bip32
+import com.kilombino.kilowallet.core.crypto.Base58
 import com.kilombino.kilowallet.core.crypto.Address
 import com.kilombino.kilowallet.core.wallet.Scanner
 import com.kilombino.kilowallet.core.wallet.ScanEvent
@@ -23,26 +24,35 @@ class WalletModelTest {
         var loadCalls = 0
         var saveCalls = 0
         var saved: String? = null
+        val secrets = HashMap<String, String>()
+        var loadedId: String? = null
+        val deletedIds = mutableListOf<String>()
         var saveError: String? = null
+        var probeError = false
         var deleteError: String? = null
         var unlock: ((String?, String?) -> Unit)? = null
+        var catalogWrites = 0
+        var failCatalogWriteAt: Int? = null
         var connections = 0
         val sent = mutableListOf<String>()
         var reply: ((JsonObject) -> JsonElement)? = null
         init { values["pin.${NodeEndpoint.DEFAULT.host}:${NodeEndpoint.DEFAULT.port}"] = "a".repeat(64) }
         override val seeds = object : SeedStore {
-            override fun hasSeed() = saved != null
-            override fun save(secret: String, done: (String?) -> Unit) {
+            override fun hasSeed(walletId: String): Boolean { check(!probeError) { "Keychain temporarily unavailable" }; return secrets.containsKey(walletId) }
+            override fun save(walletId: String, secret: String, done: (String?) -> Unit) {
                 saveCalls++
-                if (saveError == null) saved = secret
+                if (saveError == null) { saved = secret; secrets[walletId] = secret }
                 done(saveError)
             }
-            override fun load(reason: String, done: (String?, String?) -> Unit) { loadCalls++; unlock = done }
-            override fun delete(): String? { if (deleteError == null) saved = null; return deleteError }
+            override fun load(walletId: String, reason: String, done: (String?, String?) -> Unit) { loadCalls++; loadedId = walletId; unlock = done }
+            override fun delete(walletId: String): String? { deletedIds += walletId; if (deleteError == null) { secrets.remove(walletId); saved = null }; return deleteError }
         }
         override val prefs = object : Prefs {
             override fun get(key: String) = values[key]
-            override fun put(key: String, value: String?) { if (value == null) values.remove(key) else values[key] = value }
+            override fun put(key: String, value: String?) {
+                if (key == WalletCatalog.KEY && ++catalogWrites == failCatalogWriteAt) error("Simulated metadata failure")
+                if (value == null) values.remove(key) else values[key] = value
+            }
         }
         override val transports = TransportFactory { _, _, _, _ ->
             connections++
@@ -135,7 +145,7 @@ class WalletModelTest {
         model.restore(words, "TREZOR")
         advanceUntilIdle()
         assertEquals(words to "TREZOR", decodeSecret(p.saved!!))
-        assertEquals(Signer.accountZpub(words, "TREZOR"), p.values["wallet.zpub"])
+        assertEquals(Signer.accountZpub(words, "TREZOR"), WalletCatalog(p.prefs).value.wallets.single().zpub)
     }
     @Test fun incompleteRecoveryConfirmationCannotStoreSeed() = checkModel { model, p ->
         model.wroteDown(words)
@@ -272,4 +282,191 @@ class WalletModelTest {
         assertTrue(model.state.value.message!!.contains("latest unused address"))
         assertEquals(20, AddressBook(p.prefs).next(model.state.value.zpub!!, 0))
     }
+    @Test fun separateHotWalletsKeepSecretsNamesAddressesAndSelectionAcrossRestart() = checkModel { model, p ->
+        model.setNewWalletName("Everyday"); model.restore(words, "first"); advanceUntilIdle()
+        val first = model.state.value.wallets.single()
+        model.go(Screen.Receive)
+        val firstAddress = model.receiveAddress()!!
+        model.addWallet(); model.setNewWalletName("Savings"); model.restore(words, "second"); advanceUntilIdle()
+        val second = model.state.value.wallets.last()
+        assertNotEquals(first.id, second.id)
+        assertEquals(2, p.secrets.size)
+        assertTrue(p.values.values.none { value -> p.secrets.values.any { value.contains(it) } })
+        assertEquals("first", decodeSecret(p.secrets[first.id]!!).second)
+        assertEquals("second", decodeSecret(p.secrets[second.id]!!).second)
+        model.go(Screen.Receive)
+        assertNotEquals(firstAddress.first, model.receiveAddress()!!.first)
+        model.selectWallet(first.id); advanceUntilIdle(); model.go(Screen.Receive)
+        assertTrue(model.receiveAddress()!!.second.endsWith("/0/1"))
+        assertEquals(first.id, model.state.value.walletId)
+        assertNull(model.state.value.spendable)
+        model.renameWallet(first.id, "Daily")
+        model.close(); advanceUntilIdle()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val restarted = WalletModel(p, dispatcher, dispatcher)
+        try {
+            advanceUntilIdle()
+            assertEquals(first.id, restarted.state.value.walletId)
+            assertEquals(listOf("Daily", "Savings"), restarted.state.value.wallets.map { it.name })
+            restarted.revealWords()
+            assertEquals(first.id, p.loadedId)
+        } finally { restarted.close(); advanceUntilIdle() }
+    }
+
+    @Test fun duplicateImportDoesNotReplaceExistingWordsOrAddAnotherEntry() = checkModel { model, p ->
+        model.restore(words, ""); advanceUntilIdle()
+        val before = p.secrets.toMap()
+        model.addWallet(); model.restore(words, ""); advanceUntilIdle()
+        assertEquals(1, model.state.value.wallets.size)
+        assertEquals(1, p.saveCalls)
+        assertEquals(before, p.secrets)
+        assertTrue(model.state.value.message!!.contains("already added"))
+        model.watch(model.state.value.zpub!!)
+        assertEquals(1, model.state.value.wallets.size)
+    }
+
+    @Test fun switchingInvalidatesDelayedUnlockAndResetsSendReview() = checkModel { model, p ->
+        model.restore(words, "first"); advanceUntilIdle()
+        val first = model.state.value.walletId!!
+        model.addWallet(); model.restore(words, "second"); advanceUntilIdle()
+        val second = model.state.value.walletId!!
+        model.selectWallet(first); advanceUntilIdle()
+        model.revealWords()
+        val oldUnlock = p.unlock!!
+        model.selectWallet(second); advanceUntilIdle()
+        oldUnlock(encodeSecret(words, "first"), null)
+        assertEquals(second, model.state.value.walletId)
+        assertIs<Screen.Home>(model.state.value.screen)
+        assertIs<SendPhase.Editing>(model.state.value.send)
+        assertTrue(model.state.value.rows.isEmpty())
+        assertTrue(model.state.value.txs.isEmpty())
+        assertNull(model.state.value.certChanged)
+    }
+
+    @Test fun removingWatchOnlyNeverDeletesHotSecretsAndRemovingOneHotKeepsOthers() = checkModel { model, p ->
+        model.restore(words, "first"); advanceUntilIdle()
+        val first = model.state.value.walletId!!
+        model.addWallet(); model.restore(words, "second"); advanceUntilIdle()
+        val second = model.state.value.walletId!!
+        model.addWallet(); model.watch(Signer.accountZpub(words, "watch")); advanceUntilIdle()
+        assertEquals(WalletKind.WATCH, model.state.value.kind)
+        model.deleteWallet(); advanceUntilIdle()
+        assertTrue(p.deletedIds.isEmpty())
+        assertEquals(setOf(first, second), p.secrets.keys)
+        model.selectWallet(second); advanceUntilIdle(); model.deleteWallet(); advanceUntilIdle()
+        assertEquals(listOf(second), p.deletedIds)
+        assertEquals(setOf(first), p.secrets.keys)
+        assertEquals(first, model.state.value.walletId)
+    }
+
+    @Test fun legacyMigrationKeepsKeychainSlotAndAddressProgressWithoutUnlocking() = checkModel { model, p ->
+        model.close(); advanceUntilIdle()
+        val zpub = Signer.accountZpub(words, "")
+        p.values["wallet.kind"] = "HOT"; p.values["wallet.zpub"] = zpub
+        p.secrets[WalletCatalog.LEGACY_ID] = encodeSecret(words, "")
+        AddressBook(p.prefs).reserve(zpub, 0, 0)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val migrated = WalletModel(p, dispatcher, dispatcher)
+        try {
+            advanceUntilIdle()
+            assertEquals(WalletCatalog.LEGACY_ID, migrated.state.value.walletId)
+            assertEquals(zpub, migrated.state.value.zpub)
+            assertEquals(0, p.loadCalls); assertEquals(0, p.saveCalls)
+            migrated.go(Screen.Receive)
+            assertTrue(migrated.receiveAddress()!!.second.endsWith("/0/1"))
+            migrated.revealWords()
+            assertEquals(WalletCatalog.LEGACY_ID, p.loadedId)
+        } finally { migrated.close(); advanceUntilIdle() }
+    }
+
+    @Test fun savedSeedWithInterruptedMetadataCommitIsRecoveredOnRestart() = checkModel { model, p ->
+        p.failCatalogWriteAt = 2
+        model.restore(words, "recovery"); advanceUntilIdle()
+        assertEquals(1, p.secrets.size)
+        assertNotNull(WalletCatalog(p.prefs).value.pending)
+        assertTrue(model.state.value.message!!.contains("saved safely"))
+        model.close(); advanceUntilIdle()
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val restarted = WalletModel(p, dispatcher, dispatcher)
+        try {
+            advanceUntilIdle()
+            assertEquals(1, restarted.state.value.wallets.size)
+            assertEquals(Signer.accountZpub(words, "recovery"), restarted.state.value.zpub)
+            assertNull(WalletCatalog(p.prefs).value.pending)
+            assertEquals(0, p.loadCalls)
+        } finally { restarted.close(); advanceUntilIdle() }
+    }
+
+    @Test fun corruptCatalogCannotBeOverwrittenByNewWalletSetup() = checkModel { model, p ->
+        model.close(); advanceUntilIdle()
+        p.values[WalletCatalog.KEY] = "broken data"
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val restarted = WalletModel(p, dispatcher, dispatcher)
+        try {
+            restarted.restore(words, ""); restarted.watch(Signer.accountZpub(words, "watch"))
+            advanceUntilIdle()
+            assertEquals("broken data", p.values[WalletCatalog.KEY])
+            assertEquals(0, p.saveCalls)
+            assertTrue(restarted.state.value.wallets.isEmpty())
+        } finally { restarted.close(); advanceUntilIdle() }
+    }
+
+    @Test fun pendingPaymentBelongsToItsWalletAndBlocksOnlyThatWalletsRemoval() = checkModel { model, p ->
+        model.restore(words, "first"); advanceUntilIdle()
+        val first = model.state.value.wallets.single()
+        p.values["pending.${first.zpub}"] = "unreadable pending fixture"
+        model.addWallet(); model.restore(words, "second"); advanceUntilIdle()
+        val second = model.state.value.walletId!!
+        model.go(Screen.Send); advanceUntilIdle()
+        assertIs<SendPhase.Editing>(model.state.value.send)
+        model.selectWallet(first.id); advanceUntilIdle(); model.go(Screen.Send)
+        assertIs<SendPhase.Pending>(model.state.value.send)
+        model.deleteWallet()
+        assertEquals(2, model.state.value.wallets.size)
+        assertTrue(p.deletedIds.isEmpty())
+        model.selectWallet(second); advanceUntilIdle()
+        assertIs<SendPhase.Editing>(model.state.value.send)
+        assertNotNull(p.values["pending.${first.zpub}"])
+    }
+
+    @Test fun backgroundBeforeDerivationCompletesDoesNotAddOrOverwriteWallet() = checkModel { model, p ->
+        model.restore(words, "first")
+        model.onBackground()
+        advanceUntilIdle()
+        assertEquals(0, p.saveCalls)
+        assertTrue(model.state.value.wallets.isEmpty())
+        assertIs<Screen.Welcome>(model.state.value.screen)
+    }
+
+    @Test fun publicKeyMetadataAliasesCannotDuplicateOneWallet() = checkModel { model, p ->
+        model.restore(words, ""); advanceUntilIdle()
+        val key = model.state.value.zpub!!
+        val bytes = Base58.decodeChecked(key)
+        bytes[5] = (bytes[5].toInt() xor 1).toByte()
+        val alias = Base58.encodeChecked(bytes)
+        assertNotEquals(key, alias)
+        assertEquals(WalletCatalog.idFor(key), WalletCatalog.idFor(alias))
+        model.addWallet(); model.watch(alias); advanceUntilIdle()
+        assertEquals(1, model.state.value.wallets.size)
+        assertEquals(1, p.secrets.size)
+        assertTrue(model.state.value.message!!.contains("already added"))
+    }
+
+    @Test fun temporaryKeychainFailureDoesNotDiscardInterruptedSetup() = checkModel { model, p ->
+        p.failCatalogWriteAt = 2
+        model.restore(words, "recovery"); advanceUntilIdle()
+        val before = p.values[WalletCatalog.KEY]
+        model.close(); advanceUntilIdle()
+        p.probeError = true
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val restarted = WalletModel(p, dispatcher, dispatcher)
+        try {
+            advanceUntilIdle()
+            assertEquals(before, p.values[WalletCatalog.KEY])
+            assertEquals(1, p.secrets.size)
+            assertNotNull(WalletCatalog(p.prefs).value.pending)
+            assertTrue(restarted.state.value.message!!.contains("Keychain"))
+        } finally { restarted.close(); advanceUntilIdle() }
+    }
+
 }

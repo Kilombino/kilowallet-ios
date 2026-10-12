@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,7 +59,11 @@ fun BackLink(text: String = "← back", onClick: () -> Unit) = LinkText(text, on
 
 @Composable
 fun WelcomeScreen(model: WalletModel) {
+    val state by model.state.collectAsState()
     ScreenColumn {
+        if (state.wallets.isNotEmpty()) BackLink("← back to wallets") { model.go(com.kilombino.kilowallet.app.Screen.Wallets) }
+        Field(state.newWalletName, model::setNewWalletName, "Wallet name")
+        if (state.settingUp) Explain("Saving wallet securely…", color = Purple)
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { Logo(150) }
         Text("Kilowallet", style = MaterialTheme.typography.displayLarge, color = Purple)

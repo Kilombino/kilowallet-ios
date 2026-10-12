@@ -4,7 +4,7 @@ Draft for this iOS distribution, 2026-10-11. Original creator: **Kilombino**. Di
 
 ## Data on your iPhone
 
-Recovery words and an optional BIP-39 passphrase are kept in a device-only Keychain item. Real-device reads require Face ID, Touch ID or the device passcode. The public account key, server settings, accepted certificate fingerprints, receive/change-address progress and an unresolved signed transaction are stored locally in app preferences. A signed transaction is public transaction data, not a recovery secret. Local preferences may be included in operating-system backups; the recovery Keychain item is marked device-only.
+Recovery words and an optional BIP-39 passphrase are kept in a separate device-only Keychain item for each hot wallet. Watch-only wallets do not store recovery words. Real-device reads require Face ID, Touch ID or the device passcode. Wallet names, the selected wallet, public account keys, shared server settings, accepted certificate fingerprints, receive/change-address progress and an unresolved signed transaction are stored locally in app preferences. A signed transaction is public transaction data, not a recovery secret. Local preferences may be included in operating-system backups; the recovery Keychain item is marked device-only.
 
 Recovery words are brought into memory when you choose to reveal them or sign. The app obscures its interface while inactive and dismisses secret screens in the background. These controls do not guarantee that all screenshots, screen recording, memory copies or a compromised device can be prevented.
 

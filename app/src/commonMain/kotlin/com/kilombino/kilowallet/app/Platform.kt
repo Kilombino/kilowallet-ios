@@ -4,17 +4,17 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.kilombino.kilowallet.core.chain.TransportFactory
 
 /**
- * Where the recovery words live. On iOS: one Keychain item, readable only on this device while it
+ * Where the recovery words live. On iOS: a separate Keychain item per wallet, readable only on this device while it
  * has a passcode, and only after Face ID / Touch ID / the passcode (`iosApp/iosApp/Keychain.swift`).
  * The words are never written anywhere else.
  */
 interface SeedStore {
-    fun hasSeed(): Boolean
+    fun hasSeed(walletId: String): Boolean
     /** Store [secret]; calls back with an error message, or null on success. */
-    fun save(secret: String, done: (String?) -> Unit)
+    fun save(walletId: String, secret: String, done: (String?) -> Unit)
     /** Ask the user to authenticate, then return the secret (or an error message). */
-    fun load(reason: String, done: (secret: String?, error: String?) -> Unit)
-    fun delete(): String?
+    fun load(walletId: String, reason: String, done: (secret: String?, error: String?) -> Unit)
+    fun delete(walletId: String): String?
 }
 
 /** Non-secret settings (the wallet's public key, the server and its certificate pin). */

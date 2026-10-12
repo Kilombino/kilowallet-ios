@@ -20,6 +20,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.kilombino.kilowallet.app.AppPlatform
 import com.kilombino.kilowallet.app.UiState
+import com.kilombino.kilowallet.app.Screen
 import com.kilombino.kilowallet.app.WalletKind
 import com.kilombino.kilowallet.app.WalletModel
 import com.kilombino.kilowallet.core.chain.Chain
@@ -36,10 +37,11 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
 
     ScreenColumn {
         BackLink("← back to wallet") { model.back() }
-        Text("Settings", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Text("Settings · ${state.walletName}", style = MaterialTheme.typography.titleLarge, color = TextMain)
 
+        SecondaryButton("Manage wallets", Modifier.fillMaxWidth(), color = TextMain) { model.go(Screen.Wallets) }
         Panel {
-            SectionLabel("Electrum server")
+            SectionLabel("Electrum server · shared by all wallets")
             Explain("Your balance and history come from this server, and your sends go through it. It learns your " +
                 "addresses, so for the most privacy point it at your own Fulcrum/Electrs on the ${Chain.DISPLAY} chain. TLS is required for every server.", color = TextSoft)
             Field(host, { host = it.trim() }, "host")
@@ -87,7 +89,7 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
 
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
-        title = { Text("Remove this wallet?", style = MaterialTheme.typography.titleMedium) },
+        title = { Text("Remove ${state.walletName}?", style = MaterialTheme.typography.titleMedium) },
         text = {
             Text(if (hot) "The recovery words are deleted from this iPhone. Your coins stay on the chain, but only your " +
                 "written words can bring them back. Make sure you have them." else "The public key is forgotten. Nothing can be lost: it was watch-only.",
