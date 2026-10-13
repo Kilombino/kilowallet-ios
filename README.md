@@ -220,3 +220,33 @@ CSV preparation never reads recovery words. Files are created only after confirm
 protected temporary directory; the share sheet controls the destination. Temporary files are
 removed after the sheet closes or on the next app launch after interruption. Physical-device
 share/save and authentication checks remain part of release validation.
+
+## Coin control and daily tools
+
+In Send, expand **Coin control** to freeze/unfreeze individual outputs or choose exact coins.
+Automatic selection and MAX exclude frozen outputs. Manual mode uses every selected output
+and never adds another coin to cover a shortfall. An empty, missing or frozen selection blocks
+the payment. The full input list is available in Review → Technical details. Frozen policy is
+checked before authentication and again before signing; corrupt policy blocks new payments.
+Freezing cannot cancel an already signed pending payment. Combining outputs can link them
+publicly. Frozen records persist per account across restarts but are local settings, not a
+network lock, and recovery words alone do not restore them. Removing a wallet clears its policy.
+
+Other additions:
+- Saved XBT recipients per wallet, editable in Settings or selectable from Send. Always verify
+  the complete address and chain with the recipient; identical address formats exist on BTC.
+- Search the full loaded history by transaction ID, label or note; filter incoming, outgoing
+  or pending, and load additional matching rows. CSV remains a full loaded-history export.
+- Persistent XBT/sats units in Settings for balances, movements, send/receive amounts and
+  payment review. XBT uses exact integer-satoshi conversion with at most eight decimals.
+  Fee rates and CSV numeric fields retain their explicit satoshi units.
+- Receive → Share QR and request opens the native iOS share sheet with the request and QR.
+  This is user-initiated and shares only the public payment request, with no recovery secrets.
+- Settings → Check written backup authenticates, then locally derives the account from the
+  words and exact optional passphrase you type. A match records only a per-wallet check time;
+  entries are not persisted. Leaving/backgrounding cancels the check. This verifies the account
+  backup, not local notes, recipients, settings, every address type, or other accounts.
+
+Before release, exercise coin selection/freezing and backup entry with disposable wallets on
+a physical iPhone, and check QR/request sharing to actual destinations. Automated test success
+and unsigned builds alone do not establish signing or TestFlight readiness.

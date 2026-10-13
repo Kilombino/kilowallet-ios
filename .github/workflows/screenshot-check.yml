@@ -1,0 +1,30 @@
+name: Screenshot checker regression
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/check-screen.swift'
+      - 'scripts/fixtures/**'
+      - '.github/workflows/screenshot-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify actual note text and reject incorrect text
+        run: |
+          set -euo pipefail
+          swiftc scripts/check-screen.swift -o /tmp/check-screen
+          /tmp/check-screen scripts/fixtures/note-screen.png 'October test payout'
+          /tmp/check-screen scripts/fixtures/note-screen.png 'Mining payout'
+          set +e
+          /tmp/check-screen scripts/fixtures/note-screen.png 'November test payout'
+          result=$?
+          set -e
+          test "$result" -eq 1

@@ -26,6 +26,7 @@ interface IosBridge {
     fun canScanQr(): Boolean
     fun scanQr(completion: (String?) -> Unit)
 
+    fun sharePayment(request: String, completion: (String?) -> Unit)
     fun shareCsv(fileName: String, contents: String, completion: (String?) -> Unit)
     fun appVersion(): String
     /** CI screenshot mode only: write a marker file so the workflow knows the screen settled. */

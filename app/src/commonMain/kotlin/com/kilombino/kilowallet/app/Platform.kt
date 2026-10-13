@@ -41,6 +41,7 @@ interface AppPlatform {
     val appVersion: String
     fun nowMillis(): Long = kotlin.time.Clock.System.now().toEpochMilliseconds()
     /** Presents a user-controlled share/save sheet. Null means no error, including cancellation. */
+    fun sharePayment(request: String, done: (String?) -> Unit) { done("Payment sharing is unavailable on this platform.") }
     fun shareCsv(fileName: String, contents: String, done: (String?) -> Unit) {
         done("File sharing is unavailable on this platform.")
     }

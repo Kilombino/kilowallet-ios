@@ -18,6 +18,8 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.kilombino.kilowallet.app.AmountUnit
+import com.kilombino.kilowallet.app.syncTimeText
 import com.kilombino.kilowallet.app.AppPlatform
 import com.kilombino.kilowallet.app.UiState
 import com.kilombino.kilowallet.app.Screen
@@ -33,6 +35,7 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     var host by remember { mutableStateOf(state.endpoint.host) }
     var port by remember { mutableStateOf(state.endpoint.port.toString()) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var recipients by remember { mutableStateOf(platform.demoScreen == "recipients") }
     val hot = state.kind == WalletKind.HOT
 
     ScreenColumn {
@@ -40,6 +43,15 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
         Text("Settings · ${state.walletName}", style = MaterialTheme.typography.titleLarge, color = TextMain)
 
         SecondaryButton("Manage wallets", Modifier.fillMaxWidth(), color = TextMain) { model.go(Screen.Wallets) }
+        Panel {
+            SectionLabel("Display unit")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AmountUnit.entries.forEach { unit ->
+                    SecondaryButton((if (state.amountUnit == unit) "✓ " else "") + unit.label) { model.setAmountUnit(unit) }
+                }
+            }
+        }
+        SecondaryButton("Saved recipients", Modifier.fillMaxWidth()) { recipients = true }
         Panel {
             SectionLabel("Electrum server · shared by all wallets")
             Explain("Your balance and history come from this server, and your sends go through it. It learns your " +
@@ -68,7 +80,11 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                 Text(z, style = MaterialTheme.typography.bodySmall, color = TextFaint)
                 LinkText("copy the public key (zpub)", color = Purple) { clipboard.setText(AnnotatedString(z)) }
             }
-            if (hot) SecondaryButton("Show recovery words", Modifier.fillMaxWidth(), color = TextMain) { model.revealWords() }
+            if (hot) {
+                Explain(state.backupCheckedAt?.let { "Backup last verified: " + syncTimeText(it) } ?: "Written backup has not been checked on this device.")
+                SecondaryButton("Check written backup", Modifier.fillMaxWidth(), color = TextMain) { model.startBackupCheck() }
+                SecondaryButton("Show recovery words", Modifier.fillMaxWidth(), color = TextMain) { model.revealWords() }
+            }
             SecondaryButton("Remove this wallet", Modifier.fillMaxWidth(), color = Bad) { confirmDelete = true }
         }
 
@@ -87,6 +103,7 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
         }
     }
 
+    if (recipients) RecipientsDialog(model, state, onClose = { recipients = false })
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
         title = { Text("Remove ${state.walletName}?", style = MaterialTheme.typography.titleMedium) },

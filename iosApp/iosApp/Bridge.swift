@@ -63,6 +63,25 @@ final class Bridge: NSObject, IosBridge {
         }
     }
 
+    func sharePayment(request: String, completion: @escaping (String?) -> Void) {
+        DispatchQueue.main.async {
+            guard let top = Self.topViewController(), top.viewIfLoaded?.window != nil,
+                  let png = QrCode.png(request), let image = UIImage(data: png) else {
+                completion("Could not prepare the payment request."); return
+            }
+            let sheet = UIActivityViewController(activityItems: ["XBT BLAKE2b payment request\n" + request, image], applicationActivities: nil)
+            sheet.completionWithItemsHandler = { _, _, _, error in
+                completion(error == nil ? nil : "The request could not be shared.")
+            }
+            if let popover = sheet.popoverPresentationController {
+                popover.sourceView = top.view
+                popover.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 1, height: 1)
+                popover.permittedArrowDirections = []
+            }
+            top.present(sheet, animated: true)
+        }
+    }
+
     // MARK: Export
 
     func shareCsv(fileName: String, contents: String, completion: @escaping (String?) -> Void) {

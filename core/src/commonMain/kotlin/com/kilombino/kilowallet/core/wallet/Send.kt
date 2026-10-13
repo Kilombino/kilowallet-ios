@@ -79,7 +79,7 @@ object SendPlanner {
      */
     fun plan(
         toAddress: String, amountSats: Long, feeRatePerVb: Double, utxos: List<SpendableUtxo>,
-        changeScript: ByteArray, sendAll: Boolean = false,
+        changeScript: ByteArray, sendAll: Boolean = false, useAllInputs: Boolean = false,
     ): SendDraft {
         val available = validateCoins(utxos)
         require(feeRatePerVb.isFinite()) { "Invalid fee rate" }
@@ -109,7 +109,7 @@ object SendPlanner {
         var sum = 0L
         for (u in utxos.sortedByDescending { it.value }) {
             chosen += u; sum = checkedAdd(sum, u.value)
-            if (sum >= checkedAdd(amountSats, estimateFee(chosen.size, withChange, rate))) break
+            if (!useAllInputs && sum >= checkedAdd(amountSats, estimateFee(chosen.size, withChange, rate))) break
         }
         var fee = estimateFee(chosen.size, withChange, rate)
         var noChangeOutput = false
