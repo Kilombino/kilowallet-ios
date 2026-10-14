@@ -21,6 +21,13 @@ Version 0.1 (BTC only):
 
 Not in 0.1: other chains, coinjoin, Ark, Lightning, notifications, fiat prices, PSBT.
 
+## Official builds
+
+The App Store build of Kilowallet for iOS, bundle ID `com.kilombino.kilowallet`, is published by
+[romanmodin](https://github.com/romanmodin) on Kilombino's behalf and with his permission, from
+[romanmodin/kilowallet-ios](https://github.com/romanmodin/kilowallet-ios). Any other build under
+that name or bundle ID is not official.
+
 ## Hand-off: build, sign and upload (for the iOS developer)
 
 Requirements: an Apple Developer account **enrolled as an organization** (App Store Review
