@@ -748,8 +748,32 @@ class WalletModel(private val platform: AppPlatform, private val cryptoDispatche
                 if (isCurrent(epoch, s)) _state.update { it.copy(send = SendPhase.Sent(id)) }
                 refresh()
             } catch (e: CancellationException) { throw e }
-              catch (e: Exception) { if (isCurrent(epoch, s)) _state.update { it.copy(send = pending(zpub)!!) } }
+              catch (e: Exception) {
+                // Say why: a server that refuses for good (fee below its minimum, coins already
+                // spent by another transaction) is the case discardPendingSend is for.
+                if (isCurrent(epoch, s)) _state.update { st ->
+                    st.copy(send = pending(zpub)?.let { p -> p.copy(message = "The server did not take it: " +
+                        (e.message ?: "no reason given") + ". If it keeps refusing, you can forget this transaction.") }
+                        ?: SendPhase.Editing)
+                }
+            }
         }
+    }
+
+    /**
+     * Forget the saved pending transaction, so the wallet can send again. Only for one the network
+     * will not take: if it did reach the network it may still confirm, and a new payment from the
+     * same coins replaces it while one from other coins pays twice. The screen says so first.
+     */
+    fun discardPendingSend() {
+        val s = state.value
+        if (s.send !is SendPhase.Pending) return
+        val zpub = s.zpub ?: return
+        cancelAction()
+        prefs.put(pendingKey(zpub), null)
+        _state.update { it.copy(send = SendPhase.Editing) }
+        say("The pending transaction was forgotten. Check its coins before paying again.")
+        refresh()
     }
 
     fun editSend() {

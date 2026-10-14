@@ -27,9 +27,19 @@ enum Keychain {
         var q = baseQuery(walletId: walletId)
         q[kSecValueData as String] = Data(secret.utf8)
         q[kSecAttrAccessControl as String] = access
-        let status = SecItemAdd(q as CFDictionary, nil)
+        var status = SecItemAdd(q as CFDictionary, nil)
         if status == errSecSuccess { return nil }
-        if status == errSecDuplicateItem { return "Recovery words already exist for this wallet. They were not overwritten." }
+        if status == errSecDuplicateItem {
+            // Keychain items outlive an uninstall while the wallet list does not, so restoring the
+            // same words after a reinstall finds the old item. A wallet's id is a hash of its own
+            // account key (WalletCatalog.idFor), so an item under that id can only hold these same
+            // words and passphrase: replacing it loses nothing. The one id that is not derived
+            // that way, the first version's single wallet, is never replaced.
+            if walletId == "wallet-0" { return "Recovery words already exist for this wallet. They were not overwritten." }
+            SecItemDelete(baseQuery(walletId: walletId) as CFDictionary)
+            status = SecItemAdd(q as CFDictionary, nil)
+            if status == errSecSuccess { return nil }
+        }
         #if targetEnvironment(simulator)
         // The Simulator usually has no passcode, so a passcode-bound item cannot be created there.
         // Simulator builds only: keep it this-device-only without the passcode requirement.

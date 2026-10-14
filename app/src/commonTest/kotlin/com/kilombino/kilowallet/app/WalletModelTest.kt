@@ -211,6 +211,34 @@ class WalletModelTest {
     }
 
 
+    @Test fun aTransactionTheServerRefusesForGoodCanBeForgotten() = checkModel { model, p ->
+        p.reply = { q -> when (q["method"]!!.jsonPrimitive.content) {
+            "server.version" -> buildJsonArray { add("test"); add("1.4") }
+            "blockchain.headers.subscribe" -> buildJsonObject { put("height", 976086); put("hex", "000000a0700c8b9690014507c6c277900d743ac3ed6d814f90772d060000000000000000670caeac2404c80798669b242623ea7310be8f47166168e9734baab9dec80446b2c2c66a2ad80019be9815dad0f4b1da0000000000000000b10cf8578500000000000000b2c2c66a7501000000000000000000000000000000000000d6e40e000000000000000000000000000000000000000000000000000000000000000000") }
+            // Every broadcast is refused, as a fee below the server's minimum would be.
+            "blockchain.transaction.broadcast" -> throw ElectrumException("min relay fee not met")
+            "blockchain.transaction.get" -> throw ElectrumException("not found")
+            "blockchain.scripthash.get_history" -> JsonArray(emptyList())
+            else -> error("Unexpected mock request")
+        } }
+        model.setUpDemo("review"); advanceUntilIdle()
+        model.confirmSend()
+        p.unlock!!(encodeSecret(words, ""), null)
+        advanceUntilIdle()
+        assertIs<SendPhase.Pending>(model.state.value.send)
+
+        // A retry is refused again, and the screen says what the server answered.
+        model.retryPendingSend(); advanceUntilIdle()
+        val again = assertIs<SendPhase.Pending>(model.state.value.send)
+        assertTrue("min relay fee not met" in again.message, again.message)
+        assertTrue(p.values.keys.any { it.startsWith("pending.") })
+
+        // Forgetting it lets the wallet send again.
+        model.discardPendingSend(); advanceUntilIdle()
+        assertIs<SendPhase.Editing>(model.state.value.send)
+        assertTrue(p.values.keys.none { it.startsWith("pending.") })
+    }
+
     @Test fun restoresAllFiveStandardWordCountsWithoutChangingPassphrase() = checkModel { model, p ->
         for (bytes in listOf(16, 20, 24, 28, 32)) {
             val recovery = Bip39.fromEntropy(ByteArray(bytes) { it.toByte() })

@@ -3,11 +3,13 @@ package com.kilombino.kilowallet.app.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +56,19 @@ fun SendScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             }
             Explain("This payment may already have reached the network. Resending the saved transaction keeps the same transaction ID and cannot create a second payment.")
             PrimaryButton("Check or resend same transaction", Modifier.fillMaxWidth()) { model.retryPendingSend() }
+            // A transaction the server refuses for good would otherwise block this wallet forever.
+            var confirmForget by remember { mutableStateOf(false) }
+            SecondaryButton("Forget this transaction", Modifier.fillMaxWidth(), color = Warn) { confirmForget = true }
+            if (confirmForget) AlertDialog(
+                onDismissRequest = { confirmForget = false },
+                title = { Text("Forget this transaction?") },
+                text = { Text("Only if the network will not take it, for example its fee is below the server's minimum or its coins " +
+                    "were already spent by another transaction. If it did reach the network it may still confirm: a new payment " +
+                    "from the same coins replaces it, but one from other coins would pay twice.") },
+                confirmButton = { TextButton(onClick = { confirmForget = false; model.discardPendingSend() }) { Text("FORGET IT", color = Bad) } },
+                dismissButton = { TextButton(onClick = { confirmForget = false }) { Text("KEEP IT", color = TextSoft) } },
+                containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft,
+            )
         }
         is SendPhase.Failed -> ScreenColumn {
             BackLink { model.back() }
