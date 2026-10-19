@@ -34,8 +34,8 @@ jobs:
       - name: Xcode version
         run: xcodebuild -version
 
-      - name: Unit tests (JVM and iOS simulator)
-        run: ./gradlew :core:jvmTest :core:iosSimulatorArm64Test --stacktrace
+      - name: Unit tests (JVM and iOS simulator; the language tables on the JVM)
+        run: ./gradlew :core:jvmTest :core:iosSimulatorArm64Test :app:desktopTest --stacktrace
 
       - name: Live smoke test against the default Electrum server
         continue-on-error: true
@@ -67,6 +67,8 @@ jobs:
           path: |
             core/build/reports/tests/
             core/build/test-results/
+            app/build/reports/tests/
+            app/build/test-results/
             build/xcodebuild.log
             screenshots-logs/
 

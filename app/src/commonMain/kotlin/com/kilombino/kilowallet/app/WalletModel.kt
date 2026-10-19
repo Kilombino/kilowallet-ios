@@ -1,5 +1,6 @@
 package com.kilombino.kilowallet.app
 
+import com.kilombino.kilowallet.app.i18n.I18n
 import com.kilombino.kilowallet.core.chain.NodeEndpoint
 import com.kilombino.kilowallet.core.crypto.Address
 import com.kilombino.kilowallet.core.crypto.Bip32
@@ -187,7 +188,7 @@ class WalletModel(private val platform: AppPlatform) {
 
     /** Show the recovery words after Face ID / Touch ID / passcode. */
     fun revealWords() {
-        platform.seeds.load("Show your recovery words") { secret, error ->
+        platform.seeds.load(I18n.tr("Show your recovery words")) { secret, error ->
             if (secret == null) { say(error ?: "Not unlocked."); return@load }
             go(Screen.ShowWords(decodeSecret(secret).first))
         }
@@ -217,13 +218,13 @@ class WalletModel(private val platform: AppPlatform) {
                     is ScanEvent.Done -> {
                         pinIfFirst(s.endpoint, ev.fingerprint)
                         _state.update { it.copy(scan = ScanPhase.Done, rows = ev.rows, txs = ev.txs, height = ev.height) }
-                        if (platform.demoScreen == "home") platform.markReady("home")
+                        if (platform.demoScreen?.substringBefore('@') == "home") platform.markReady("home")
                     }
                     is ScanEvent.Failed -> _state.update { it.copy(scan = ScanPhase.Error(ev.message)) }
                     is ScanEvent.CertificateChanged -> _state.update { it.copy(scan = ScanPhase.Error(ev.message), certChanged = ev.fingerprint) }
                 }
             }
-            if (platform.demoScreen == "home" && _state.value.scan is ScanPhase.Error) platform.markReady("home")
+            if (platform.demoScreen?.substringBefore('@') == "home" && _state.value.scan is ScanPhase.Error) platform.markReady("home")
         }
     }
 
@@ -348,7 +349,7 @@ class WalletModel(private val platform: AppPlatform) {
         val s = _state.value
         val draft = (s.send as? SendPhase.Review)?.draft ?: return
         val zpub = s.zpub ?: return
-        platform.seeds.load("Sign and send ${com.kilombino.kilowallet.core.wallet.formatSats(draft.amount)} sats") { secret, error ->
+        platform.seeds.load(I18n.tr("Sign and send ${com.kilombino.kilowallet.core.wallet.formatSats(draft.amount)} sats")) { secret, error ->
             if (secret == null) { say(error ?: "Not unlocked: nothing was sent."); return@load }
             _state.update { it.copy(send = SendPhase.Signing) }
             scope.launch {

@@ -26,21 +26,24 @@ xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --ba
 xcrun simctl install "$UDID" "$APP"
 
 n=0
-for screen in welcome create restore watch home receive send review settings; do
+# "screen@lang" shows that screen in another language (the app's language picker, set by the demo).
+for screen in welcome create restore watch home receive send review settings receive@es settings@es; do
   n=$((n + 1))
+  base=${screen%@*}
+  name=${screen/@/-}
   xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
   DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE" data)
-  rm -f "$DATA/Documents/kw-ready-$screen"
-  xcrun simctl launch --console-pty "$UDID" "$BUNDLE" -kwDemo "$screen" > "screenshots-logs/$screen.log" 2>&1 &
+  rm -f "$DATA/Documents/kw-ready-$base"
+  xcrun simctl launch --console-pty "$UDID" "$BUNDLE" -kwDemo "$screen" > "screenshots-logs/$name.log" 2>&1 &
   LP=$!
-  limit=20; [ "$screen" = home ] && limit=150
+  limit=20; [ "$base" = home ] && limit=150
   for i in $(seq 1 $limit); do
-    [ -f "$DATA/Documents/kw-ready-$screen" ] && break
+    [ -f "$DATA/Documents/kw-ready-$base" ] && break
     sleep 1
   done
-  if [ -f "$DATA/Documents/kw-ready-$screen" ]; then echo "$screen: ready after ${i}s"; else echo "$screen: NOT ready after ${limit}s (screenshot anyway)"; fi
+  if [ -f "$DATA/Documents/kw-ready-$base" ]; then echo "$screen: ready after ${i}s"; else echo "$screen: NOT ready after ${limit}s (screenshot anyway)"; fi
   sleep 3
-  xcrun simctl io "$UDID" screenshot "$OUT/$(printf %02d $n)-$screen.png"
+  xcrun simctl io "$UDID" screenshot "$OUT/$(printf %02d $n)-$name.png"
   kill $LP 2>/dev/null || true
 done
 xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true

@@ -4,6 +4,17 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>es</string>
+		<string>ca</string>
+		<string>de</string>
+		<string>fr</string>
+		<string>it</string>
+		<string>pt</string>
+		<string>zh-Hans</string>
+	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Kilowallet</string>
 	<key>CFBundleExecutable</key>

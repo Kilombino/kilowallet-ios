@@ -25,7 +25,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
+import com.kilombino.kilowallet.app.i18n.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -83,6 +83,14 @@ fun SecondaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolea
         colors = ButtonDefaults.buttonColors(containerColor = PanelSoft, contentColor = color,
             disabledContainerColor = PanelSoft, disabledContentColor = TextFaint),
     ) { Text(text.uppercase(), style = MaterialTheme.typography.labelLarge) }
+}
+
+/** A small selectable pill (Android: the settings screen's chips). */
+@Composable
+fun Chip(text: String, selected: Boolean, color: Color = Purple, onClick: () -> Unit) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = if (selected) Ink else TextMain,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(if (selected) color else PanelSoft)
+            .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp))
 }
 
 @Composable

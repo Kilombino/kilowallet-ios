@@ -1,11 +1,13 @@
 package com.kilombino.kilowallet.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import com.kilombino.kilowallet.app.i18n.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,9 +24,11 @@ import com.kilombino.kilowallet.app.AppPlatform
 import com.kilombino.kilowallet.app.UiState
 import com.kilombino.kilowallet.app.WalletKind
 import com.kilombino.kilowallet.app.WalletModel
+import com.kilombino.kilowallet.app.i18n.I18n
 import com.kilombino.kilowallet.core.chain.Chain
 import com.kilombino.kilowallet.core.chain.NodeEndpoint
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     val clipboard = LocalClipboardManager.current
@@ -37,6 +41,18 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     ScreenColumn {
         BackLink("← back to wallet") { model.back() }
         Text("Settings", style = MaterialTheme.typography.titleLarge, color = TextMain)
+
+        // The app's language: the phone's by default, or one fixed here (each named in its own
+        // language), as in the Android app's settings.
+        Panel {
+            SectionLabel("Language")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Chip("Automatic", I18n.choice.value == I18n.AUTO) { I18n.set(I18n.AUTO) }
+                I18n.LANGUAGES.forEach { (code, name) ->
+                    Chip(name, I18n.choice.value == code) { I18n.set(code) }
+                }
+            }
+        }
 
         Panel {
             SectionLabel("Electrum server")
