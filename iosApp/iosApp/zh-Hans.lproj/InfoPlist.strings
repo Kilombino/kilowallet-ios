@@ -1,0 +1,3 @@
+/* Info.plist permission texts (zh-Hans); English is in Info.plist itself. */
+"NSCameraUsageDescription" = "相机仅用于扫描比特币地址和公钥的二维码。";
+"NSFaceIDUsageDescription" = "Face ID 用于解锁你的助记词，以便签名付款或显示助记词。";

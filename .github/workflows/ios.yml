@@ -50,6 +50,9 @@ jobs:
             -derivedDataPath build/dd ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build \
             | tee build/xcodebuild.log | grep -E "error:|warning: .*swift|BUILD" || true
           test -d build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app
+          # The permission texts in every language (InfoPlist.strings, compiled into each .lproj).
+          for l in es ca de fr it pt zh-Hans; do test -f "build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app/$l.lproj/InfoPlist.strings"; done
+          plutil -p build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app/es.lproj/InfoPlist.strings
 
       - name: Boot a simulator, launch the app and take screenshots
         run: ./scripts/ci-screenshots.sh build/dd/Build/Products/Debug-iphonesimulator/Kilowallet.app screenshots
@@ -96,6 +99,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build \
             | tee build/xcodebuild-release.log | grep -E "error:|BUILD" || true
           test -d build/dd/Build/Products/Release-iphoneos/Kilowallet.app
+          for l in es ca de fr it pt zh-Hans; do test -f "build/dd/Build/Products/Release-iphoneos/Kilowallet.app/$l.lproj/InfoPlist.strings"; done
           du -sh build/dd/Build/Products/Release-iphoneos/Kilowallet.app
       - uses: actions/upload-artifact@v4
         if: always()

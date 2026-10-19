@@ -1,0 +1,3 @@
+/* Info.plist permission texts (fr); English is in Info.plist itself. */
+"NSCameraUsageDescription" = "L'appareil photo sert uniquement à scanner les codes QR d'adresses Bitcoin et de clés publiques.";
+"NSFaceIDUsageDescription" = "Face ID déverrouille tes mots de récupération pour signer un paiement ou pour les afficher.";
