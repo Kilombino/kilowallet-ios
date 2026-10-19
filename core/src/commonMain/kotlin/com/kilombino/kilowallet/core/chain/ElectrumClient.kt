@@ -31,9 +31,9 @@ class CertificateChangedException(val endpoint: String, val fingerprint: String)
     ElectrumException("The certificate of $endpoint has CHANGED; nothing was sent to it. Check the new fingerprint before trusting it.")
 
 /**
- * A minimal Electrum protocol 1.4 client, ported from the Android app's `chain/ElectrumClient.kt`
- * (same requests, same checks) over a platform [LineTransport] instead of java.net sockets, and
- * kotlinx.serialization instead of org.json.
+ * A minimal Electrum client (protocol 1.4 to 1.6), ported from the Android app's
+ * `chain/ElectrumClient.kt` (same requests, same checks) over a platform [LineTransport] instead
+ * of java.net sockets, and kotlinx.serialization instead of org.json.
  *
  * As in the app: `jsonrpc: "2.0"` is always sent; certificates are self-signed and pinned on
  * first use (trust on first use, a later change is refused until the user accepts it); a node on
@@ -54,6 +54,27 @@ class ElectrumClient(
     var serverVersion: String? = null
         private set
 
+    /** The protocol version the server agreed to: "1.4" up to "1.6". */
+    var protocol: String = "1.4"
+        private set
+
+    /**
+     * Agree on a protocol version: anything from 1.4 to 1.6 (Android app: `negotiate`, 1.1.1). A
+     * server whose chain has headers that are not 80 bytes (BLAKE2b's are 164) sends them in
+     * batches only from 1.6 on, so one that refuses blockchain.block.headers below it (Shulcrum 2.1)
+     * picks 1.6; a server that knows only 1.4 keeps it. Nothing this client calls changes between
+     * them but blockchain.relayfee, gone in 1.6 (see [relayFeePerKb]); headers are read in either form.
+     */
+    private fun negotiate() {
+        val version = call("server.version", buildJsonArray {
+            add(JsonPrimitive("Kilowallet-iOS"))
+            add(buildJsonArray { add(JsonPrimitive("1.4")); add(JsonPrimitive("1.6")) })
+        })
+        val arr = version as? JsonArray
+        serverVersion = arr?.firstOrNull()?.jsonPrimitive?.contentOrNull ?: version.toString()
+        protocol = arr?.getOrNull(1)?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() } ?: "1.4"
+    }
+
     fun connect() {
         val c = try {
             transports.open(endpoint.host, endpoint.port, tls = true, pinnedFingerprint = pinnedFingerprint)
@@ -67,8 +88,7 @@ class ElectrumClient(
         }
         conn = c
         serverFingerprint = c.fingerprint
-        val version = call("server.version", buildJsonArray { add(JsonPrimitive("Kilowallet-iOS")); add(JsonPrimitive("1.4")) })
-        serverVersion = (version as? JsonArray)?.firstOrNull()?.jsonPrimitive?.contentOrNull ?: version.toString()
+        negotiate()
         // Only a server on the BLAKE2b chain may answer: its headers are 164 bytes (328 hex), the
         // SHA-256 chain's are 80. Talking to the wrong chain would show and spend the wrong coins.
         val tip = tipHeaderHex()
@@ -178,8 +198,16 @@ class ElectrumClient(
         (call("blockchain.estimatefee", params(blocks)) as? JsonPrimitive)?.doubleOrNull ?: -1.0
 
     /** The server's minimum relay fee, in BTC/kB. */
-    fun relayFeePerKb(): Double =
-        (call("blockchain.relayfee", JsonArray(emptyList())) as? JsonPrimitive)?.doubleOrNull ?: 0.0
+    fun relayFeePerKb(): Double {
+        if (protocolAtLeast("1.6")) {
+            // blockchain.relayfee is gone in 1.6; mempool.get_info carries the same number.
+            val info = call("mempool.get_info", JsonArray(emptyList())) as? JsonObject
+            return info?.get("minrelaytxfee")?.jsonPrimitive?.doubleOrNull?.takeIf { !it.isNaN() } ?: 0.0
+        }
+        return (call("blockchain.relayfee", JsonArray(emptyList())) as? JsonPrimitive)?.doubleOrNull ?: 0.0
+    }
+
+    internal fun protocolAtLeast(v: String): Boolean = protocolAtLeast(protocol, v)
 
     /** The raw (hex) transaction for [txid]; it must hash to [txid] or it is refused. */
     fun transaction(txid: String): String {
@@ -212,4 +240,15 @@ class ElectrumClient(
         runCatching { conn?.close() }
         conn = null
     }
+}
+
+/** Whether protocol version [have] ("1.4", "1.6", "1.4.2") is at least [want]. */
+internal fun protocolAtLeast(have: String, want: String): Boolean {
+    val a = have.split('.').map { it.toIntOrNull() ?: 0 }
+    val b = want.split('.').map { it.toIntOrNull() ?: 0 }
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val x = a.getOrElse(i) { 0 }; val y = b.getOrElse(i) { 0 }
+        if (x != y) return x > y
+    }
+    return true
 }

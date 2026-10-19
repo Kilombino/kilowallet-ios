@@ -21,5 +21,9 @@ class LiveServerTest {
         assertTrue(done != null, "scan did not finish: ${events.lastOrNull()}")
         assertTrue(done.height > 961_640)
         assertTrue(done.fingerprint?.length == 64)
+        // The relay floor comes from mempool.get_info when the server agreed on protocol 1.6.
+        val rate = runBlocking { Scanner(JvmTransport).suggestedFeeRate(NodeEndpoint.DEFAULT, done.fingerprint) }
+        println("suggested fee rate: $rate sat/vB")
+        assertTrue(rate != null && rate > 0)
     }
 }
