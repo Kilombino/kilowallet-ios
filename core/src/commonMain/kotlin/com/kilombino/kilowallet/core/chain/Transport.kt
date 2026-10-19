@@ -8,6 +8,7 @@ package com.kilombino.kilowallet.core.chain
 interface LineTransport {
     /** SHA-256 (hex) of the server's leaf certificate, or null on a plain-TCP connection. */
     val fingerprint: String?
+    /** Send [line] and a newline; a batch passes several requests joined by '\n' in one call. */
     fun writeLine(line: String)
     /** The next line without its terminator; null when the server closed the connection. */
     fun readLine(): String?

@@ -59,7 +59,8 @@ data class SpendableUtxo(
 
 /**
  * Walks an xpub with a gap limit, as the Android app's `data/Scanner.kt` does (same calls in the
- * same order, same caches, same SPV check and coinbase-maturity rule).
+ * same order, same caches, same SPV check and coinbase-maturity rule): statuses and unspent
+ * outputs asked in batches of [ElectrumClient.BATCH], history and balance only where a status changed.
  */
 class Scanner(
     private val transports: TransportFactory,
@@ -104,25 +105,37 @@ class Scanner(
                 var index = 0
                 var consecutiveEmpty = 0
                 while (consecutiveEmpty < gap) {
-                    val path = "m/$purpose'/0'/0'/$chainIndex/$index"
-                    emit(ScanEvent.Deriving(chainIndex, index, path))
-                    val child = Bip32.deriveChild(branch, index)
-                    val scriptHash = Address.scriptHashFor(child.pubkey(), scriptType)
-                    val address = Address.encode(child.pubkey(), scriptType)
-                    val hist = client.history(scriptHash)
-                    val txs = hist.size
-                    val bal = if (txs > 0) client.balance(scriptHash) else ScriptHashBalance(0, 0)
-                    val row = AddressRow(chainIndex, index, address, path, scriptHash, bal.confirmed, bal.unconfirmed, txs)
-                    if (row.isUsed) {
-                        rows += row
-                        hist.forEach { txHeights[it.txid] = it.height }
-                        consecutiveEmpty = 0
-                        emit(ScanEvent.Found(row))
-                    } else {
-                        consecutiveEmpty++
-                        emit(ScanEvent.GapProgress(chainIndex, consecutiveEmpty, gap))
+                    // The next addresses, never more than the walk could still need before it
+                    // stops (so the server hears of no address a one-by-one walk would not ask
+                    // about), with their statuses asked in one batch (Android app, 1.1.x).
+                    val batch = (index until index + (gap - consecutiveEmpty)).map { i ->
+                        val child = Bip32.deriveChild(branch, i)
+                        Triple(i, Address.encode(child.pubkey(), scriptType), Address.scriptHashFor(child.pubkey(), scriptType))
                     }
-                    index++
+                    val statuses = client.statuses(batch.map { it.third })
+                    var stop = false
+                    for ((k, entry) in batch.withIndex()) {
+                        val (i, address, scriptHash) = entry
+                        val path = "m/$purpose'/0'/0'/$chainIndex/$i"
+                        emit(ScanEvent.Deriving(chainIndex, i, path))
+                        // History and balance only for an address with a history (a status), and
+                        // only when that status differs from the one remembered with them.
+                        val entryData = resolve(client, endpoint, scriptHash, statuses[k])
+                        val row = AddressRow(chainIndex, i, address, path, scriptHash,
+                            entryData.balance.confirmed, entryData.balance.unconfirmed, entryData.history.size)
+                        index = i + 1
+                        if (row.isUsed) {
+                            rows += row
+                            entryData.history.forEach { txHeights[it.txid] = it.height }
+                            consecutiveEmpty = 0
+                            emit(ScanEvent.Found(row))
+                        } else {
+                            consecutiveEmpty++
+                            emit(ScanEvent.GapProgress(chainIndex, consecutiveEmpty, gap))
+                            if (consecutiveEmpty >= gap) { stop = true; break }
+                        }
+                    }
+                    if (stop) break
                 }
             }
             val txs = confirmations(client, txHeights, rows, height)
@@ -153,13 +166,10 @@ class Scanner(
             client.connect()
             val tip = client.blockHeight()
             val txHeights = HashMap<String, Int>()
-            val updated = rows.map { r ->
-                val key = endpoint.toString() + "|" + r.scriptHash
-                val status = client.status(r.scriptHash)
-                val known = statusCache[key]?.takeIf { it.status == status }
-                val entry = known ?: if (status == null) CachedAddress(null, emptyList(), ScriptHashBalance(0, 0))
-                    else CachedAddress(status, client.history(r.scriptHash), client.balance(r.scriptHash))
-                statusCache[key] = entry
+            // Every status in one batch; history and balance only for the addresses that changed.
+            val statuses = client.statuses(rows.map { it.scriptHash })
+            val updated = rows.mapIndexed { k, r ->
+                val entry = resolve(client, endpoint, r.scriptHash, statuses[k])
                 entry.history.forEach { txHeights[it.txid] = it.height }
                 r.copy(confirmed = entry.balance.confirmed, unconfirmed = entry.balance.unconfirmed, txCount = entry.history.size)
             }
@@ -167,6 +177,17 @@ class Scanner(
         } finally {
             client.close()
         }
+    }
+
+    /**
+     * History and balance behind an address's [status] (Android app: `Scanner.resolve`): nothing
+     * when it has none, the remembered ones when the status is the one they were read with.
+     */
+    private fun resolve(client: ElectrumClient, endpoint: NodeEndpoint, scriptHash: String, status: String?): CachedAddress {
+        val key = endpoint.toString() + "|" + scriptHash
+        if (status == null) { statusCache.remove(key); return CachedAddress(null, emptyList(), ScriptHashBalance(0, 0)) }
+        statusCache[key]?.takeIf { it.status == status }?.let { return it }
+        return CachedAddress(status, client.history(scriptHash), client.balance(scriptHash)).also { statusCache[key] = it }
     }
 
     /** What each transaction did to the wallet: outputs to our scripts minus our outputs it spends. */
@@ -189,8 +210,9 @@ class Scanner(
         val client = client(endpoint, pinnedFingerprint)
         try {
             client.connect()
-            val all = rows.flatMap { r ->
-                client.listUnspent(r.scriptHash).map { SpendableUtxo(it.txid, it.vout, it.value, r.chainIndex, r.index, it.height) }
+            // One round trip per 50 addresses, not one per address.
+            val all = client.listUnspentMany(rows.map { it.scriptHash }).zip(rows).flatMap { (us, r) ->
+                us.map { SpendableUtxo(it.txid, it.vout, it.value, r.chainIndex, r.index, it.height) }
             }
             val tip = runCatching { client.blockHeight() }.getOrNull() ?: return@withContext all
             all.filter { u ->

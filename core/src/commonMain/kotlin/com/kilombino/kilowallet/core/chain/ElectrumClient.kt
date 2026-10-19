@@ -172,6 +172,61 @@ class ElectrumClient(
     fun status(scriptHash: String): String? =
         (call("blockchain.scripthash.subscribe", params(scriptHash)) as? JsonPrimitive)?.contentOrNull
 
+    /**
+     * [status] of many scripthashes in one go (Android app: `statuses`): every request is written
+     * first and the answers read as they come (by id), so a scan waits for one round trip per
+     * batch instead of one per address.
+     */
+    fun statuses(scriptHashes: List<String>): List<String?> {
+        if (scriptHashes.size <= 1) return scriptHashes.map { status(it) }
+        return batch("blockchain.scripthash.subscribe", scriptHashes).map { (it as? JsonPrimitive)?.contentOrNull }
+    }
+
+    /** [listUnspent] of many scripthashes, batched like [statuses] (Android app: `listUnspentMany`). */
+    fun listUnspentMany(scriptHashes: List<String>): List<List<Utxo>> {
+        if (scriptHashes.size <= 1) return scriptHashes.map { listUnspent(it) }
+        return batch("blockchain.scripthash.listunspent", scriptHashes).map { utxos(it as? JsonArray) }
+    }
+
+    /** One request per scripthash, all written before any answer is read; the answers in order. */
+    private fun batch(method: String, scriptHashes: List<String>): List<JsonElement?> {
+        // Servers cap how many requests may wait at once: a long list goes in rounds.
+        if (scriptHashes.size > BATCH) return scriptHashes.chunked(BATCH).flatMap { batch(method, it) }
+        val what = method.substringAfterLast('.')
+        val c = conn ?: throw ElectrumException("client not connected")
+        val ids = scriptHashes.map { nextId++ }
+        // All the requests in a single write (one line each), so they leave in one go.
+        val lines = scriptHashes.zip(ids).joinToString("\n") { (sh, id) ->
+            buildJsonObject {
+                put("jsonrpc", "2.0")
+                put("id", id)
+                put("method", method)
+                put("params", params(sh))
+            }.toString()
+        }
+        try {
+            c.writeLine(lines)
+        } catch (e: Exception) {
+            throw ElectrumException("Lost the connection while sending $what: ${e.message}", e)
+        }
+        val want = ids.toHashSet()
+        val got = HashMap<Int, JsonElement?>()
+        while (got.size < ids.size) {
+            val line = try {
+                c.readLine()
+            } catch (e: Exception) {
+                throw ElectrumException("Lost the connection while waiting for $what: ${e.message}", e)
+            } ?: throw ElectrumException("The server closed the connection during $what")
+            val obj = try { Json.parseToJsonElement(line).jsonObject } catch (e: Exception) { continue }
+            val id = (obj["id"] as? JsonPrimitive)?.intOrNull
+            if (id == null || id !in want) continue   // a notification, not one of our answers
+            val err = obj["error"]
+            if (err != null && err !is JsonNull) throw ElectrumException("$what: $err")
+            got[id] = obj["result"] ?: JsonNull
+        }
+        return ids.map { got[it] }
+    }
+
     data class HistoryItem(val txid: String, val height: Int)
 
     fun history(scriptHash: String): List<HistoryItem> {
@@ -184,14 +239,14 @@ class ElectrumClient(
 
     data class Utxo(val txid: String, val vout: Int, val value: Long, val height: Int)
 
-    fun listUnspent(scriptHash: String): List<Utxo> {
-        val r = call("blockchain.scripthash.listunspent", params(scriptHash)) as? JsonArray ?: return emptyList()
-        return r.map {
-            val o = it.jsonObject
-            Utxo(o["tx_hash"]!!.jsonPrimitive.content, o["tx_pos"]!!.jsonPrimitive.int,
-                o["value"]!!.jsonPrimitive.longOrNull ?: 0, o["height"]?.jsonPrimitive?.intOrNull ?: 0)
-        }
-    }
+    fun listUnspent(scriptHash: String): List<Utxo> =
+        utxos(call("blockchain.scripthash.listunspent", params(scriptHash)) as? JsonArray)
+
+    private fun utxos(r: JsonArray?): List<Utxo> = r?.map {
+        val o = it.jsonObject
+        Utxo(o["tx_hash"]!!.jsonPrimitive.content, o["tx_pos"]!!.jsonPrimitive.int,
+            o["value"]!!.jsonPrimitive.longOrNull ?: 0, o["height"]?.jsonPrimitive?.intOrNull ?: 0)
+    } ?: emptyList()
 
     /** Estimated fee to confirm within [blocks], in BTC/kB; -1 when the server has no estimate. */
     fun estimateFeePerKb(blocks: Int): Double =
@@ -239,6 +294,11 @@ class ElectrumClient(
     fun close() {
         runCatching { conn?.close() }
         conn = null
+    }
+
+    companion object {
+        /** Most requests a batch leaves waiting at once (Android app: chunks of 50). */
+        const val BATCH = 50
     }
 }
 

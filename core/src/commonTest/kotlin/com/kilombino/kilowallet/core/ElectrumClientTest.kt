@@ -19,7 +19,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** The client against a scripted server: protocol negotiation and the 1.6 relay fee. */
+/** The client against a scripted server: protocol negotiation, the 1.6 relay fee, batched requests. */
 class ElectrumClientTest {
     /** Answers each request line with [answer]; records every request and every write. */
     private class FakeServer(
@@ -90,5 +90,32 @@ class ElectrumClientTest {
         c.connect()
         assertEquals("1.4", c.protocol)
         assertEquals(0.00001, c.relayFeePerKb())
+    }
+
+    @Test
+    fun batchesStatusesAndUnspentFiftyAtATime() {
+        val server = FakeServer(listOf("1.4")) { m, p ->
+            val sh = p.getOrNull(0)?.jsonPrimitive?.content.orEmpty()
+            when (m) {
+                "blockchain.headers.subscribe" -> tip
+                "blockchain.scripthash.subscribe" -> if (sh.endsWith("0")) JsonNull else JsonPrimitive("st-$sh")
+                "blockchain.scripthash.listunspent" -> Json.parseToJsonElement(
+                    """[{"tx_hash":"${"cd".repeat(32)}","tx_pos":1,"value":${sh.trimStart('a').ifEmpty { "0" }.toInt() + 1000},"height":7}]""")
+                else -> error("unexpected $m")
+            }
+        }
+        val c = client(server)
+        c.connect()
+        val hashes = (0 until 120).map { it.toString().padStart(64, 'a') }
+        val before = server.writes
+        val st = c.statuses(hashes)
+        assertEquals(3, server.writes - before) // 50 + 50 + 20, one write (and one round trip) each
+        assertEquals(hashes.map { if (it.endsWith("0")) null else "st-$it" }, st)
+
+        val w = server.writes
+        val us = c.listUnspentMany(hashes)
+        assertEquals(3, server.writes - w)
+        assertEquals((0 until 120).map { it + 1000L }, us.map { it.single().value })
+        assertEquals(listOf(1), us.map { it.single().vout }.distinct())
     }
 }
