@@ -284,11 +284,22 @@ class WalletModel(private val platform: AppPlatform) {
 
     // ------------------------------------------------------------------ receive
 
-    /** The next unused receive address: one past the highest used (Android: `nextReceiveIndex`). */
-    fun receiveAddress(): Pair<String, String>? {
-        val s = _state.value
-        val zpub = s.zpub ?: return null
-        val index = s.rows.filter { it.chainIndex == 0 }.maxOfOrNull { it.index }?.plus(1) ?: 0
+    /** The next unused receive index: one past the highest used (Android: `nextReceiveIndex`). */
+    fun nextReceiveIndex(): Int = _state.value.rows.filter { it.chainIndex == 0 && it.isUsed }.maxOfOrNull { it.index }?.plus(1) ?: 0
+
+    /**
+     * Receive indexes that hold nothing and never did (Android: `unusedReceiveIndexes`): the ones
+     * skipped below the last used address (handed out and never paid) and [ahead] past the next
+     * unused one, in order. iOS has one wallet and no coinjoin, so no seat is left out.
+     */
+    fun unusedReceiveIndexes(ahead: Int = 20): List<Int> {
+        val used = _state.value.rows.filter { it.chainIndex == 0 && it.isUsed }.map { it.index }.toSet()
+        return (0 until nextReceiveIndex() + ahead).filter { it !in used }
+    }
+
+    /** The receive address at [index] (default: the next unused) and its derivation path. */
+    fun receiveAddress(index: Int = nextReceiveIndex()): Pair<String, String>? {
+        val zpub = _state.value.zpub ?: return null
         return runCatching {
             val parsed = Bip32.parseExtendedPubKey(zpub)
             val pub = Bip32.derivePath(parsed, 0, index).pubkey()

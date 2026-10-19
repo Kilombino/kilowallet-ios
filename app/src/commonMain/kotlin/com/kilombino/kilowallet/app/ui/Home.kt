@@ -172,10 +172,19 @@ private fun MovementDialog(tx: TxConf, onClose: () -> Unit) {
     )
 }
 
+/**
+ * The next unused address, and ◀ ▶ through every unused one (the ones skipped below the last used
+ * address included), as the Android app's `ui/HotWallet.kt` ReceiveSheet does.
+ */
 @Composable
-fun ReceiveScreen(model: WalletModel, platform: AppPlatform) {
+fun ReceiveScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     val clipboard = LocalClipboardManager.current
-    val addr = remember { model.receiveAddress() }
+    // A scan that finds newly used addresses works the list (and the address) out again.
+    val walletKey = listOf(state.zpub, state.rows.count { it.chainIndex == 0 && it.isUsed })
+    val unused = remember(walletKey) { model.unusedReceiveIndexes() }
+    val next = remember(walletKey) { model.nextReceiveIndex() }
+    var index by remember(walletKey) { mutableStateOf(next) }
+    val addr = remember(walletKey, index) { model.receiveAddress(index) }
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { delay(2000); copied = false } }
     ScreenColumn {
@@ -193,12 +202,22 @@ fun ReceiveScreen(model: WalletModel, platform: AppPlatform) {
             }
             Text(chunked(address), style = MaterialTheme.typography.titleMedium, color = TextMain,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-            Text(path, style = MaterialTheme.typography.bodySmall, color = TextFaint)
+            val pos = unused.indexOf(index)
+            Text("unused · $path" + (if (pos >= 0) " · ${pos + 1} of ${unused.size}" else ""),
+                style = MaterialTheme.typography.bodySmall, color = TextFaint)
         }
         PrimaryButton(if (copied) "Copied" else "Copy address", Modifier.fillMaxWidth()) {
             clipboard.setText(AnnotatedString(address)); copied = true
         }
-        Explain("This is your next unused address. Send only ${Chain.COIN} on the ${Chain.DISPLAY} chain (${Chain.TICKER}) to it. " +
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            val prev = unused.lastOrNull { it < index }
+            val after = unused.firstOrNull { it > index } ?: (index + 1)
+            SecondaryButton("◀ Previous", Modifier.weight(1f), enabled = prev != null) { prev?.let { index = it; copied = false } }
+            SecondaryButton("Next ▶", Modifier.weight(1f)) { index = after; copied = false }
+        }
+        if (index != next) LinkText("back to the next unused", color = TextFaint) { index = next; copied = false }
+        Explain(if (index == next) "This is your next unused address." else "This address has never received anything.")
+        Explain("Send only ${Chain.COIN} on the ${Chain.DISPLAY} chain (${Chain.TICKER}) to it. " +
             "A fresh address for every payment keeps your history private; old addresses keep working.")
     }
 }

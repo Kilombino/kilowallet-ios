@@ -38,7 +38,7 @@ fun App(platform: AppPlatform) {
                     Screen.Restore -> RestoreScreen(model)
                     Screen.Watch -> WatchScreen(model, platform)
                     Screen.Home -> HomeScreen(model, state, platform)
-                    Screen.Receive -> ReceiveScreen(model, platform)
+                    Screen.Receive -> ReceiveScreen(model, state, platform)
                     Screen.Send -> SendScreen(model, state, platform)
                     Screen.Settings -> SettingsScreen(model, state, platform)
                     is Screen.ShowWords -> ShowWordsScreen(model, s.words)
