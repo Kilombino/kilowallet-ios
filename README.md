@@ -24,7 +24,8 @@ Version 0.2 (BTC only):
   for the recipient and for the change.
 - Languages: English, Español, Català, Deutsch, Français, Italiano, Português, 中文 — the Android
   app's own tables. The phone's language by default (English if the app doesn't have it), or one
-  chosen in Settings. Texts only the iOS app has are still in English.
+  chosen in Settings. Texts only the iOS app has are translated in `scripts/i18n-ios/`, and the
+  camera and Face ID permission texts in `iosApp/iosApp/<lang>.lproj/InfoPlist.strings`.
 - Recovery words in the iOS Keychain, unlocked by Face ID / Touch ID / the device passcode.
 
 New in 0.2 (ported from Kilowallet for Android, up to 1.1.7): Electrum protocol negotiation up to 1.6,
@@ -155,7 +156,7 @@ Corecoin and Kilojoin, and iOS has neither). Strings only iOS has can be transla
 
 ```sh
 scripts/sync-i18n.py /path/to/kilowallet <commit>
-./gradlew :app:desktopTest -i     # also lists the iOS strings still in English
+./gradlew :app:desktopTest -i     # fails if an iOS string has no Spanish; lists the rest per language
 ```
 
 ### Cryptography

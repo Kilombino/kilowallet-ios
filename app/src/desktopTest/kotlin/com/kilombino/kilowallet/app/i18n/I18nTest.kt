@@ -86,26 +86,62 @@ class I18nTest {
 
     /**
      * Every string literal the iOS screens show, with sample values in its templates, in every
-     * language: none may come out with an Android nickname. Prints the ones Spanish leaves in
-     * English (run with -i to see them).
+     * language: none may come out with an Android nickname, and in Spanish every one must be
+     * translated (the others are printed; run with -i to see them). [neutral] are the strings
+     * that are the same in every language, or are not shown at all.
      */
     @Test fun iosStringsInEveryLanguage() {
         val sources = File("src/commonMain/kotlin/com/kilombino/kilowallet/app").walkTopDown().filter { it.extension == "kt" && "i18n" !in it.path } +
             File("../core/src/commonMain/kotlin/com/kilombino/kilowallet/core/wallet/Send.kt")
-        val strings = sources.flatMap { iosStrings(it.readText()) }.toSortedSet()
-        val untranslated = mutableListOf<String>()
+        val strings = sources.flatMap { iosStrings(it.readText()) }.filter { s -> neutral.none { it.matches(s) } }.toSortedSet()
+        val left = HashMap<String, List<String>>()
         for (l in codes) {
             I18n.lang.value = l
-            for (s in strings) {
+            left[l] = strings.filter { s ->
                 val out = I18n.tr(s)
                 assertTrue(!banned.containsMatchIn(out) || banned.containsMatchIn(s), "$l: \"$s\" -> \"$out\"")
-                if (l == I18n.ES && out == s) untranslated += s
+                out == s
             }
         }
         I18n.lang.value = I18n.ES
-        println("iOS strings: ${strings.size}, left in English in Spanish: ${untranslated.size}")
-        untranslated.forEach { println("  EN: $it") }
+        println("iOS strings: ${strings.size}; left in English: " + codes.joinToString { "$it ${left[it]!!.size}" })
+        left.forEach { (l, ss) -> ss.forEach { println("  $l: $it") } }
+        assertEquals(emptyList(), left[I18n.ES], "iOS strings with no Spanish translation (add them to scripts/i18n-ios/es.json)")
     }
+
+    /** iOS strings built from values, read as they are on screen. */
+    @Test fun iosTemplates() {
+        I18n.lang.value = I18n.ES
+        assertEquals("ENVIAR CON FACE ID", I18n.tr("SEND WITH FACE ID"))
+        assertEquals("ENVIAR CON TU CÓDIGO", I18n.tr("SEND WITH YOUR PASSCODE"))
+        assertEquals("direcciones de recepción · 3 usadas hasta ahora", I18n.tr("receive addresses · 3 used so far"))
+        assertEquals("sin usar · m/84'/0'/0'/0/7 · 2 de 20", I18n.tr("unused · m/84'/0'/0'/0/7 · 2 de 20".replace(" de ", " of ")))
+        assertEquals("fulcrum.kilombino.com:17717 (por defecto)", I18n.tr("fulcrum.kilombino.com:17717 (default)"))
+        assertEquals("\nNueva huella SHA-256:\nAB12 CD34", I18n.tr("\nNew SHA-256 fingerprint:\nAB12 CD34"))
+        assertEquals("Palabra n.º 3", I18n.tr("Word #3"))
+        assertEquals("12 palabras · válidas", I18n.tr("12 words · valid"))
+        assertEquals("MONEDERO NUEVO · 12 PALABRAS", I18n.tr("NEW WALLET · 12 WORDS"))
+        I18n.lang.value = I18n.ZH
+        assertEquals("未使用 · m/84'/0'/0'/0/7 · 第 2 个，共 20 个", I18n.tr("unused · m/84'/0'/0'/0/7 · 2 of 20"))
+        assertEquals("用 TOUCH ID 发送", I18n.tr("SEND WITH TOUCH ID"))
+        I18n.lang.value = I18n.ES
+    }
+
+    /** Not shown, or the same in every language: demo and preference keys, units, numbers, names. */
+    private val neutral = listOf(
+        "", "a", "4f", "abandon", "about", "abandon … about", "pulse", "this is live", "receive@es", "bitcoin:", "sp1", "\\\\s+",
+        "Kilowallet", "Face ID", "Touch ID", "sats", " sats", "zpub / ypub / xpub", "QR code of the address",
+        "github.com/Kilombino/kilowallet-ios", "kilombino.com", "welcome", "create", "restore", "watch", "home", "review",
+        "word word …\npassphrase",
+        // The same word in Spanish (and others): "host", "total", "conf".
+        "host", "total", "? sats", "12 345 conf",
+        // Pieces of strings the code joins at run time; [iosTemplates] checks the whole ones.
+        " · 12 345 of 12 345", "12 345 addresses · 12 345 used so far",
+    ).map { Regex(Regex.escape(it)) } + listOf(
+        Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates
+        Regex("""m/.*"""), Regex("""pin\..*"""), Regex("""mempool\.kilombino\.com/tx/.*"""), Regex("""bc1q[a-z0-9]{30,}"""),
+        Regex(""".*kilombino\.com:17717"""),
+    )
 
     private fun iosStrings(src: String): List<String> {
         // "a " +\n "b" written over several lines is one string at run time.
