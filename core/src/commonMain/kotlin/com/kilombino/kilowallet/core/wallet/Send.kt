@@ -26,9 +26,11 @@ data class SendDraft(
 /**
  * Coin selection and fees, from the Android app's `WalletViewModel.prepareSend`, `maxSendable`,
  * `estimateFee` and `feeConcern`: largest coins first, a change output only above dust, dust
- * change folded into the fee, outputs sized by their real script length.
+ * change folded into the fee, outputs sized by their real script length; each output held to its
+ * own type's dust limit ([dustFor], Android e4c968d).
  */
 object SendPlanner {
+    /** Below this, a change output costs more to spend later than it is worth: fold it into the fee. */
     const val DUST_SATS = 294L
     const val MIN_RATE = 0.1
     const val MAX_RATE = 1000.0
@@ -70,12 +72,13 @@ object SendPlanner {
             val sum = utxos.sumOf { it.value }
             val fee = estimateFee(utxos.size, noChange, rate)
             val amount = sum - fee
-            require(amount > DUST_SATS) { "The coins ($sum sats) do not cover the fee ($fee sats)." }
+            require(amount >= dustFor(toScript)) { "The coins ($sum sats) do not cover the fee ($fee sats)." }
             return SendDraft(to, amount, fee, 0, utxos, listOf(TxBuilder.Output(toScript, amount)), rate)
         }
 
         require(amountSats > 0) { "Enter an amount." }
-        require(amountSats > DUST_SATS) { "Enter an amount above $DUST_SATS sats." }
+        // An output under its type's dust limit is refused by the network: say so here.
+        dustFor(toScript).let { d -> require(amountSats >= d) { "Enter at least $d sats: less can't be sent to that kind of address." } }
         val chosen = mutableListOf<SpendableUtxo>()
         var sum = 0L
         for (u in utxos.sortedByDescending { it.value }) {
@@ -88,7 +91,8 @@ object SendPlanner {
         require(sum >= amountSats + fee) { "Not enough funds for the amount plus fee." }
         var change = sum - amountSats - fee
         val outputs = mutableListOf(TxBuilder.Output(toScript, amountSats))
-        if (change > DUST_SATS && !noChangeOutput) {
+        // Taproot change has a higher dust limit (330) than bc1q (294).
+        if (change > maxOf(DUST_SATS, dustFor(changeScript) - 1) && !noChangeOutput) {
             outputs += TxBuilder.Output(changeScript, change)
         } else {
             fee = sum - amountSats
@@ -113,6 +117,19 @@ object SendPlanner {
         val parsed = Bip32.parseExtendedPubKey(zpub)
         return Address.scriptPubKey(Bip32.derivePath(parsed, 1, index).pubkey(), parsed.scriptType)
     }
+}
+
+/**
+ * The smallest standard output for [script] (Bitcoin Core's dust limit at 3 sat/vB), from the
+ * Android app's `ui/WalletViewModel.kt` `dustFor`: 294 for bc1q, 330 for bc1p and P2WSH, 540 for
+ * P2SH, 546 for P2PKH. An output under it is refused by the network, so change below it goes to
+ * the fee instead.
+ */
+fun dustFor(script: ByteArray): Long = when {
+    script.size == 22 && script[0] == 0.toByte() -> 294L               // P2WPKH
+    script.size == 34 && (script[0] == 0x51.toByte() || script[0] == 0.toByte()) -> 330L // P2TR, P2WSH
+    script.size == 23 && script[0] == 0xa9.toByte() -> 540L            // P2SH
+    else -> 546L
 }
 
 /**
