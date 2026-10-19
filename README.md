@@ -3,13 +3,14 @@
 A self-custodial wallet for Bitcoin on the BLAKE2b proof-of-work chain (BTC / XBT), for iPhone.
 The iOS sibling of [Kilowallet for Android](https://github.com/Kilombino/kilowallet).
 
-Version 0.1 (BTC only):
+Version 0.2 (BTC only):
 
 - Create a wallet (12 or 24 words; the words are shown and then checked), restore from words
   (optional BIP-39 passphrase), or watch-only from a zpub (also ypub / xpub).
 - Balance and movements with confirmations, with an SPV check of recent incoming payments against
   the block header's BLAKE2b proof of work (164-byte headers).
-- Receive: next unused address with a QR code (CoreImage) and copy.
+- Receive: next unused address with a QR code (CoreImage) and copy; ◀ ▶ move through every
+  unused address (also the ones skipped below the last used one).
 - Send: address (paste, or scan a QR with the camera), amount or MAX, fee rate (server suggestion),
   review screen with a second confirmation for high fees, signing with the **unified sighash 0x21**
   (replay protection: the transaction is invalid on the SHA-256 chain), broadcast over Electrum TLS.
@@ -17,9 +18,20 @@ Version 0.1 (BTC only):
 - Electrum server: `fulcrum.kilombino.com:17717` (TLS) by default, or your own. Certificates are
   self-signed, so they are pinned on first use; a changed certificate is refused until you accept it.
   The app refuses a server whose headers are not 164 bytes (i.e. not on the BLAKE2b chain).
+  Electrum protocol 1.4 to 1.6 (the server picks; Shulcrum and Frigate speak 1.6), and address
+  statuses and coins are asked in batches of 50, one round trip each.
+- Every output held to its own type's dust limit (294 bc1q, 330 bc1p/P2WSH, 540 P2SH, 546 P2PKH),
+  for the recipient and for the change.
+- Languages: English, Español, Català, Deutsch, Français, Italiano, Português, 中文 — the Android
+  app's own tables. The phone's language by default (English if the app doesn't have it), or one
+  chosen in Settings. Texts only the iOS app has are still in English.
 - Recovery words in the iOS Keychain, unlocked by Face ID / Touch ID / the device passcode.
 
-Not in 0.1: other chains, coinjoin, Ark, Lightning, notifications, fiat prices, PSBT.
+New in 0.2 (ported from Kilowallet for Android, up to 1.1.7): Electrum protocol negotiation up to 1.6,
+batched requests, per-type dust limits, ◀ ▶ on the receive screen, languages.
+
+Not in 0.2: other chains, coinjoin, Ark, Lightning, notifications, fiat prices, PSBT, Taproot
+accounts, a full header chain (SPV is per payment, as in 0.1).
 
 ## Official builds
 
@@ -52,7 +64,7 @@ Kotlin code is built by Gradle from Xcode's "Compile Kotlin Framework" build pha
 3. Select the **iosApp** target → **Signing & Capabilities**: choose your **Team**, and set the
    **Bundle Identifier** (suggested: `com.kilombino.kilowallet`). The same two values can instead
    be set once in `iosApp/Configuration/Config.xcconfig` (`TEAM_ID`, `BUNDLE_ID`). The version is
-   `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in that file (0.1.0 / 1); raise the build
+   `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in that file (0.2.0 / 2); raise the build
    number for every upload.
 
 4. Try it: pick an iPhone simulator or a connected iPhone and press Run. In the Simulator, enable
@@ -107,7 +119,10 @@ tools/android-vectors/  generates the test vectors from the Android app's own co
 
 The wallet logic is a **port of the Android app's code at commit
 [`5dfd590`](https://github.com/Kilombino/kilowallet/commit/5dfd59054446d32229575b5839a3dbd7ab6b46b5)
-(v0.26.0)**, file by file (each file says which Android file it comes from):
+(v0.26.0)**, brought up to
+[`ed7177f`](https://github.com/Kilombino/kilowallet/commit/ed7177ff6f07f7019809905da5a0aadecd6eab6b)
+(1.1.7) in 0.2 for the Electrum client, the dust limits, the receive screen and the languages,
+file by file (each file says which Android file it comes from):
 
 | here (`core/src/commonMain/.../core/`) | Android (`app/src/main/java/com/kilombino/pyblockwatch/`) |
 |---|---|
@@ -115,7 +130,8 @@ The wallet logic is a **port of the Android app's code at commit
 | `crypto/Bip39, Bip32, Bip32Priv, Address, Base58, TxBuilder, BlockHeader` | `crypto/…` — same code, `BigInteger`/`javax.crypto` replaced |
 | `crypto/Ec` | `crypto/Secp256k1, Ecdsa, NativeSecp` — now libsecp256k1 via secp256k1-kmp |
 | `chain/ElectrumClient, Chain` | `chain/ElectrumClient, Chain` — over a platform socket, kotlinx.serialization |
-| `wallet/Scanner, Send` | `data/Scanner`, `ui/WalletViewModel` (prepareSend, verifyCoins, confirmSend, fees) |
+| `wallet/Scanner, Send` | `data/Scanner`, `ui/WalletViewModel` (prepareSend, verifyCoins, confirmSend, fees, dustFor) |
+| `app/…/i18n/I18n, Text` + `composeResources/files/i18n/*.json` | `ui/i18n/I18n, Text` + `assets/i18n/*.json` (copied by `scripts/sync-i18n.py`) |
 
 Why a copy and not a Gradle composite build / submodule of Kilombino/kilowallet: the Android
 sources are JVM-only (`java.math.BigInteger`, `javax.crypto`, `java.net` sockets, `org.json`), so
@@ -130,6 +146,16 @@ JVM and in the iOS simulator. To re-check against a newer Android version:
 ```sh
 ./gradlew -p tools/android-vectors run -PandroidRepo=/path/to/kilowallet
 ./gradlew :core:jvmTest
+```
+
+The language tables are copied the same way, from a given Android commit; entries that call the
+SHA-256 chain or the coinjoin by the Android app's nicknames are left out (on iOS they would be
+Corecoin and Kilojoin, and iOS has neither). Strings only iOS has can be translated in
+`scripts/i18n-ios/<lang>.json`, merged on top:
+
+```sh
+scripts/sync-i18n.py /path/to/kilowallet <commit>
+./gradlew :app:desktopTest -i     # also lists the iOS strings still in English
 ```
 
 ### Cryptography
@@ -150,14 +176,18 @@ JVM and in the iOS simulator. To re-check against a newer Android version:
 `.github/workflows/ios.yml` (GitHub's macOS runners):
 
 - `:core:jvmTest` and `:core:iosSimulatorArm64Test` — the Android vectors, Knots' unified sighash
-  vectors, real BLAKE2b mainnet headers, BIP-39/BIP-84 official vectors, coin selection;
+  vectors, real BLAKE2b mainnet headers, BIP-39/BIP-84 official vectors, coin selection, dust
+  limits, the Electrum client against a scripted server (1.4/1.6, batches);
+- `:app:desktopTest` — the language tables and the translator, and every iOS screen string in
+  every language (none may come out with an Android nickname);
 - a live smoke test against the default Electrum server (allowed to fail if it is down);
 - builds the Xcode app for the simulator (Debug, unsigned) and, in a second job, for devices
   (Release, unsigned);
 - boots a simulator, installs and launches the app and uploads screenshots of the main screens as
   the `screenshots` artifact. For that, Debug builds accept a `-kwDemo <screen>` launch argument
   that opens a screen with the public "abandon … about" test wallet held only in memory (the
-  Keychain is not touched; the review screen uses a made-up coin). Release builds ignore it.
+  Keychain is not touched; the review screen uses a made-up coin). `-kwDemo receive@es` shows a
+  screen in another language. Release builds ignore it.
 
 Local development without a Mac: `./gradlew :core:jvmTest` runs all tests on the JVM,
 `./gradlew :app:compileKotlinIosSimulatorArm64` compiles the iOS Kotlin code (not the Swift), and
