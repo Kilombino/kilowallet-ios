@@ -17,6 +17,11 @@ data class SendDraft(
     val inputs: List<SpendableUtxo>,
     val outputs: List<TxBuilder.Output>,
     val feeRate: Double,
+    /** Set when this draft replaces an unconfirmed send (RBF): its txid and the fee it paid. */
+    val replaces: String? = null,
+    val replacedFee: Long = 0,
+    /** A cancellation (RBF): [replaces] is sent back to this wallet instead of to its recipients. */
+    val cancels: Boolean = false,
 ) {
     val totalSent: Long get() = amount + fee
     /** The fee rate actually paid, from the estimated size. */

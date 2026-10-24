@@ -115,6 +115,46 @@ fun main(args: Array<String>) {
         }
     }
 
+    // RBF: an unconfirmed send, and its speed-up and cancellation as the app's hot wallet builds
+    // them (WalletViewModel.prepareBump / prepareCancel, 1.2.5). The fee rule is the app's
+    // estimateFee for a hot wallet (P2WPKH inputs), copied here because it lives in the
+    // view model: 10.5 + 68 per input + (9 + script) per output, times the rate, rounded up.
+    fun estimateFee(nIn: Int, scripts: List<ByteArray>, rate: Double): Long =
+        kotlin.math.ceil((10.5 + 68.0 * nIn + scripts.sumOf { 9.0 + it.size }) * rate).toLong()
+    val replacements = mutableListOf<String>()
+    wallets.take(3).forEachIndexed { wi, (_, w) ->
+        val (master, zpub, _) = w
+        val parsed = Bip32.parseExtendedPubKey(zpub)
+        fun change(i: Int) = Address.scriptPubKey(Bip32.derivePath(parsed, 1, i).pubkey(), ScriptType.P2WPKH)
+        val nIn = wi + 1
+        val coins = (0 until nIn).map { k ->
+            val ch = k % 2; val idx = k + 2
+            val node = Bip32Priv.derivePath(master, "m/84'/0'/0'/$ch/$idx")
+            Triple(ch, idx, TxBuilder.Input(det("rbf-prev-$wi-$k").toHex(), k, 80_000L + 7_777L * k + wi,
+                node.key, node.publicKey(), 0xfffffffdL))
+        }
+        val inputs = coins.map { it.third }
+        val to = Address.decodeToScriptPubKey(recipients[wi % recipients.size])
+        val origOuts = listOf(TxBuilder.Output(to, 30_000L + wi), TxBuilder.Output(change(4), inputs.sumOf { it.value } - 30_000L - wi - 200L))
+        val original = TxBuilder.build(inputs, origOuts, unified = true)
+        val oldFee = inputs.sumOf { it.value } - origOuts.sumOf { it.value }
+        for (rate in listOf(1.0, 3.0, 12.5)) {
+            // Cancel: everything back to the next change address.
+            val back = change(5)
+            val cFee = maxOf(estimateFee(nIn, listOf(back), rate), oldFee + estimateFee(nIn, listOf(back), 1.0) + 1)
+            val cancel = TxBuilder.build(inputs, listOf(TxBuilder.Output(back, inputs.sumOf { it.value } - cFee)), unified = true)
+            // Speed-up: the same outputs, the extra fee out of the change.
+            val scripts = origOuts.map { it.scriptPubKey }
+            val bFee = maxOf(estimateFee(nIn, scripts, rate), oldFee + estimateFee(nIn, scripts, 1.0) + 1)
+            val bump = TxBuilder.build(inputs, listOf(origOuts[0], TxBuilder.Output(origOuts[1].scriptPubKey, origOuts[1].value - (bFee - oldFee))), unified = true)
+            replacements += obj(
+                "wallet" to wi, "rate" to rate, "original" to original.rawHex, "originalTxid" to original.txid,
+                "coins" to coins.map { (ch, idx, i) -> obj("txid" to i.txid, "vout" to i.vout, "value" to i.value, "chain" to ch, "index" to idx) },
+                "backTo" to back.toHex(), "cancelFee" to cFee, "cancel" to cancel.rawHex, "bumpFee" to bFee, "bump" to bump.rawHex,
+            )
+        }
+    }
+
     val decodes = (recipients + listOf(
         "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4",
         "bc1pqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqsyjer9e",
@@ -122,7 +162,7 @@ fun main(args: Array<String>) {
 
     val json = obj(
         "androidCommit" to commit, "wallets" to wallets.map { it.first }, "ecdsa" to ecdsa,
-        "transactions" to txs, "decodes" to decodes,
+        "transactions" to txs, "decodes" to decodes, "replacements" to replacements,
     )
     val pretty = json.replace("},{", "},\n{")
     out.parentFile.mkdirs()

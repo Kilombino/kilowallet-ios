@@ -253,6 +253,35 @@ class Scanner(
         } finally { c.close() }
     }
 
+    /**
+     * An unconfirmed send of this wallet read back for a replacement (RBF): the transaction [txid]
+     * and, in its input order, the coins it spends, each tagged with the address of [rows] that
+     * holds it. Every transaction is checked against its txid, so the server can't change an
+     * amount that would be signed. Fails when an input is not this wallet's.
+     */
+    suspend fun replacementCoins(
+        txid: String, rows: List<AddressRow>, endpoint: NodeEndpoint, pinnedFingerprint: String?,
+    ): Pair<TxParse.Tx, List<SpendableUtxo>> = withContext(worker) {
+        val c = client(endpoint, pinnedFingerprint)
+        try {
+            c.connect()
+            fun fetch(id: String): TxParse.Tx = TxParse.parse(c.transaction(id)).also {
+                require(TxParse.txid(it) == id) { "The server sent a different transaction than the one asked for (${id.take(8)}…)." }
+            }
+            val tx = fetch(txid)
+            val byHash = rows.associateBy { it.scriptHash }
+            val prevs = HashMap<String, TxParse.Tx>()
+            val coins = tx.inputs.map { i ->
+                val prev = prevs.getOrPut(i.txid) { fetch(i.txid) }.outputs.getOrNull(i.vout)
+                    ?: error("The server listed a coin that does not exist (${i.txid.take(8)}…:${i.vout}).")
+                val row = byHash[Address.electrumScriptHash(prev.scriptPubKey)]
+                    ?: error("This transaction spends coins that are not in this wallet: it can't be replaced from here.")
+                SpendableUtxo(i.txid, i.vout, prev.value, row.chainIndex, row.index, 0)
+            }
+            tx to coins
+        } finally { c.close() }
+    }
+
     suspend fun broadcast(rawTxHex: String, endpoint: NodeEndpoint, pinnedFingerprint: String?): String =
         withContext(worker) {
             val client = client(endpoint, pinnedFingerprint)

@@ -58,6 +58,20 @@ object Bip32 {
         return ExtendedPubKey(Ec.parsePublicKey(keyBytes), chainCode, depth, scriptType)
     }
 
+    /**
+     * [encoded] (an xpub, ypub or zpub) with the version bytes of [type]: the same key, read as
+     * making that type's addresses. A plain xpub says nothing about them (Android 1.2.4 asks for
+     * the type on import), so the watch-only wallet keeps the key under its chosen type's prefix.
+     */
+    fun withScriptType(encoded: String, type: ScriptType): String {
+        parseExtendedPubKey(encoded) // the same readable errors first
+        val raw = Base58.decodeChecked(encoded.trim())
+        val v = VERSIONS.entries.first { it.value == type }.key
+        val out = raw.copyOf()
+        out[0] = (v ushr 24).toByte(); out[1] = (v ushr 16).toByte(); out[2] = (v ushr 8).toByte(); out[3] = v.toByte()
+        return Base58.encodeChecked(out)
+    }
+
     /** CKDpub: I = HMAC-SHA512(cpar, serP(Kpar) ‖ ser32(i));  Ki = point(IL) + Kpar;  ci = IR */
     fun deriveChild(parent: ExtendedPubKey, index: Int): ExtendedPubKey {
         require(index >= 0) { "hardened derivation is impossible from a public key" }
