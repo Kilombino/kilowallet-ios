@@ -52,6 +52,30 @@ final class Bridge: NSObject, IosBridge {
         }
     }
 
+    // MARK: Price feed
+
+    /// One HTTPS GET (the price feed): no cookies, no cache, a 10 s timeout; the body of a 200 answer or nil.
+    private static let session: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForRequest = 10
+        c.timeoutIntervalForResource = 15
+        c.httpCookieStorage = nil
+        c.urlCache = nil
+        c.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: c)
+    }()
+
+    func httpGet(url: String, completion: @escaping (String?) -> Void) {
+        guard let u = URL(string: url), u.scheme == "https" else { completion(nil); return }
+        var req = URLRequest(url: u)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        Self.session.dataTask(with: req) { data, response, _ in
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                  let data = data, let body = String(data: data, encoding: .utf8) else { completion(nil); return }
+            completion(body)
+        }.resume()
+    }
+
     // MARK: Misc
 
     func appVersion() -> String {

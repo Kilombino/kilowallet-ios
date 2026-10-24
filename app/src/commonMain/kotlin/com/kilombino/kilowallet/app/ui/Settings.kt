@@ -27,6 +27,8 @@ import com.kilombino.kilowallet.app.WalletModel
 import com.kilombino.kilowallet.app.i18n.I18n
 import com.kilombino.kilowallet.core.chain.Chain
 import com.kilombino.kilowallet.core.chain.NodeEndpoint
+import com.kilombino.kilowallet.core.market.Fiat
+import com.kilombino.kilowallet.core.market.MarketFeed
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -52,6 +54,23 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                     Chip(name, I18n.choice.value == code) { I18n.set(code) }
                 }
             }
+        }
+
+        // Values in a currency (Android 1.2.3: 36 of them): one choice for the whole app.
+        Panel {
+            SectionLabel("Currency")
+            var more by remember { mutableStateOf(false) }
+            val available = Fiat.available(state.market)
+            val shown = if (more) available else available.filter { it.code == "USD" || it.code == "EUR" || it.code == state.fiat }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Chip("Off", state.fiat == Fiat.OFF) { model.setFiat(Fiat.OFF) }
+                shown.forEach { c -> Chip(c.code, state.fiat == c.code) { model.setFiat(c.code) } }
+                if (!more && available.size > shown.size) Chip("▾", false) { more = true }
+            }
+            Explain(if (state.fiat == Fiat.OFF) "No prices: the app asks no price server." else
+                "Prices from ${MarketFeed.SOURCE} (the ECB's daily reference for the exchange rates). The request is the " +
+                    "same for everyone: it carries nothing about your wallet.", color = TextSoft)
+            if (state.fiat != Fiat.OFF) KeyValue("price of 1 ${Chain.TICKER}", state.perCoin?.let { Fiat.format(it, state.fiat) } ?: "no price yet")
         }
 
         Panel {
@@ -91,8 +110,8 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             SectionLabel("About")
             Text("Kilowallet for iOS ${platform.appVersion}", style = MaterialTheme.typography.bodyMedium, color = TextMain)
             Explain("A self-custodial wallet for Bitcoin on the ${Chain.DISPLAY} proof-of-work chain (${Chain.TICKER}). " +
-                "No account, no analytics, no tracking. The app contacts only the Electrum server above; opening a " +
-                "transaction on the explorer is done in your browser, only when you tap it.", color = TextSoft)
+                "No account, no analytics, no tracking. The app contacts only the Electrum server above and, unless " +
+                "the currency is off, the price feed; opening a transaction on the explorer is done in your browser, only when you tap it.", color = TextSoft)
             LinkText("github.com/Kilombino/kilowallet-ios", color = Purple) { runCatching { uri.openUri("https://github.com/Kilombino/kilowallet-ios") } }
             LinkText("kilombino.com", color = Purple) { runCatching { uri.openUri("https://kilombino.com") } }
         }

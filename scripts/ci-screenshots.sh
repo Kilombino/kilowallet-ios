@@ -27,7 +27,7 @@ xcrun simctl install "$UDID" "$APP"
 
 n=0
 # "screen@lang" shows that screen in another language (the app's language picker, set by the demo).
-for screen in welcome create restore watch home receive send review settings receive@es settings@es; do
+for screen in welcome create restore watch home receive send review replace settings receive@es settings@es; do
   n=$((n + 1))
   base=${screen%@*}
   name=${screen/@/-}

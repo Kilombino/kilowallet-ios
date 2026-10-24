@@ -116,7 +116,7 @@ class I18nTest {
         assertEquals("ENVIAR CON TU CÓDIGO", I18n.tr("SEND WITH YOUR PASSCODE"))
         assertEquals("direcciones de recepción · 3 usadas hasta ahora", I18n.tr("receive addresses · 3 used so far"))
         assertEquals("sin usar · m/84'/0'/0'/0/7 · 2 de 20", I18n.tr("unused · m/84'/0'/0'/0/7 · 2 de 20".replace(" de ", " of ")))
-        assertEquals("fulcrum.kilombino.com:17717 (por defecto)", I18n.tr("fulcrum.kilombino.com:17717 (default)"))
+        assertEquals("fulcrum.kilombino.com:17717 (predeterminado)", I18n.tr("fulcrum.kilombino.com:17717 (default)"))
         assertEquals("\nNueva huella SHA-256:\nAB12 CD34", I18n.tr("\nNew SHA-256 fingerprint:\nAB12 CD34"))
         assertEquals("Palabra n.º 3", I18n.tr("Word #3"))
         assertEquals("12 palabras · válidas", I18n.tr("12 words · valid"))
@@ -133,6 +133,10 @@ class I18nTest {
         "Kilowallet", "Face ID", "Touch ID", "sats", " sats", "zpub / ypub / xpub", "QR code of the address",
         "github.com/Kilombino/kilowallet-ios", "kilombino.com", "welcome", "create", "restore", "watch", "home", "review",
         "word word …\npassphrase",
+        // Currency codes, a preference key and the RBF screenshot's name.
+        "USD", "EUR", "fiat", "replace",
+        // "Legacy" is the same word in every table but Chinese.
+        "Legacy · 1… (BIP44)",
         // The same word in Spanish (and others): "host", "total", "conf".
         "host", "total", "? sats", "12 345 conf",
         // Pieces of strings the code joins at run time; [iosTemplates] checks the whole ones.

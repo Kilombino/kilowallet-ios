@@ -102,10 +102,10 @@ fun LinkText(text: String, color: Color = TextSoft, modifier: Modifier = Modifie
 @Composable
 fun Field(
     value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier,
-    keyboard: KeyboardType = KeyboardType.Text, singleLine: Boolean = true, minLines: Int = 1,
+    keyboard: KeyboardType = KeyboardType.Text, singleLine: Boolean = true, minLines: Int = 1, enabled: Boolean = true,
 ) {
     OutlinedTextField(
-        value = value, onValueChange = onChange, modifier = modifier.fillMaxWidth(),
+        value = value, onValueChange = onChange, modifier = modifier.fillMaxWidth(), enabled = enabled,
         label = { Text(label, style = MaterialTheme.typography.bodySmall) },
         singleLine = singleLine, minLines = minLines,
         textStyle = MaterialTheme.typography.bodyLarge,

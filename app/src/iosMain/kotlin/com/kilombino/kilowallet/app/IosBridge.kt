@@ -26,6 +26,8 @@ interface IosBridge {
     fun scanQr(completion: (String?) -> Unit)
 
     fun appVersion(): String
+    /** HTTPS GET: the body of a 200 answer, or null. Called back on any thread. */
+    fun httpGet(url: String, completion: (String?) -> Unit)
     /** CI screenshot mode only: write a marker file so the workflow knows the screen settled. */
     fun markReady(name: String)
 }

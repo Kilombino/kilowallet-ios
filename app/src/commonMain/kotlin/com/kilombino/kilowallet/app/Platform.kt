@@ -39,4 +39,9 @@ interface AppPlatform {
     /** Screenshot mode: tell the CI script the screen has settled. */
     fun markReady(name: String) {}
     val appVersion: String
+    /**
+     * HTTPS GET of [url] (the price feed only), calling back with the body of a 200 answer, or
+     * null. On iOS: URLSession (iosApp/iosApp/Bridge.swift).
+     */
+    fun httpGet(url: String, done: (String?) -> Unit) = done(null)
 }

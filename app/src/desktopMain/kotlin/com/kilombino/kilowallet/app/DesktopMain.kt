@@ -34,6 +34,16 @@ fun main() = application {
         override fun scanQr(done: (String?) -> Unit) = done(null)
         override val demoScreen: String? = System.getProperty("kw.demo")
         override val appVersion = "desktop-preview"
+        override fun httpGet(url: String, done: (String?) -> Unit) {
+            Thread {
+                done(runCatching {
+                    val c = java.net.URI(url).toURL().openConnection() as java.net.HttpURLConnection
+                    c.connectTimeout = 10_000; c.readTimeout = 10_000
+                    c.setRequestProperty("User-Agent", "KilowalletIOS")
+                    try { if (c.responseCode == 200) c.inputStream.bufferedReader().readText() else null } finally { c.disconnect() }
+                }.getOrNull())
+            }.start()
+        }
     }
     Window(onCloseRequest = ::exitApplication, title = "Kilowallet (preview)",
         state = rememberWindowState(position = androidx.compose.ui.window.WindowPosition(0.dp, 0.dp), width = 430.dp, height = 900.dp), undecorated = true) { App(platform) }

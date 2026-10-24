@@ -6,7 +6,11 @@ import com.kilombino.kilowallet.core.crypto.Address
 import com.kilombino.kilowallet.core.crypto.Bip32
 import com.kilombino.kilowallet.core.crypto.Bip39
 import com.kilombino.kilowallet.core.crypto.ScriptType
+import com.kilombino.kilowallet.core.market.Fiat
+import com.kilombino.kilowallet.core.market.MarketData
+import com.kilombino.kilowallet.core.market.MarketFeed
 import com.kilombino.kilowallet.core.wallet.AddressRow
+import com.kilombino.kilowallet.core.wallet.ReplacePlanner
 import com.kilombino.kilowallet.core.wallet.ScanEvent
 import com.kilombino.kilowallet.core.wallet.Scanner
 import com.kilombino.kilowallet.core.wallet.SendDraft
@@ -38,6 +42,8 @@ sealed interface Screen {
     data object Receive : Screen
     data object Send : Screen
     data object Settings : Screen
+    /** Speed up ([cancel] false) or cancel an unconfirmed send of this wallet by replacing it (RBF). */
+    data class Replace(val txid: String, val cancel: Boolean) : Screen
     data class ShowWords(val words: List<String>) : Screen
 }
 
@@ -53,7 +59,8 @@ sealed interface SendPhase {
     data object Preparing : SendPhase
     data class Review(val draft: SendDraft, val concern: String?) : SendPhase
     data object Signing : SendPhase
-    data class Sent(val txid: String) : SendPhase
+    /** [replaced]/[cancelled]: it was a speed-up or a cancellation of an earlier send. */
+    data class Sent(val txid: String, val replaced: Boolean = false, val cancelled: Boolean = false) : SendPhase
     data class Failed(val message: String) : SendPhase
 }
 
@@ -75,7 +82,13 @@ data class UiState(
     val suggestedRate: Double? = null,
     val spendable: List<SpendableUtxo>? = null,
     val message: String? = null,
+    /** The currency values are shown in ([Fiat.OFF]: none, and the price feed is never asked). */
+    val fiat: String = "USD",
+    val market: MarketData? = null,
 ) {
+    /** One XBT in [fiat], or null (off, or no price yet). */
+    val perCoin: Double? get() = if (fiat == Fiat.OFF) null else market?.xbtIn(fiat)
+
     val confirmed: Long get() = rows.sumOf { it.confirmed }
     val unconfirmed: Long get() = rows.sumOf { it.unconfirmed }
     val total: Long get() = confirmed + unconfirmed
@@ -100,6 +113,11 @@ class WalletModel(private val platform: AppPlatform) {
         const val K_ZPUB = "wallet.zpub"
         const val K_HOST = "server.host"
         const val K_PORT = "server.port"
+        const val K_FIAT = "fiat"
+        const val K_MARKET = "market.json"
+        const val K_MARKET_AT = "market.fetched"
+        /** Screenshot mode's price: no network, the same figures every run. */
+        const val DEMO_MARKET = """{"xbtUsd":360.0,"xbtEur":321.5,"fiatPerUsd":{"EUR":0.893,"GBP":0.748,"JPY":156.8}}"""
         fun pinKey(e: NodeEndpoint) = "pin.${e.host}:${e.port}"
     }
 
@@ -112,13 +130,64 @@ class WalletModel(private val platform: AppPlatform) {
         _state.value = UiState(
             screen = if (kind != null && zpub != null) Screen.Home else Screen.Welcome,
             kind = if (zpub != null) kind else null, zpub = zpub, endpoint = endpoint, pinned = prefs.get(pinKey(endpoint)),
+            fiat = prefs.get(K_FIAT) ?: "USD",
+            market = prefs.get(K_MARKET)?.let { j -> runCatching { MarketFeed.parse(j, prefs.get(K_MARKET_AT)?.toLongOrNull() ?: 0L) }.getOrNull() },
         )
         if (kind != null && zpub != null) scan()
+        refreshPrice()
+    }
+
+    // ------------------------------------------------------------------ price (Android 1.2.3: 36 currencies)
+
+    private var priceTriedMs = 0L
+
+    @OptIn(kotlin.time.ExperimentalTime::class)
+    private fun nowMs(): Long = kotlin.time.Clock.System.now().toEpochMilliseconds()
+
+    /**
+     * The XBT price from mempool.kilombino.com, at most once per the feed's poll interval (5 min),
+     * and after a failure not again for 10 minutes. Nothing is asked while prices are off. The
+     * request carries nothing about the wallet: it is the same for everyone.
+     */
+    fun refreshPrice(force: Boolean = false) {
+        val s = _state.value
+        if (s.fiat == Fiat.OFF) return
+        if (platform.demoScreen != null) {
+            _state.update { it.copy(market = MarketFeed.parse(DEMO_MARKET, 0L)) }
+            return
+        }
+        val now = nowMs()
+        val m = s.market
+        if (!force && m != null && now - m.fetchedMs < m.pollMinutes * 60_000L) return
+        if (now - priceTriedMs < (if (force) 60_000L else 10 * 60_000L)) return
+        priceTriedMs = now
+        scope.launch {
+            val body = suspendCancellableCoroutine<String?> { c -> platform.httpGet(MarketFeed.API) { c.resume(it) } } ?: return@launch
+            val parsed = runCatching { MarketFeed.parse(body, now) }.getOrNull() ?: return@launch
+            if (parsed.xbtUsd == null) return@launch
+            prefs.put(K_MARKET, body); prefs.put(K_MARKET_AT, now.toString())
+            _state.update { it.copy(market = parsed) }
+        }
+    }
+
+    /** [code]: a [Fiat] currency, or [Fiat.OFF]. One choice for the whole app. */
+    fun setFiat(code: String) {
+        prefs.put(K_FIAT, code)
+        _state.update { it.copy(fiat = code) }
+        refreshPrice()
     }
 
     fun go(screen: Screen) {
         _state.update { it.copy(screen = screen, message = null) }
         if (screen == Screen.Send) openSend()
+        if (screen is Screen.Replace) {
+            _state.update { it.copy(send = SendPhase.Editing) }
+            val s = _state.value
+            if (platform.demoScreen == null) scope.launch {
+                val rate = scanner.suggestedFeeRate(s.endpoint, s.pinned)
+                _state.update { it.copy(suggestedRate = rate) }
+            }
+        }
     }
 
     fun back() {
@@ -163,10 +232,16 @@ class WalletModel(private val platform: AppPlatform) {
         }
     }
 
-    fun watch(xpub: String) {
-        val key = xpub.trim()
-        val parsed = runCatching { Bip32.parseExtendedPubKey(key) }.getOrElse { say(it.message ?: "Not a valid key."); return }
-        if (parsed.depth != 3) say("Note: this key is not at account depth (m/purpose'/0'/0').")
+    /**
+     * Watch [xpub]. A plain xpub doesn't say which addresses it makes, so [type] is the one picked
+     * on import (Android 1.2.4), and the key is kept under that type's prefix (ypub/zpub; the
+     * same key). The import screen already warned when it is not an account key.
+     */
+    fun watch(xpub: String, type: ScriptType? = null) {
+        val raw = xpub.filterNot { it.isWhitespace() }
+        val parsed = runCatching { Bip32.parseExtendedPubKey(raw) }.getOrElse { say(it.message ?: "Not a valid key."); return }
+        val key = if (parsed.scriptType == ScriptType.P2PKH && type != null && type != ScriptType.P2PKH)
+            Bip32.withScriptType(raw, type) else raw
         openWallet(WalletKind.WATCH, key)
     }
 
@@ -217,6 +292,7 @@ class WalletModel(private val platform: AppPlatform) {
                     }
                     is ScanEvent.Done -> {
                         pinIfFirst(s.endpoint, ev.fingerprint)
+                        if (!sameWallet(s)) return@collect
                         _state.update { it.copy(scan = ScanPhase.Done, rows = ev.rows, txs = ev.txs, height = ev.height) }
                         if (platform.demoScreen?.substringBefore('@') == "home") platform.markReady("home")
                     }
@@ -233,6 +309,7 @@ class WalletModel(private val platform: AppPlatform) {
      * screen) — so a payment to the next unused address is found too, not only to known ones.
      */
     fun refresh() {
+        refreshPrice()
         val s = _state.value
         if (s.scan is ScanPhase.Scanning || s.refreshing) return
         if (s.rows.isEmpty() && s.scan !is ScanPhase.Done) { scan(); return }
@@ -243,6 +320,9 @@ class WalletModel(private val platform: AppPlatform) {
                 when (ev) {
                     is ScanEvent.Done -> {
                         pinIfFirst(s.endpoint, ev.fingerprint)
+                        // Filed under the wallet and server it started for (Android 1.2.6): one
+                        // removed or replaced meanwhile must not get the other's figures.
+                        if (!sameWallet(s)) { _state.update { it.copy(refreshing = false) }; return@collect }
                         _state.update { it.copy(rows = ev.rows, txs = ev.txs, height = ev.height, refreshing = false, scan = ScanPhase.Done) }
                     }
                     is ScanEvent.Failed -> _state.update { it.copy(refreshing = false, message = ev.message) }
@@ -255,6 +335,10 @@ class WalletModel(private val platform: AppPlatform) {
             _state.update { it.copy(refreshing = false) }
         }
     }
+
+    /** Whether the wallet and server on screen are still those of [started]. */
+    private fun sameWallet(started: UiState): Boolean =
+        _state.value.zpub == started.zpub && _state.value.endpoint == started.endpoint
 
     private fun pinIfFirst(endpoint: NodeEndpoint, fp: String?) {
         if (fp == null || prefs.get(pinKey(endpoint)) != null) return
@@ -349,7 +433,12 @@ class WalletModel(private val platform: AppPlatform) {
         val s = _state.value
         val draft = (s.send as? SendPhase.Review)?.draft ?: return
         val zpub = s.zpub ?: return
-        platform.seeds.load(I18n.tr("Sign and send ${com.kilombino.kilowallet.core.wallet.formatSats(draft.amount)} sats")) { secret, error ->
+        val reason = when {
+            draft.cancels -> I18n.tr("Unlock to sign the cancellation")
+            draft.replaces != null -> I18n.tr("Unlock to sign the speed-up")
+            else -> I18n.tr("Sign and send ${com.kilombino.kilowallet.core.wallet.formatSats(draft.amount)} sats")
+        }
+        platform.seeds.load(reason) { secret, error ->
             if (secret == null) { say(error ?: "Not unlocked: nothing was sent."); return@load }
             _state.update { it.copy(send = SendPhase.Signing) }
             scope.launch {
@@ -358,7 +447,7 @@ class WalletModel(private val platform: AppPlatform) {
                     val signed = withContext(Dispatchers.Default) { Signer.sign(draft, words, pass, zpub) }
                     scanner.broadcast(signed.rawHex, s.endpoint, s.pinned)
                 }.onSuccess { txid ->
-                    _state.update { it.copy(send = SendPhase.Sent(txid)) }
+                    _state.update { it.copy(send = SendPhase.Sent(txid, replaced = draft.replaces != null, cancelled = draft.cancels)) }
                     refresh()
                 }.onFailure { e ->
                     _state.update { it.copy(send = SendPhase.Failed(e.message ?: "The broadcast failed.")) }
@@ -368,6 +457,46 @@ class WalletModel(private val platform: AppPlatform) {
     }
 
     fun editSend() = _state.update { it.copy(send = SendPhase.Editing) }
+
+    // ------------------------------------------------------------------ speed up / cancel (RBF)
+
+    /** The next unused change address's script (one past the highest change address seen). */
+    private fun freshChange(s: UiState): ByteArray {
+        val zpub = s.zpub ?: error("No wallet.")
+        val index = s.rows.filter { it.chainIndex == 1 }.maxOfOrNull { it.index }?.plus(1) ?: 0
+        return SendPlanner.changeScript(zpub, index)
+    }
+
+    /**
+     * Draft a replacement of unconfirmed send [txid] (Android: `prepareBump` / `prepareCancel`):
+     * the same coins, at [rate] or the least the network takes for a replacement; a speed-up keeps
+     * the payment and takes the extra fee from the change, a cancellation sends everything back
+     * to a fresh address of this wallet. The review and the signing are a normal send's.
+     */
+    fun prepareReplace(txid: String, cancel: Boolean, rate: Double) {
+        val s = _state.value
+        val zpub = s.zpub ?: return
+        if (s.kind != WalletKind.HOT) return
+        _state.update { it.copy(send = SendPhase.Preparing) }
+        scope.launch {
+            runCatching {
+                val (tx, coins) = scanner.replacementCoins(txid, s.rows, s.endpoint, s.pinned)
+                withContext(Dispatchers.Default) {
+                    if (cancel) ReplacePlanner.cancel(txid, tx, coins, freshChange(s), rate)
+                    else {
+                        val changeHashes = s.rows.filter { it.chainIndex == 1 }.map { it.scriptHash }.toSet()
+                        ReplacePlanner.bump(txid, tx, coins, { spk ->
+                            com.kilombino.kilowallet.core.crypto.Address.electrumScriptHash(spk) in changeHashes
+                        }, rate)
+                    }
+                }.also { scanner.verifyCoins(zpub, it.inputs, s.endpoint, s.pinned) }
+            }.onSuccess { d -> _state.update { it.copy(send = SendPhase.Review(d, SendPlanner.feeConcern(d))) } }
+             .onFailure { e ->
+                 val fallback = if (cancel) "Could not prepare the cancellation." else "Could not prepare the replacement."
+                 _state.update { it.copy(send = SendPhase.Failed(e.message ?: fallback)) }
+             }
+        }
+    }
 
     // ------------------------------------------------------------------ demo (CI screenshots only)
 
@@ -386,6 +515,10 @@ class WalletModel(private val platform: AppPlatform) {
                     "home" -> scan()
                     "receive" -> { go(Screen.Receive); platform.markReady(screen) }
                     "settings" -> { go(Screen.Settings); platform.markReady(screen) }
+                    "replace" -> {
+                        // A made-up pending send, only so the cancel screen has something to show.
+                        go(Screen.Replace("4f".repeat(32), cancel = true)); platform.markReady(screen)
+                    }
                     "send" -> { go(Screen.Send); platform.markReady(screen) }
                     "review" -> {
                         // A made-up coin, only so the review screen has something to show.

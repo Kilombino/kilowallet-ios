@@ -21,7 +21,9 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.kilombino.kilowallet.app.AppPlatform
+import com.kilombino.kilowallet.app.Screen
 import com.kilombino.kilowallet.app.SendPhase
+import com.kilombino.kilowallet.core.market.Fiat
 import com.kilombino.kilowallet.app.UiState
 import com.kilombino.kilowallet.app.WalletModel
 import com.kilombino.kilowallet.app.parsePaymentText
@@ -35,15 +37,57 @@ import kotlin.math.roundToLong
 fun SendScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     when (val p = state.send) {
         SendPhase.Editing -> SendForm(model, state, platform)
+        else -> SendSteps(model, state, platform)
+    }
+}
+
+/**
+ * Speed up or cancel an unconfirmed send (RBF, Android 1.2.5): a fee rate, then the same review,
+ * unlock and broadcast as a normal send.
+ */
+@Composable
+fun ReplaceScreen(model: WalletModel, state: UiState, platform: AppPlatform, txid: String, cancel: Boolean) {
+    if (state.send != SendPhase.Editing) { SendSteps(model, state, platform); return }
+    var rate by remember { mutableStateOf("") }
+    val rateValue = rate.replace(',', '.').toDoubleOrNull() ?: state.suggestedRate?.coerceAtLeast(3.0) ?: 3.0
+    ScreenColumn {
+        BackLink { model.back() }
+        Text(if (cancel) "Cancel ${txid.take(8)}…" else "Speed up ${txid.take(8)}…", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Panel(accent = if (cancel) Warn else Purple) {
+            Text(if (cancel) "Replaces the payment with one that sends everything back to a fresh address of yours. " +
+                "The recipients get nothing, unless the original confirms first: then this one is refused."
+                else "Replaces the stuck send with the same payment and a higher fee, taken from your change.",
+                style = MaterialTheme.typography.bodyMedium, color = TextMain)
+        }
+        Panel {
+            SectionLabel("Fee rate")
+            Field(rate, { rate = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
+                "sat/vB (default ${fmtRate(rateValue)})", keyboard = KeyboardType.Decimal)
+            Explain(if (cancel) "Fee rate for the cancellation. It must beat the old fee by at least 1 sat/vB of its size, " +
+                "and the higher it is, the likelier it gets mined before the original." else
+                "New fee rate. It must beat the old fee by at least 1 sat/vB of the transaction's size; " +
+                "most pools only mine from 1 sat/vB.")
+        }
+        PrimaryButton("Review", Modifier.fillMaxWidth(), color = if (cancel) Warn else Purple) {
+            model.prepareReplace(txid, cancel, rateValue)
+        }
+    }
+}
+
+/** Everything after the form: preparing, the review, signing, and the outcome. */
+@Composable
+private fun SendSteps(model: WalletModel, state: UiState, platform: AppPlatform) {
+    when (val p = state.send) {
+        SendPhase.Editing -> Unit
         SendPhase.Preparing -> Busy(model, "Choosing coins and checking each one against its transaction…")
-        is SendPhase.Review -> Review(model, p, platform)
+        is SendPhase.Review -> Review(model, p, platform, state)
         SendPhase.Signing -> Busy(model, "Signing (unified sighash) and broadcasting…", allowBack = false)
-        is SendPhase.Sent -> Sent(model, p.txid)
+        is SendPhase.Sent -> Sent(model, p)
         is SendPhase.Failed -> ScreenColumn {
             BackLink { model.back() }
             Text("Not sent", style = MaterialTheme.typography.titleLarge, color = Bad)
             Panel(accent = Bad) { Text(p.message, style = MaterialTheme.typography.bodyMedium, color = TextMain) }
-            PrimaryButton("Edit the send", Modifier.fillMaxWidth()) { model.editSend() }
+            PrimaryButton(if (state.screen is Screen.Replace) "Back" else "Edit the send", Modifier.fillMaxWidth()) { model.editSend() }
         }
     }
 }
@@ -96,9 +140,10 @@ private fun SendForm(model: WalletModel, state: UiState, platform: AppPlatform) 
             if (all) {
                 val max = model.maxSendable(rateValue)
                 Text("Everything: ${formatSats(max)} sats", style = MaterialTheme.typography.titleMedium, color = Purple)
+                state.perCoin?.let { Explain("≈ " + Fiat.format(it * max / 1e8, state.fiat)) }
                 Explain("All your coins minus the fee; no change output.")
             } else {
-                Field(amount, { amount = it.filter { c -> c.isDigit() } }, "sats", keyboard = KeyboardType.Number)
+                AmountFields(amount, { amount = it }, state)
                 if (sats > 0) Explain("= ${formatBtc(sats)} ${Chain.COIN}")
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -127,21 +172,29 @@ private fun fmtRate(r: Double): String {
 }
 
 @Composable
-private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatform) {
+private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatform, state: UiState) {
     val d = p.draft
     var ack by remember(d) { mutableStateOf(false) }
     ScreenColumn {
         BackLink("← edit") { model.editSend() }
-        Text("Review the send", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Text(when {
+            d.cancels -> "Review the cancellation"
+            d.replaces != null -> "Review the speed-up"
+            else -> "Review the send"
+        }, style = MaterialTheme.typography.titleLarge, color = TextMain)
         Panel {
-            SectionLabel("To")
+            SectionLabel(if (d.cancels) "Back to you" else "To")
             Text(chunked(d.to), style = MaterialTheme.typography.titleMedium, color = TextMain)
+            if (d.cancels) Explain("A fresh address of this wallet. The recipients get nothing.")
         }
         Panel {
             KeyValue("amount", "${formatSats(d.amount)} sats")
+            state.perCoin?.let { KeyValue("≈", Fiat.format(it * d.amount / 1e8, state.fiat), TextSoft) }
+            d.replaces?.let { KeyValue("replaces", shortTxid(it)) }
+            if (d.replaces != null) KeyValue("old fee", "${formatSats(d.replacedFee)} sats")
             KeyValue("fee", "${formatSats(d.fee)} sats · ${fmtRate(d.effectiveRate)} sat/vB")
-            KeyValue("total", "${formatSats(d.totalSent)} sats", Purple)
-            KeyValue("change back to you", if (d.change > 0) "${formatSats(d.change)} sats" else "none")
+            if (!d.cancels) KeyValue("total", "${formatSats(d.totalSent)} sats", Purple)
+            if (!d.cancels) KeyValue("change back to you", if (d.change > 0) "${formatSats(d.change)} sats" else "none")
             KeyValue("coins spent", "${d.inputs.size}")
         }
         p.concern?.let { c ->
@@ -162,11 +215,16 @@ private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatfor
 }
 
 @Composable
-private fun Sent(model: WalletModel, txid: String) {
+private fun Sent(model: WalletModel, p: SendPhase.Sent) {
     val clipboard = LocalClipboardManager.current
     val uri = LocalUriHandler.current
+    val txid = p.txid
     ScreenColumn {
-        Text("Sent", style = MaterialTheme.typography.headlineMedium, color = Good)
+        Text(when {
+            p.cancelled -> "Cancellation sent ✓"
+            p.replaced -> "Replacement sent ✓"
+            else -> "Sent"
+        }, style = MaterialTheme.typography.headlineMedium, color = Good)
         Panel(accent = Good) {
             SectionLabel("Transaction id", Good)
             Text(txid, style = MaterialTheme.typography.bodyMedium, color = TextMain)
@@ -175,7 +233,8 @@ private fun Sent(model: WalletModel, txid: String) {
                 runCatching { uri.openUri("${Chain.EXPLORER}/tx/$txid") }
             }
         }
-        Explain("The server accepted it. It shows as pending until a block includes it.")
+        Explain(if (p.replaced) "The server accepted it in place of the earlier one, which can no longer confirm. " +
+            "It shows as pending until a block includes it." else "The server accepted it. It shows as pending until a block includes it.")
         PrimaryButton("Done", Modifier.fillMaxWidth()) { model.back() }
     }
 }

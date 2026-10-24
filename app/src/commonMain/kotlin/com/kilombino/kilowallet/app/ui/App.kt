@@ -56,6 +56,7 @@ fun App(platform: AppPlatform) {
                     Screen.Receive -> ReceiveScreen(model, state, platform)
                     Screen.Send -> SendScreen(model, state, platform)
                     Screen.Settings -> SettingsScreen(model, state, platform)
+                    is Screen.Replace -> ReplaceScreen(model, state, platform, s.txid, s.cancel)
                     is Screen.ShowWords -> ShowWordsScreen(model, s.words)
                 }
             }

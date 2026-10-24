@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kilombino.kilowallet.app.AppPlatform
 import com.kilombino.kilowallet.app.WalletModel
+import com.kilombino.kilowallet.core.crypto.Bip32
+import com.kilombino.kilowallet.core.crypto.ScriptType
 import com.kilombino.kilowallet.app.res.Res
 import com.kilombino.kilowallet.app.res.logo
 import com.kilombino.kilowallet.core.crypto.Bip39
@@ -185,7 +187,26 @@ fun WatchScreen(model: WalletModel, platform: AppPlatform) {
                 platform.scanQr { it?.let { key = it.trim() } }
             }
         }
-        PrimaryButton("Watch", Modifier.fillMaxWidth(), enabled = key.length > 100, color = Orange) { model.watch(key) }
+        // A plain xpub doesn't say which addresses it makes: its type is asked (Android 1.2.4).
+        val parsed = remember(key) { runCatching { Bip32.parseExtendedPubKey(key.filterNot { it.isWhitespace() }) }.getOrNull() }
+        var picked by remember(key) { mutableStateOf<ScriptType?>(null) }
+        val needsType = parsed?.scriptType == ScriptType.P2PKH
+        if (parsed != null && parsed.depth != 3) Explain("This key is at depth ${parsed.depth}, not an account key (m/84'/0'/0', m/86'/0'/0'…): " +
+            "its addresses won't match your wallet's. Export the account xpub instead.", color = Bad)
+        if (needsType) Panel(accent = Orange) {
+            Explain("A plain xpub doesn't say which addresses it makes: pick the type your wallet uses.", color = TextSoft)
+            listOf(
+                ScriptType.P2WPKH to "Native SegWit · bc1q… (BIP84)",
+                ScriptType.P2SH_P2WPKH to "Nested SegWit · 3… (BIP49)",
+                ScriptType.P2PKH to "Legacy · 1… (BIP44)",
+            ).forEach { (t, name) ->
+                LinkText((if (t == picked) "● " else "○ ") + name, color = if (t == picked) Orange else TextMain,
+                    modifier = Modifier.fillMaxWidth()) { picked = t }
+            }
+        }
+        PrimaryButton("Watch", Modifier.fillMaxWidth(), enabled = key.length > 100 && (!needsType || picked != null), color = Orange) {
+            model.watch(key, picked)
+        }
     }
 }
 

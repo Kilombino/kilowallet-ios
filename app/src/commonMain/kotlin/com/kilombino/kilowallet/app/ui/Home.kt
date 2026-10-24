@@ -41,7 +41,9 @@ import com.kilombino.kilowallet.app.Screen
 import com.kilombino.kilowallet.app.UiState
 import com.kilombino.kilowallet.app.WalletKind
 import com.kilombino.kilowallet.app.WalletModel
+import com.kilombino.kilowallet.core.market.paymentRequest
 import com.kilombino.kilowallet.core.chain.Chain
+import com.kilombino.kilowallet.core.market.Fiat
 import com.kilombino.kilowallet.core.wallet.TxConf
 import com.kilombino.kilowallet.core.wallet.formatBtc
 import com.kilombino.kilowallet.core.wallet.formatSats
@@ -80,6 +82,8 @@ fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                     modifier = Modifier.padding(bottom = 8.dp))
             }
             Text("${formatBtc(state.total)} ${Chain.COIN} (${Chain.TICKER})", style = MaterialTheme.typography.bodyMedium, color = TextSoft)
+            if (state.fiat != Fiat.OFF) Text("≈ " + (state.perCoin?.let { Fiat.format(it * state.total / 1e8, state.fiat) } ?: Fiat.missing(state.fiat)),
+                style = MaterialTheme.typography.bodyMedium, color = TextSoft)
             if (state.unconfirmed != 0L) Text("of which ${formatSats(state.unconfirmed)} sats unconfirmed",
                 style = MaterialTheme.typography.bodySmall, color = Warn)
             when (val s = state.scan) {
@@ -109,17 +113,25 @@ fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                 Explain(if (state.scan is ScanPhase.Done) "No movements yet. Receive to an address from RECEIVE." else "…")
             } else {
                 Explain("tap a movement for its details")
-                state.txs.take(200).forEach { tx -> MovementRow(tx) { detail = tx } }
+                state.txs.take(200).forEach { tx ->
+                    MovementRow(tx, canReplace = hot && tx.pending && (tx.amount ?: 0) < 0,
+                        onReplace = { cancel -> model.go(Screen.Replace(tx.txid, cancel)) }) { detail = tx }
+                }
             }
         }
         Explain("block ${formatSats(state.height.toLong())} · ${state.endpoint}" + (state.serverVersion?.let { " · $it" } ?: ""))
     }
 
-    detail?.let { tx -> MovementDialog(tx) { detail = null } }
+    detail?.let { tx ->
+        // Only a send of ours can be replaced: a payment to us isn't ours to take back.
+        val replace: ((Boolean) -> Unit)? = if (hot && tx.pending && (tx.amount ?: 0) < 0)
+            ({ cancel -> detail = null; model.go(Screen.Replace(tx.txid, cancel)) }) else null
+        MovementDialog(tx, replace) { detail = null }
+    }
 }
 
 @Composable
-private fun MovementRow(tx: TxConf, onClick: () -> Unit) {
+private fun MovementRow(tx: TxConf, canReplace: Boolean, onReplace: (cancel: Boolean) -> Unit, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -128,7 +140,16 @@ private fun MovementRow(tx: TxConf, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyLarge, color = if (a != null && a > 0) Good else TextMain)
             Text(shortTxid(tx.txid), style = MaterialTheme.typography.bodySmall, color = TextFaint)
         }
-        ConfBadge(tx)
+        if (canReplace) {
+            // Status above, actions below: side by side they squeezed the amount (Android 1.2.5).
+            Column(horizontalAlignment = Alignment.End) {
+                ConfBadge(tx)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    LinkText("⚡ speed up", color = Purple) { onReplace(false) }
+                    LinkText("✕ cancel", color = Warn) { onReplace(true) }
+                }
+            }
+        } else ConfBadge(tx)
     }
 }
 
@@ -146,7 +167,7 @@ private fun ConfBadge(tx: TxConf) {
 }
 
 @Composable
-private fun MovementDialog(tx: TxConf, onClose: () -> Unit) {
+private fun MovementDialog(tx: TxConf, onReplace: ((cancel: Boolean) -> Unit)?, onClose: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     val uri = LocalUriHandler.current
     AlertDialog(
@@ -164,6 +185,10 @@ private fun MovementDialog(tx: TxConf, onClose: () -> Unit) {
                 LinkText("copy txid", color = Purple) { clipboard.setText(AnnotatedString(tx.txid)) }
                 LinkText("open on ${Chain.EXPLORER.removePrefix("https://")}", color = Purple) {
                     runCatching { uri.openUri("${Chain.EXPLORER}/tx/${tx.txid}") }
+                }
+                onReplace?.let { r ->
+                    LinkText("⚡ SPEED UP (RBF)", color = Purple) { r(false) }
+                    LinkText("✕ CANCEL (RBF)", color = Warn) { r(true) }
                 }
             }
         },
@@ -186,14 +211,17 @@ fun ReceiveScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     var index by remember(walletKey) { mutableStateOf(next) }
     val addr = remember(walletKey, index) { model.receiveAddress(index) }
     var copied by remember { mutableStateOf(false) }
+    // An optional amount to ask for: the QR and COPY then carry a BIP-21 request (Android 1.2.3).
+    var askSats by remember { mutableStateOf("") }
     LaunchedEffect(copied) { if (copied) { delay(2000); copied = false } }
     ScreenColumn {
         BackLink { model.back() }
         Text("Receive ${Chain.COIN}", style = MaterialTheme.typography.titleLarge, color = TextMain)
         if (addr == null) { Explain("No wallet."); return@ScreenColumn }
         val (address, path) = addr
+        val request = paymentRequest(address, askSats.toLongOrNull())
         Panel {
-            val qr = remember(address) { platform.qrImage(address) }
+            val qr = remember(request) { platform.qrImage(request) }
             if (qr != null) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Box(Modifier.clip(RoundedCornerShape(12.dp)).background(Color.White).padding(14.dp)) {
                     Image(qr, contentDescription = "QR code of the address", modifier = Modifier.size(240.dp),
@@ -206,8 +234,13 @@ fun ReceiveScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             Text("unused · $path" + (if (pos >= 0) " · ${pos + 1} of ${unused.size}" else ""),
                 style = MaterialTheme.typography.bodySmall, color = TextFaint)
         }
-        PrimaryButton(if (copied) "Copied" else "Copy address", Modifier.fillMaxWidth()) {
-            clipboard.setText(AnnotatedString(address)); copied = true
+        Panel {
+            SectionLabel("Amount to ask (optional)")
+            AmountFields(askSats, { askSats = it; copied = false }, state)
+            if (request != address) Explain("The QR code and COPY carry this amount (a bitcoin: payment request).")
+        }
+        PrimaryButton(if (copied) "Copied" else if (request != address) "Copy request" else "Copy address", Modifier.fillMaxWidth()) {
+            clipboard.setText(AnnotatedString(request)); copied = true
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             val prev = unused.lastOrNull { it < index }
