@@ -3,18 +3,28 @@
 A self-custodial wallet for Bitcoin on the BLAKE2b proof-of-work chain (BTC / XBT), for iPhone.
 The iOS sibling of [Kilowallet for Android](https://github.com/Kilombino/kilowallet).
 
-Version 0.2 (BTC only):
+Version 0.3 (BTC only):
 
 - Create a wallet (12 or 24 words; the words are shown and then checked), restore from words
-  (optional BIP-39 passphrase), or watch-only from a zpub (also ypub / xpub).
+  (optional BIP-39 passphrase), or watch-only from a zpub (also ypub / xpub; a plain xpub asks
+  which addresses it makes: bc1q, 3… or 1…, and warns when it is not an account key).
 - Balance and movements with confirmations, with an SPV check of recent incoming payments against
   the block header's BLAKE2b proof of work (164-byte headers).
 - Receive: next unused address with a QR code (CoreImage) and copy; ◀ ▶ move through every
-  unused address (also the ones skipped below the last used one).
+  unused address (also the ones skipped below the last used one). Optionally an amount to ask
+  for, in sats or in your currency: the QR code and COPY then carry a BIP-21 request.
 - Send: address (paste, or scan a QR with the camera), amount or MAX, fee rate (server suggestion),
   review screen with a second confirmation for high fees, signing with the **unified sighash 0x21**
   (replay protection: the transaction is invalid on the SHA-256 chain), broadcast over Electrum TLS.
   Every coin is checked against the transaction that created it before anything is signed.
+  The amount can be typed in sats or in your currency; either box fills the other.
+- Speed up or cancel an unconfirmed send (replace-by-fee): ⚡ speed up keeps the payment and takes
+  a higher fee from its change; ✕ cancel sends the same coins back to a fresh address of this
+  wallet, so the recipients get nothing (unless the original confirms first). Either pays at least
+  the old fee plus 1 sat/vB of its own size, as the network requires.
+- Values in one of 36 currencies (USD, EUR, GBP, JPY, CHF, CNY, … ), or none. Prices come from
+  `mempool.kilombino.com` (the ECB's daily reference for the exchange rates); the request is the
+  same for everyone and carries nothing about the wallet. With the currency off, it is never made.
 - Electrum server: `fulcrum.kilombino.com:17717` (TLS) by default, or your own. Certificates are
   self-signed, so they are pinned on first use; a changed certificate is refused until you accept it.
   The app refuses a server whose headers are not 164 bytes (i.e. not on the BLAKE2b chain).
@@ -28,11 +38,16 @@ Version 0.2 (BTC only):
   camera and Face ID permission texts in `iosApp/iosApp/<lang>.lproj/InfoPlist.strings`.
 - Recovery words in the iOS Keychain, unlocked by Face ID / Touch ID / the device passcode.
 
+New in 0.3 (ported from Kilowallet for Android, up to 1.2.6): speed up and cancel an unconfirmed
+send (RBF), 36 currencies with amounts in your currency in Send and Receive, a payment request with
+an amount on the receive screen, the address type asked for a plain xpub, a refresh kept to the
+wallet and server it started for, and the language tables of Android 1.2.6.
+
 New in 0.2 (ported from Kilowallet for Android, up to 1.1.7): Electrum protocol negotiation up to 1.6,
 batched requests, per-type dust limits, ◀ ▶ on the receive screen, languages.
 
-Not in 0.2: other chains, coinjoin, Ark, Lightning, notifications, fiat prices, PSBT, Taproot
-accounts, a full header chain (SPV is per payment, as in 0.1).
+Not in 0.3: other chains, coinjoin (Kilojoin), Ark, Lightning, notifications, speeding up a payment
+received (CPFP), PSBT, Taproot accounts (also for watch-only), a full header chain (SPV is per payment, as in 0.1).
 
 ## Official builds
 
@@ -65,7 +80,7 @@ Kotlin code is built by Gradle from Xcode's "Compile Kotlin Framework" build pha
 3. Select the **iosApp** target → **Signing & Capabilities**: choose your **Team**, and set the
    **Bundle Identifier** (suggested: `com.kilombino.kilowallet`). The same two values can instead
    be set once in `iosApp/Configuration/Config.xcconfig` (`TEAM_ID`, `BUNDLE_ID`). The version is
-   `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in that file (0.2.0 / 2); raise the build
+   `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in that file (0.3.0 / 3); raise the build
    number for every upload.
 
 4. Try it: pick an iPhone simulator or a connected iPhone and press Run. In the Simulator, enable
@@ -102,9 +117,13 @@ Kotlin code is built by Gradle from Xcode's "Compile Kotlin Framework" build pha
   with any light wallet, that server learns which addresses the wallet asks about; Settings explains
   this and lets the user use their own server. Tapping "open on mempool.kilombino.com" opens the
   browser, only on that tap.
+- Prices: unless the currency is set to Off, one HTTPS GET of
+  `https://mempool.kilombino.com/api/v1/blake2b/widget` at most every 5 minutes while the app is
+  open. The request is the same for every user (no address, key or identifier in it).
 - Camera: only to scan a QR code, only when the user taps "Scan QR".
 - On device: the recovery words (Keychain, this device only, user presence required), and in
-  `UserDefaults` the wallet's public key, the server and its certificate fingerprint.
+  `UserDefaults` the wallet's public key, the server and its certificate fingerprint, the chosen
+  currency and the last prices.
 
 ## How it is built
 
@@ -123,7 +142,10 @@ The wallet logic is a **port of the Android app's code at commit
 (v0.26.0)**, brought up to
 [`ed7177f`](https://github.com/Kilombino/kilowallet/commit/ed7177ff6f07f7019809905da5a0aadecd6eab6b)
 (1.1.7) in 0.2 for the Electrum client, the dust limits, the receive screen and the languages,
-file by file (each file says which Android file it comes from):
+and to
+[`193f30b`](https://github.com/Kilombino/kilowallet/commit/193f30b3927aa75ce731a1666c88cdf7a53b857d) (1.2.6) in 0.3 for
+replace-by-fee (speed up, cancel), the currencies and the watch-only import, file by file (each
+file says which Android file it comes from):
 
 | here (`core/src/commonMain/.../core/`) | Android (`app/src/main/java/com/kilombino/pyblockwatch/`) |
 |---|---|
@@ -132,6 +154,8 @@ file by file (each file says which Android file it comes from):
 | `crypto/Ec` | `crypto/Secp256k1, Ecdsa, NativeSecp` — now libsecp256k1 via secp256k1-kmp |
 | `chain/ElectrumClient, Chain` | `chain/ElectrumClient, Chain` — over a platform socket, kotlinx.serialization |
 | `wallet/Scanner, Send` | `data/Scanner`, `ui/WalletViewModel` (prepareSend, verifyCoins, confirmSend, fees, dustFor) |
+| `wallet/Replace` | `ui/WalletViewModel` (prepareBump, prepareCancel) |
+| `market/Fiat` | `data/Fiat`, `data/MarketFeed` (the price and the exchange rates only) |
 | `app/…/i18n/I18n, Text` + `composeResources/files/i18n/*.json` | `ui/i18n/I18n, Text` + `assets/i18n/*.json` (copied by `scripts/sync-i18n.py`) |
 
 Why a copy and not a Gradle composite build / submodule of Kilombino/kilowallet: the Android
@@ -141,7 +165,8 @@ Android app into a multiplatform module first, which is a change to the producti
 Instead the port is pinned to the Android code by tests: `tools/android-vectors` compiles the
 Android app's crypto files **unchanged** on the JVM and records what they produce (mnemonics,
 seeds, zpubs, addresses, private keys, ECDSA signatures and 24 complete signed transactions, half
-of them with the unified sighash); `AndroidVectorsTest` requires byte-identical results here, on the
+of them with the unified sighash, plus 9 unconfirmed sends each replaced by a speed-up and by a
+cancellation at three fee rates); `AndroidVectorsTest` and `ReplaceTest` require byte-identical results here, on the
 JVM and in the iOS simulator. To re-check against a newer Android version:
 
 ```sh
