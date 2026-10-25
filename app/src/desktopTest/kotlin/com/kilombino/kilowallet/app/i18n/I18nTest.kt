@@ -74,14 +74,37 @@ class I18nTest {
         }
     }
 
-    /** App Store naming: the SHA-256 chain is Corecoin, the coinjoin Kilojoin; never the Android app's nicknames. */
-    private val banned = Regex("spam|coinjoin|poolcoin|poolsat|垃圾", RegexOption.IGNORE_CASE)
+    /**
+     * App Store naming (mandatory): the SHA-256 chain is Corecoin and the pools are Kilojoin: never
+     * "coinjoin", "mix", "mixing", "mixer", "spamchain", "spamcoin" or "Poolcoin", in any language
+     * (their translations too: mezclar, barrejar, mélanger, mescolare, mischen, misturar, 混合/混币).
+     * The same list as scripts/sync-i18n.py.
+     */
+    private val banned = Regex("spam|coin ?join|poolcoin|poolsat|mix|mezcl|barrej|barreg|m[ée]lang|mescol|misch|mistur|混合|混币|混幣|垃圾",
+        RegexOption.IGNORE_CASE)
 
     @Test fun noAndroidNicknamesInTheTables() {
         for (l in codes) {
             val o = Json.parseToJsonElement(File(dir, "$l.json").readText()).jsonObject
             o.forEach { (k, v) -> assertTrue(!banned.containsMatchIn(k) && !banned.containsMatchIn(v.jsonPrimitive.content), "$l: $k") }
         }
+    }
+
+    /** The words above in every iOS string table: the language tables, the iOS-only texts, InfoPlist.strings and Info.plist. */
+    @Test fun noForbiddenWordInAnyIosStringTable() {
+        val tables = (dir.listFiles().orEmpty().toList() + File("../scripts/i18n-ios").listFiles().orEmpty().toList())
+            .filter { it.extension == "json" }
+        assertTrue(tables.size >= 14, "the tables were not found")
+        for (f in tables) {
+            val o = Json.parseToJsonElement(f.readText()).jsonObject
+            o.forEach { (k, v) -> assertTrue(!banned.containsMatchIn(k) && !banned.containsMatchIn(v.jsonPrimitive.content), "${f.name}: $k") }
+        }
+        val plists = File("../iosApp/iosApp").walkTopDown().filter { it.name == "InfoPlist.strings" || it.name == "Info.plist" || it.name == "Localizable.strings" }.toList()
+        assertTrue(plists.size >= 8, "the InfoPlist.strings were not found")
+        for (f in plists) f.readLines().forEachIndexed { i, line -> assertTrue(!banned.containsMatchIn(line), "${f.path}:${i + 1}: $line") }
+        // The test itself must catch them.
+        for (w in listOf("CoinJoin", "coin join", "mixer", "Mixing", "spamchain", "Poolcoins", "mezclar", "mélangé", "gemischt", "混币"))
+            assertTrue(banned.containsMatchIn(w), w)
     }
 
     /**
@@ -93,7 +116,14 @@ class I18nTest {
     @Test fun iosStringsInEveryLanguage() {
         val sources = File("src/commonMain/kotlin/com/kilombino/kilowallet/app").walkTopDown().filter { it.extension == "kt" && "i18n" !in it.path } +
             File("../core/src/commonMain/kotlin/com/kilombino/kilowallet/core/wallet/Send.kt")
-        val strings = sources.flatMap { iosStrings(it.readText()) }.filter { s -> neutral.none { it.matches(s) } }.toSortedSet()
+        // What a round can say on screen (why it stopped, why it does not sign), from the shared code:
+        // its sentences (three words or more), not its log lines.
+        val reasons = File("../core/src/commonMain/kotlin/com/kilombino/kilowallet/core/kilojoin").walkTopDown().filter { it.extension == "kt" }
+            .flatMap { f -> f.readLines().filter { l -> "log(" !in l && "Regex(" !in l && !l.trim().startsWith("*") && !l.trim().startsWith("/") } }
+            .flatMap { line -> Regex("\"((?:[^\"\\\\]|\\\\.)*)\"").findAll(line).map { it.groupValues[1] } }
+            .filter { it.count { c -> c == ' ' } >= 2 && !it.startsWith("kilojoin/") && "|" !in it && "->" !in it }
+        val strings = (sources.flatMap { iosStrings(it.readText()) } + reasons.flatMap { iosStrings("\"$it\"") })
+            .filter { s -> neutral.none { it.matches(s) } }.toSortedSet()
         val left = HashMap<String, List<String>>()
         for (l in codes) {
             I18n.lang.value = l
@@ -139,12 +169,19 @@ class I18nTest {
         "Legacy · 1… (BIP44)",
         // The same word in Spanish (and others): "host", "total", "conf".
         "host", "total", "? sats", "12 345 conf",
+        // Kilojoin: protocol words, preference keys, screenshot names and made-up demo values, and errors
+        // of the arithmetic that no screen shows.
+        "open", "equal", "x", "y", "demo1212", "5e", "6a", "6d", "7b", "demo", "demo-o1", "demo-o2", "demo-other", "demo-third", "demo-third-change",
+        "pools", "pool-create", "pool-intro", "pool-join", "pool-pay", "pool-round", "(?i)\\\\bmix(ed|ing)?\\\\b",
+        "division by zero", "integer too large", "invalid message length", "unexpected input size", "not a boolean",
+        "no WebSocket on this platform", "bad blind-signing key", "unsupported blind-signing key", "12 345 min", "12 345 h 12 345 min",
+        "12 345:12 345 UTC", "Kilojoin", "KILOJOIN", "12 345 × 12 345 sats", "12 × 12 345 sats", "12 345 sats → 12 345",
         // Pieces of strings the code joins at run time; [iosTemplates] checks the whole ones.
         " · 12 345 of 12 345", "12 345 addresses · 12 345 used so far",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates
         Regex("""m/.*"""), Regex("""pin\..*"""), Regex("""mempool\.kilombino\.com/tx/.*"""), Regex("""bc1q[a-z0-9]{30,}"""),
-        Regex(""".*kilombino\.com:17717"""),
+        Regex(""".*kilombino\.com:17717"""), Regex("""kilojoin\..*"""),
     )
 
     private fun iosStrings(src: String): List<String> {

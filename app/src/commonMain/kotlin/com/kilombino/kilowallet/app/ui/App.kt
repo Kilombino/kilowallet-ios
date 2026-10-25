@@ -58,6 +58,10 @@ fun App(platform: AppPlatform) {
                     Screen.Settings -> SettingsScreen(model, state, platform)
                     is Screen.Replace -> ReplaceScreen(model, state, platform, s.txid, s.cancel)
                     is Screen.ShowWords -> ShowWordsScreen(model, s.words)
+                    Screen.Pools -> PoolsScreen(model, state, platform)
+                    Screen.PoolCreate -> PoolCreateScreen(model, state)
+                    is Screen.PoolJoin -> PoolJoinScreen(model, state, s.poolId)
+                    Screen.PoolPay -> PoolPayScreen(model, state)
                 }
             }
             state.message?.let { msg ->

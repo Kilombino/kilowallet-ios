@@ -6,6 +6,8 @@ import com.kilombino.kilowallet.core.chain.CertificateChangedException
 import com.kilombino.kilowallet.core.chain.ElectrumException
 import com.kilombino.kilowallet.core.chain.LineTransport
 import com.kilombino.kilowallet.core.chain.TransportFactory
+import com.kilombino.kilowallet.core.kilojoin.WebSocket
+import com.kilombino.kilowallet.core.kilojoin.WebSocketFactory
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
@@ -39,6 +41,20 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
             override fun writeLine(line: String) { c.writeLine(line)?.let { throw ElectrumException(it) } }
             override fun readLine(): String? = c.readLine()
             override fun close() = c.close()
+        }
+    }
+
+    override val sockets = WebSocketFactory { url, listener ->
+        val ws = bridge.openWebSocket(url, object : IosSocketListener {
+            override fun onText(text: String) = listener.onText(text)
+            override fun onPong() = listener.onPong()
+            override fun onClosed(error: String?) = listener.onClosed(error)
+        })
+        ws.error()?.let { ws.close(); throw IllegalStateException("Could not reach the relay: $it") }
+        object : WebSocket {
+            override fun send(text: String) = ws.send(text)
+            override fun ping() = ws.ping()
+            override fun close() = ws.close()
         }
     }
 

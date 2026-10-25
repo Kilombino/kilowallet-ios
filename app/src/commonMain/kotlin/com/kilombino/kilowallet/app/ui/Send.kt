@@ -163,6 +163,10 @@ private fun SendForm(model: WalletModel, state: UiState, platform: AppPlatform) 
         PrimaryButton("Review", Modifier.fillMaxWidth(), enabled = addrOk && (all || sats > 0)) {
             model.prepareSend(to, sats, rateValue, all)
         }
+        // Kilojoin: the same payment (and up to 4 more recipients) through a new pool.
+        LinkText("or pay through a Kilojoin pool ›", color = Purple) {
+            model.payThroughPool(if (to.isBlank() && sats == 0L) emptyList() else listOf(to to sats), rateValue)
+        }
     }
 }
 

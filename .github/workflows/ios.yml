@@ -37,11 +37,11 @@ jobs:
       - name: Unit tests (JVM and iOS simulator; the language tables on the JVM)
         run: ./gradlew :core:jvmTest :core:iosSimulatorArm64Test :app:desktopTest --stacktrace
 
-      - name: Live smoke test against the default Electrum server
+      - name: Live smoke test against the default Electrum server and the pools' relay
         continue-on-error: true
         env:
           KW_LIVE: "1"
-        run: ./gradlew :core:jvmTest --tests '*LiveServerTest*' --rerun-tasks -i | grep -E "Connected|Done|FAIL|PASS|LiveServerTest" | head -40
+        run: ./gradlew :core:jvmTest --tests '*LiveServerTest*' --tests '*LiveRelayTest*' --rerun-tasks -i | grep -E "Connected|Done|FAIL|PASS|LiveServerTest|LiveRelayTest|relay:" | head -40
 
       - name: Build the app for the iOS Simulator (no signing)
         run: |

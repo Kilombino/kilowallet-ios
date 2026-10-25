@@ -2,6 +2,7 @@ package com.kilombino.kilowallet.app
 
 import androidx.compose.ui.graphics.ImageBitmap
 import com.kilombino.kilowallet.core.chain.TransportFactory
+import com.kilombino.kilowallet.core.kilojoin.WebSocketFactory
 
 /**
  * Where the recovery words live. On iOS: one Keychain item, readable only on this device while it
@@ -27,6 +28,8 @@ interface AppPlatform {
     val seeds: SeedStore
     val prefs: Prefs
     val transports: TransportFactory
+    /** WebSockets to the pools' nostr relay (iOS: URLSessionWebSocketTask, iosApp/iosApp/RelaySocket.swift). */
+    val sockets: WebSocketFactory get() = WebSocketFactory { _, _ -> error("no WebSocket on this platform") }
     /** "Face ID", "Touch ID" or "your passcode": what unlocks the words on this device. */
     val unlockName: String
     /** A QR code image for [text], or null if this platform cannot draw one. */

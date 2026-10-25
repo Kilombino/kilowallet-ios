@@ -106,6 +106,17 @@ fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             if (hot) PrimaryButton("Send", Modifier.weight(1f), enabled = state.scan is ScanPhase.Done && state.total > 0) { model.go(Screen.Send) }
         }
         if (!hot) Explain("Watch-only: this wallet can receive and show its coins, but not spend them.")
+        // Kilojoin: shared transactions (pools), in sight on the wallet's main screen.
+        Panel {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    SectionLabel("Kilojoin")
+                    Text(if (hot) "Shared transactions: pools with equal outputs, and payments through them."
+                        else "Shared transactions need a wallet that can sign.", style = MaterialTheme.typography.bodySmall, color = TextSoft)
+                }
+                LinkText("open ›", color = Purple) { model.go(Screen.Pools) }
+            }
+        }
 
         Panel {
             SectionLabel("Movements · confirmations")
@@ -207,7 +218,8 @@ fun ReceiveScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     // A scan that finds newly used addresses works the list (and the address) out again.
     val walletKey = listOf(state.zpub, state.rows.count { it.chainIndex == 0 && it.isUsed })
     val unused = remember(walletKey) { model.unusedReceiveIndexes() }
-    val next = remember(walletKey) { model.nextReceiveIndex() }
+    // The next unused address, past any that a pool's round already counts on.
+    val next = remember(walletKey) { model.nextReceiveIndex().let { n -> unused.firstOrNull { it >= n } ?: n } }
     var index by remember(walletKey) { mutableStateOf(next) }
     val addr = remember(walletKey, index) { model.receiveAddress(index) }
     var copied by remember { mutableStateOf(false) }

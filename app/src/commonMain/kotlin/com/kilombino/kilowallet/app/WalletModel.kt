@@ -45,6 +45,13 @@ sealed interface Screen {
     /** Speed up ([cancel] false) or cancel an unconfirmed send of this wallet by replacing it (RBF). */
     data class Replace(val txid: String, val cancel: Boolean) : Screen
     data class ShowWords(val words: List<String>) : Screen
+    /** KILOJOIN: open pools, your rounds, and how it works. */
+    data object Pools : Screen
+    /** Open a pool of your own (with [Screen.PoolPay]'s payment when it comes from SEND). */
+    data object PoolCreate : Screen
+    data class PoolJoin(val poolId: String) : Screen
+    /** A payment from SEND, to be paid through a new pool: its recipients. */
+    data object PoolPay : Screen
 }
 
 sealed interface ScanPhase {
@@ -108,6 +115,12 @@ class WalletModel(private val platform: AppPlatform) {
     val state: StateFlow<UiState> = _state
     private var scanJob: Job? = null
 
+    /** Kilojoin: the pools and this wallet's rounds in them. */
+    val pools = PoolsModel(platform, { _state.value },
+        gatherCoins = { val s = _state.value; scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned) },
+        verifyCoins = { coins -> val s = _state.value; scanner.verifyCoins(s.zpub ?: error("No wallet."), coins, s.endpoint, s.pinned) },
+        onRoundDone = { refresh() })
+
     private companion object {
         const val K_KIND = "wallet.kind"
         const val K_ZPUB = "wallet.zpub"
@@ -135,6 +148,7 @@ class WalletModel(private val platform: AppPlatform) {
         )
         if (kind != null && zpub != null) scan()
         refreshPrice()
+        if (platform.demoScreen == null) pools.attach()
     }
 
     // ------------------------------------------------------------------ price (Android 1.2.3: 36 currencies)
@@ -180,6 +194,7 @@ class WalletModel(private val platform: AppPlatform) {
     fun go(screen: Screen) {
         _state.update { it.copy(screen = screen, message = null) }
         if (screen == Screen.Send) openSend()
+        if (screen == Screen.Pools && platform.demoScreen == null) pools.attach()
         if (screen is Screen.Replace) {
             _state.update { it.copy(send = SendPhase.Editing) }
             val s = _state.value
@@ -192,8 +207,17 @@ class WalletModel(private val platform: AppPlatform) {
 
     fun back() {
         val s = _state.value
-        go(if (s.kind == null) Screen.Welcome else Screen.Home)
+        go(when {
+            s.kind == null -> Screen.Welcome
+            s.screen == Screen.PoolCreate || s.screen is Screen.PoolJoin -> Screen.Pools
+            s.screen == Screen.PoolPay -> Screen.Send
+            else -> Screen.Home
+        })
     }
+
+    /** Screenshot mode (a throwaway demo wallet, nothing sent anywhere). */
+    val isDemo: Boolean get() = platform.demoScreen != null
+    val unlockName: String get() = platform.unlockName
 
     fun dismissMessage() = _state.update { it.copy(message = null) }
     private fun say(msg: String) = _state.update { it.copy(message = msg) }
@@ -252,10 +276,12 @@ class WalletModel(private val platform: AppPlatform) {
             it.copy(kind = kind, zpub = zpub, rows = emptyList(), txs = emptyList(), screen = Screen.Home, send = SendPhase.Editing)
         }
         scan()
+        pools.attach()
     }
 
     fun deleteWallet() {
         scanJob?.cancel()
+        pools.detach()
         platform.seeds.delete()
         prefs.put(K_KIND, null); prefs.put(K_ZPUB, null)
         _state.update { UiState(endpoint = it.endpoint, pinned = it.pinned) }
@@ -379,11 +405,19 @@ class WalletModel(private val platform: AppPlatform) {
      */
     fun unusedReceiveIndexes(ahead: Int = 20): List<Int> {
         val used = _state.value.rows.filter { it.chainIndex == 0 && it.isUsed }.map { it.index }.toSet()
-        return (0 until nextReceiveIndex() + ahead).filter { it !in used }
+        // An address a pool's round counts on (its equal output) is not handed out here.
+        val seats = pools.reservedScripts()
+        val zpub = _state.value.zpub
+        return (0 until nextReceiveIndex() + ahead).filter { i ->
+            i !in used && (seats.isEmpty() || zpub == null || runCatching {
+                val p = Bip32.parseExtendedPubKey(zpub)
+                Address.scriptPubKey(Bip32.derivePath(p, 0, i).pubkey(), p.scriptType).toList() !in seats
+            }.getOrDefault(true))
+        }
     }
 
     /** The receive address at [index] (default: the next unused) and its derivation path. */
-    fun receiveAddress(index: Int = nextReceiveIndex()): Pair<String, String>? {
+    fun receiveAddress(index: Int = unusedReceiveIndexes().firstOrNull { it >= nextReceiveIndex() } ?: nextReceiveIndex()): Pair<String, String>? {
         val zpub = _state.value.zpub ?: return null
         return runCatching {
             val parsed = Bip32.parseExtendedPubKey(zpub)
@@ -403,7 +437,8 @@ class WalletModel(private val platform: AppPlatform) {
         }
         scope.launch {
             runCatching { scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned) }
-                .onSuccess { u -> _state.update { it.copy(spendable = u) } }
+                // Coins of a pool round being built are held for it; a pool still waiting lets them go.
+                .onSuccess { u -> val locked = pools.lockedOutpoints(); _state.update { it.copy(spendable = u.filter { c -> "${c.txid}:${c.vout}" !in locked }) } }
         }
     }
 
@@ -416,10 +451,11 @@ class WalletModel(private val platform: AppPlatform) {
         _state.update { it.copy(send = SendPhase.Preparing) }
         scope.launch {
             runCatching {
-                val utxos = s.spendable ?: scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned)
-                val changeIndex = s.rows.filter { it.chainIndex == 1 }.maxOfOrNull { it.index }?.plus(1) ?: 0
+                val locked = pools.lockedOutpoints()
+                val utxos = (s.spendable ?: scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned))
+                    .filter { "${it.txid}:${it.vout}" !in locked }
                 val draft = withContext(Dispatchers.Default) {
-                    SendPlanner.plan(to, amountSats, rate, utxos, SendPlanner.changeScript(zpub, changeIndex), sendAll)
+                    SendPlanner.plan(to, amountSats, rate, utxos, freshChange(s), sendAll)
                 }
                 scanner.verifyCoins(zpub, draft.inputs, s.endpoint, s.pinned)
                 draft
@@ -447,6 +483,8 @@ class WalletModel(private val platform: AppPlatform) {
                     val signed = withContext(Dispatchers.Default) { Signer.sign(draft, words, pass, zpub) }
                     scanner.broadcast(signed.rawHex, s.endpoint, s.pinned)
                 }.onSuccess { txid ->
+                    // A coin seated in a pool still waiting for people was spent: that seat is given up.
+                    pools.leaveFor(draft.inputs.map { "${it.txid}:${it.vout}" })
                     _state.update { it.copy(send = SendPhase.Sent(txid, replaced = draft.replaces != null, cancelled = draft.cancels)) }
                     refresh()
                 }.onFailure { e ->
@@ -460,11 +498,19 @@ class WalletModel(private val platform: AppPlatform) {
 
     // ------------------------------------------------------------------ speed up / cancel (RBF)
 
-    /** The next unused change address's script (one past the highest change address seen). */
+    /** The next unused change address's script (one past the highest change address seen, none a pool's seat holds). */
     private fun freshChange(s: UiState): ByteArray {
         val zpub = s.zpub ?: error("No wallet.")
-        val index = s.rows.filter { it.chainIndex == 1 }.maxOfOrNull { it.index }?.plus(1) ?: 0
+        val held = pools.reservedScripts()
+        var index = s.rows.filter { it.chainIndex == 1 }.maxOfOrNull { it.index }?.plus(1) ?: 0
+        while (SendPlanner.changeScript(zpub, index).toList() in held) index++
         return SendPlanner.changeScript(zpub, index)
+    }
+
+    /** Open a pool for the payment typed in SEND (1 to 5 recipients). */
+    fun payThroughPool(recipients: List<Pair<String, Long>>, rate: Double) {
+        pools.startPayment(PoolPayRequest(recipients, rate))
+        go(Screen.PoolPay)
     }
 
     /**
@@ -520,6 +566,17 @@ class WalletModel(private val platform: AppPlatform) {
                         go(Screen.Replace("4f".repeat(32), cancel = true)); platform.markReady(screen)
                     }
                     "send" -> { go(Screen.Send); platform.markReady(screen) }
+                    "pools", "pool-round", "pool-intro" -> {
+                        withContext(Dispatchers.Default) { pools.setUpDemo(screen, words) }
+                        if (screen == "pool-intro") pools.setEnabled(false)
+                        go(Screen.Pools); platform.markReady(screen)
+                    }
+                    "pool-create" -> { withContext(Dispatchers.Default) { pools.setUpDemo(screen, words) }; go(Screen.PoolCreate); platform.markReady(screen) }
+                    "pool-join" -> {
+                        withContext(Dispatchers.Default) { pools.setUpDemo(screen, words) }
+                        pools.state.value.open?.firstOrNull()?.let { go(Screen.PoolJoin(it.id)) }; platform.markReady(screen)
+                    }
+                    "pool-pay" -> { withContext(Dispatchers.Default) { pools.setUpDemo(screen, words) }; go(Screen.PoolPay); platform.markReady(screen) }
                     "review" -> {
                         // A made-up coin, only so the review screen has something to show.
                         val coin = SpendableUtxo("4f".repeat(32), 0, 250_000, 0, 0, 970_000)

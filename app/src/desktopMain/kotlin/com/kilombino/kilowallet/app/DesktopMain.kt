@@ -28,6 +28,7 @@ fun main() = application {
             override fun put(key: String, value: String?) { if (value == null) mem.remove(key) else mem[key] = value }
         }
         override val transports: TransportFactory = JvmTransport
+        override val sockets: com.kilombino.kilowallet.core.kilojoin.WebSocketFactory = com.kilombino.kilowallet.core.kilojoin.JvmWebSocket
         override val unlockName = "password"
         override fun qrImage(text: String): ImageBitmap? = null
         override val canScanQr = false
