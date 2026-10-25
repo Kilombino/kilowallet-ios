@@ -1,6 +1,6 @@
 # Kilowallet for iOS
 
-A self-custodial wallet for Bitcoin on the BLAKE2b proof-of-work chain (BTC / XBT), for iPhone.
+A self-custodial wallet for Bitcoin on the BLAKE2b proof-of-work chain (BTC), for iPhone.
 The iOS sibling of [Kilowallet for Android](https://github.com/Kilombino/kilowallet).
 
 Version 0.4 (BTC only):
