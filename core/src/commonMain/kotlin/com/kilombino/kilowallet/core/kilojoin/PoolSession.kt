@@ -969,7 +969,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         const val EXPIRY_WARN_SECONDS = 3600
 
         /** Each output's random wait before it is handed in: 3 to 42 seconds (shorter only in tests). */
-        internal var handInDelaySeconds: () -> Long = { 3L + (secureRandomBytes(1)[0].toInt() and 0xFF) % 40 }
+        var handInDelaySeconds: () -> Long = { 3L + (secureRandomBytes(1)[0].toInt() and 0xFF) % 40 }
 
         /**
          * Everything to create a seat, done once at join/create time with the coins' keys at hand:
