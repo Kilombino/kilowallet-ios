@@ -3,7 +3,7 @@
 A self-custodial wallet for Bitcoin on the BLAKE2b proof-of-work chain (BTC / XBT), for iPhone.
 The iOS sibling of [Kilowallet for Android](https://github.com/Kilombino/kilowallet).
 
-Version 0.3 (BTC only):
+Version 0.4 (BTC only):
 
 - Create a wallet (12 or 24 words; the words are shown and then checked), restore from words
   (optional BIP-39 passphrase), or watch-only from a zpub (also ypub / xpub; a plain xpub asks
@@ -37,6 +37,23 @@ Version 0.3 (BTC only):
   chosen in Settings. Texts only the iOS app has are translated in `scripts/i18n-ios/`, and the
   camera and Face ID permission texts in `iosApp/iosApp/<lang>.lproj/InfoPlist.strings`.
 - Recovery words in the iOS Keychain, unlocked by Face ID / Touch ID / the device passcode.
+- **Kilojoin** (shared transactions; the KILOJOIN screen, from the wallet's main screen): pools
+  where several people make one transaction together. Each person puts in coins and gets back
+  outputs of exactly the pool's amount, all equal, to fresh addresses of their own; or pays 1 to 5
+  recipients through a pool from SEND. Join an open pool, or open one (from whole coins with no
+  change, or with an amount typed in), with 1 to 5 equal outputs each. Each member's wallet checks
+  the whole transaction (its own outputs, its change, its fee share, the other outputs) and the
+  user signs only their own inputs, with Face ID, after seeing that check. Equal outputs go to this
+  wallet's fresh addresses, or to a watch-only key's (a zpub) when one is set. No server holds or
+  can move any coin; there is no fee for it; the messages go over nostr
+  (`relay.kilombino.com`), encrypted. Kilojoin protocol v1 to v5, byte for byte as Kilowallet for
+  Android 1.3.0 and for desktop: the same pools, with the same people. Native SegWit (bc1q) pools
+  only. iOS keeps no app running in the background: rounds run while the app is open, and for the
+  short time iOS allows after leaving it; the screen says so.
+
+New in 0.4 (ported from Kilowallet for Android 1.3.0): Kilojoin (pools, payments through a pool,
+Kilojoin v1 to v5), the language tables of Android 1.3.0, and receive and change addresses that a
+round counts on are not handed out to anything else.
 
 New in 0.3 (ported from Kilowallet for Android, up to 1.2.6): speed up and cancel an unconfirmed
 send (RBF), 36 currencies with amounts in your currency in Send and Receive, a payment request with
@@ -46,8 +63,10 @@ wallet and server it started for, and the language tables of Android 1.2.6.
 New in 0.2 (ported from Kilowallet for Android, up to 1.1.7): Electrum protocol negotiation up to 1.6,
 batched requests, per-type dust limits, ◀ ▶ on the receive screen, languages.
 
-Not in 0.3: other chains, coinjoin (Kilojoin), Ark, Lightning, notifications, speeding up a payment
-received (CPFP), PSBT, Taproot accounts (also for watch-only), a full header chain (SPV is per payment, as in 0.1).
+Not in 0.4: other chains, Ark, Lightning, notifications (also for rounds: no lock-screen cards or
+alerts), Taproot pools, rounds that sign on their own, the "perfect coin" made for a pool, speeding
+up a payment received (CPFP), PSBT, Taproot accounts (also for watch-only), a full header chain
+(SPV is per payment, as in 0.1).
 
 ## Official builds
 
@@ -80,7 +99,7 @@ Kotlin code is built by Gradle from Xcode's "Compile Kotlin Framework" build pha
 3. Select the **iosApp** target → **Signing & Capabilities**: choose your **Team**, and set the
    **Bundle Identifier** (suggested: `com.kilombino.kilowallet`). The same two values can instead
    be set once in `iosApp/Configuration/Config.xcconfig` (`TEAM_ID`, `BUNDLE_ID`). The version is
-   `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in that file (0.3.0 / 3); raise the build
+   `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in that file (0.4.0 / 4); raise the build
    number for every upload.
 
 4. Try it: pick an iPhone simulator or a connected iPhone and press Run. In the Simulator, enable
@@ -96,6 +115,9 @@ Kotlin code is built by Gradle from Xcode's "Compile Kotlin Framework" build pha
    A privacy manifest (`PrivacyInfo.xcprivacy`) lists the "required reason" APIs it uses.
 
 ### App Store review notes (suggested text)
+
+The full notes for the reviewer, including Kilojoin (0.4) and how to see it, are in
+[`docs/APP_REVIEW_NOTES.md`](docs/APP_REVIEW_NOTES.md). In short:
 
 > Kilowallet is a self-custodial wallet for Bitcoin on the BLAKE2b proof-of-work fork of Bitcoin
 > (ticker XBT): same addresses and transaction history as Bitcoin up to block 961 640, a different
@@ -120,10 +142,16 @@ Kotlin code is built by Gradle from Xcode's "Compile Kotlin Framework" build pha
 - Prices: unless the currency is set to Off, one HTTPS GET of
   `https://mempool.kilombino.com/api/v1/blake2b/widget` at most every 5 minutes while the app is
   open. The request is the same for every user (no address, key or identifier in it).
+- Kilojoin (only once the user turns it on in its screen): a WebSocket to the nostr relay
+  `relay.kilombino.com` while that screen is open or a round is going, to list open pools and carry
+  a round's messages (encrypted with NIP-44, signed by keys made for that pool). The relay sees the
+  phone's IP address and when it is connected, never the wallet's keys; what the pool's other
+  members learn is what the transaction shows on the chain anyway.
 - Camera: only to scan a QR code, only when the user taps "Scan QR".
 - On device: the recovery words (Keychain, this device only, user presence required), and in
   `UserDefaults` the wallet's public key, the server and its certificate fingerprint, the chosen
-  currency and the last prices.
+  currency and the last prices, and the state of the user's Kilojoin rounds (their terms, the
+  one-off keys made for each pool, never the wallet's own keys; kept a week after a round ends).
 
 ## How it is built
 
@@ -156,6 +184,8 @@ file says which Android file it comes from):
 | `wallet/Scanner, Send` | `data/Scanner`, `ui/WalletViewModel` (prepareSend, verifyCoins, confirmSend, fees, dustFor) |
 | `wallet/Replace` | `ui/WalletViewModel` (prepareBump, prepareCancel) |
 | `market/Fiat` | `data/Fiat`, `data/MarketFeed` (the price and the exchange rates only) |
+| `kilojoin/Protocol, PoolTx, PoolSession, BlindRsa, NostrEvent, Nip44, Relay, PoolPayment` | `coinjoin/Protocol, CoinjoinTx, PoolSession, BlindRsa, NostrEvent, Nip44, RelayClient, CoinjoinPayment, MixedCoins, Destination` (1.3.0, [`6bb1bb0`](https://github.com/Kilombino/kilowallet/commit/6bb1bb0681a28a1e81be766e4be86e4d20f654ab)) — coroutines instead of threads, `BigNat` instead of `BigInteger` |
+| `app/…/Pools.kt`, `app/…/ui/Pools.kt` | `coinjoin/CoinjoinHub`, `ui/CoinjoinScreen` — without the background service, the alerts and the lock-screen cards |
 | `app/…/i18n/I18n, Text` + `composeResources/files/i18n/*.json` | `ui/i18n/I18n, Text` + `assets/i18n/*.json` (copied by `scripts/sync-i18n.py`) |
 
 Why a copy and not a Gradle composite build / submodule of Kilombino/kilowallet: the Android
@@ -167,7 +197,13 @@ Android app's crypto files **unchanged** on the JVM and records what they produc
 seeds, zpubs, addresses, private keys, ECDSA signatures and 24 complete signed transactions, half
 of them with the unified sighash, plus 9 unconfirmed sends each replaced by a speed-up and by a
 cancellation at three fee rates); `AndroidVectorsTest` and `ReplaceTest` require byte-identical results here, on the
-JVM and in the iOS simulator. To re-check against a newer Android version:
+JVM and in the iOS simulator. The same tool runs the Android app's Kilojoin code unchanged
+(`KilojoinVectors`: blind signatures with a fixed RSA key, nostr events and NIP-44 payloads, which
+pool announcements are listed and as what, the v5 split, the per-person minimum, fee shares, the
+messages' MACs and proofs, and whole v3, v4 and v5 rounds whose signatures, ground to a low R as
+Bitcoin Core does, and raw transactions must come out identical), and `./gradlew -p
+tools/android-vectors interop` plays real rounds between this port and the Android app's own
+session code over relay.kilombino.com and a BLAKE2b regtest node of your own (`KW_RPC`). To re-check against a newer Android version:
 
 ```sh
 ./gradlew -p tools/android-vectors run -PandroidRepo=/path/to/kilowallet
@@ -175,8 +211,8 @@ JVM and in the iOS simulator. To re-check against a newer Android version:
 ```
 
 The language tables are copied the same way, from a given Android commit; entries that call the
-SHA-256 chain or the coinjoin by the Android app's nicknames are left out (on iOS they would be
-Corecoin and Kilojoin, and iOS has neither). Strings only iOS has can be translated in
+SHA-256 chain or the pools by the Android app's own words are left out (on iOS they are Corecoin
+and Kilojoin, and the pool screens have texts of their own). Strings only iOS has can be translated in
 `scripts/i18n-ios/<lang>.json`, merged on top:
 
 ```sh
@@ -196,6 +232,10 @@ scripts/sync-i18n.py /path/to/kilowallet <commit>
   code has no path that signs a spend with plain SIGHASH_ALL (`TxBuilder.build` defaults to
   unified, and `Signer` always asks for it).
 - Entropy for new words: `SecRandomCopyBytes`.
+- Kilojoin: BIP-340 Schnorr (nostr events) and ECDSA ground to a low R (pool inputs) through
+  libsecp256k1; NIP-44 v2 (ChaCha20 + HMAC-SHA256) and RSA blind signatures (RFC 9474,
+  RSABSSA-SHA384-PSS-Randomized) in this repository, the RSA arithmetic in `kilojoin/BigNat`
+  (tested against `java.math.BigInteger` and the RFC's vector).
 
 ### Tests and CI
 
@@ -205,7 +245,9 @@ scripts/sync-i18n.py /path/to/kilowallet <commit>
   vectors, real BLAKE2b mainnet headers, BIP-39/BIP-84 official vectors, coin selection, dust
   limits, the Electrum client against a scripted server (1.4/1.6, batches);
 - `:app:desktopTest` — the language tables and the translator, and every iOS screen string in
-  every language (none may come out with an Android nickname);
+  every language; it fails if "coinjoin", "mix"/"mixing"/"mixer", "spamchain", "spamcoin" or
+  "Poolcoin" (or their translations) appear in any iOS string table, `InfoPlist.strings` or
+  `Info.plist`;
 - a live smoke test against the default Electrum server (allowed to fail if it is down);
 - builds the Xcode app for the simulator (Debug, unsigned) and, in a second job, for devices
   (Release, unsigned);
