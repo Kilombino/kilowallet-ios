@@ -1,0 +1,61 @@
+name: iOS release archive
+
+# An unsigned Release archive of a tag, attached to its GitHub release. Whoever submits the app
+# signs it with their own Apple account: this only saves building the Kotlin framework on a Mac.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build (e.g. v0.4.0)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  archive:
+    name: Unsigned archive for device
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Cache Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+      - name: Archive Release for iphoneos without signing
+        run: |
+          mkdir -p build out
+          xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/dd \
+            -archivePath build/Kilowallet.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" archive \
+            | tee build/xcodebuild-archive.log | grep -E "error:|ARCHIVE" || true
+          test -d build/Kilowallet.xcarchive/Products/Applications/Kilowallet.app
+          V="${TAG#v}"
+          (cd build && ditto -c -k --keepParent Kilowallet.xcarchive "../out/Kilowallet-$V-unsigned.xcarchive.zip")
+          mkdir -p build/ipa/Payload
+          cp -R build/Kilowallet.xcarchive/Products/Applications/Kilowallet.app build/ipa/Payload/
+          (cd build/ipa && zip -qry "../../out/Kilowallet-$V-unsigned.ipa" Payload)
+          (cd out && shasum -a 256 * > SHA256SUMS && cat SHA256SUMS)
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" out/* --clobber --repo "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: archive-log
+          path: build/xcodebuild-archive.log
