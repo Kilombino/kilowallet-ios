@@ -63,6 +63,60 @@ object Ec {
         return Secp256k1.compact2der(compact)
     }
 
+    /**
+     * The same, ground to a low R as Bitcoin Core does (the Android app's `Ecdsa.sign(…, grindLowR =
+     * true)`, used for every pool input): while r's top bit is set, sign again with a 32-byte
+     * little-endian counter as the RFC 6979 extra data. The DER signature is then at most 71 bytes,
+     * and byte for byte the one Core and the Android app make for the same key and message.
+     */
+    fun signDerLowR(secret: ByteArray, hash: ByteArray): ByteArray {
+        require(hash.size == 32) { "message hash must be 32 bytes" }
+        require(isValidSecret(secret)) { "private key out of range" }
+        var counter = 0L
+        while (true) {
+            val extra = if (counter == 0L) null else ByteArray(32).also { for (i in 0 until 8) it[i] = (counter ushr (8 * i)).toByte() }
+            val compact = Secp256k1.sign(hash, secret, extra)
+            if ((compact[0].toInt() and 0x80) == 0) {
+                check(Secp256k1.verify(compact, hash, Secp256k1.pubkeyCreate(secret))) { "signature self-check failed" }
+                return Secp256k1.compact2der(compact)
+            }
+            counter++
+        }
+    }
+
+    /** True when [der] (no sighash byte) is a valid signature of [hash] by the 33-byte [pubkey]. */
+    fun verifyDer(pubkey: ByteArray, hash: ByteArray, der: ByteArray): Boolean = runCatching {
+        if (hash.size != 32) return false
+        val compact = Secp256k1.der2compact(der)
+        // libsecp256k1 only accepts low-S; a high-S signature is normalised first, as the
+        // Android app's own verifier takes either.
+        val (normal, _) = Secp256k1.signatureNormalize(compact)
+        Secp256k1.verify(normal, hash, Secp256k1.pubkeyParse(pubkey))
+    }.getOrDefault(false)
+
+    /** The 32-byte x-only (BIP-340) public key of [secret]. */
+    fun xOnly(secret: ByteArray): ByteArray = publicKey(secret).copyOfRange(1, 33)
+
+    /** BIP-340 signature of a 32-byte message, with [aux] (32 random bytes unless a test pins them). */
+    fun schnorrSign(secret: ByteArray, msg: ByteArray, aux: ByteArray = com.kilombino.kilowallet.core.platform.secureRandomBytes(32)): ByteArray {
+        require(msg.size == 32 && aux.size == 32)
+        require(isValidSecret(secret)) { "private key out of range" }
+        val sig = Secp256k1.signSchnorr(msg, secret, aux)
+        check(schnorrVerify(xOnly(secret), msg, sig)) { "Schnorr self-check failed" }
+        return sig
+    }
+
+    fun schnorrVerify(pubX: ByteArray, msg: ByteArray, sig: ByteArray): Boolean = runCatching {
+        sig.size == 64 && pubX.size == 32 && msg.size == 32 && Secp256k1.verifySchnorr(sig, msg, pubX)
+    }.getOrDefault(false)
+
+    /** The x coordinate of [secret]·P, P the even-y point of x-only [pubX] (NIP-44's shared secret). */
+    fun sharedX(secret: ByteArray, pubX: ByteArray): ByteArray {
+        require(pubX.size == 32) { "x-only key must be 32 bytes" }
+        val p = Secp256k1.pubkeyParse(byteArrayOf(0x02) + pubX)
+        return Secp256k1.pubKeyCompress(Secp256k1.pubKeyTweakMul(p, secret)).copyOfRange(1, 33)
+    }
+
     internal fun compareUnsigned(a: ByteArray, b: ByteArray): Int {
         require(a.size == b.size)
         for (i in a.indices) {

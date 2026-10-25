@@ -170,11 +170,13 @@ object TxBuilder {
     /** The DER signature + sighash byte for input [index]. */
     fun witnessSignature(
         version: Long, inputs: List<Input>, outputs: List<Output>, index: Int, locktime: Long, unified: Boolean,
+        /** Ground to a low R (pool inputs, as the Android app signs them); a normal send does not grind. */
+        grindLowR: Boolean = false,
     ): ByteArray {
         val h = if (unified) unifiedSighash(version, inputs, outputs, index, locktime)
                 else sighash(version, inputs, outputs, index, locktime)
         val hashByte = if (unified) SIGHASH_UNIFIED or SIGHASH_ALL else SIGHASH_ALL
-        val der = Ec.signDer(inputs[index].privateKey, h)
+        val der = if (grindLowR) Ec.signDerLowR(inputs[index].privateKey, h) else Ec.signDer(inputs[index].privateKey, h)
         return der + byteArrayOf(hashByte.toByte())
     }
 
