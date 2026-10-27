@@ -138,7 +138,11 @@ class PoolSessionTest {
 
     private suspend fun waitFor(what: String, sec: Int = 60, cond: () -> Boolean) {
         val until = System.currentTimeMillis() + sec * 1000L
-        while (!cond()) { if (System.currentTimeMillis() > until) error("timed out: $what"); delay(50) }
+        while (!cond()) {
+            if (System.currentTimeMillis() > until)
+                error("timed out: $what; " + sessions.joinToString { "${it.state.phase} ${it.state.reason} seats=${it.state.seats.size} round=${it.state.round.size}/${it.state.roundId}" })
+            delay(50)
+        }
     }
 
     private fun session(name: String, st: PoolSession.State) = PoolSession(Env(name, chain), st, relay).also { sessions += it; it.start() }
