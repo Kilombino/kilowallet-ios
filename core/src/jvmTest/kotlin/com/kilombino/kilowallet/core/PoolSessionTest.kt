@@ -254,7 +254,9 @@ class PoolSessionTest {
         a.s.vote(true)
         waitFor("A and B said yes") { a.s.state.accepts.size == 2 }
         ahead = Protocol.VOTE_SECONDS + 5
-        waitFor("closing", 60) { a.s.state.phase == PoolSession.Phase.CLOSING && b.s.state.phase == PoolSession.Phase.CLOSING }
+        // A fast round goes through CLOSING to SIGNING between two looks: either is past the vote.
+        val closed = setOf(PoolSession.Phase.CLOSING, PoolSession.Phase.SIGNING)
+        waitFor("closing", 60) { a.s.state.phase in closed && b.s.state.phase in closed }
         assertEquals(a.s.state.roundId, b.s.state.roundId)
         assertEquals(2, a.s.state.round.size)
         waitFor("signing", 60) { listOf(a, b).all { it.s.state.phase == PoolSession.Phase.SIGNING } }
