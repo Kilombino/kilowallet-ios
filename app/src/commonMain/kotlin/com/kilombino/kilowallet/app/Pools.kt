@@ -233,7 +233,10 @@ class PoolsModel(
         }
     }
 
-    private suspend fun fetchPools(sinceSeconds: Long = 3 * 86400): List<Protocol.Terms> {
+    // Only the pools heard from lately: an open pool is re-announced every 10 minutes and listed for 35, so
+    // twice that is every pool there is. Three days' worth (hundreds of announcements, each signature
+    // checked here) only made the list slow.
+    private suspend fun fetchPools(sinceSeconds: Long = 2 * Protocol.STALE_AFTER): List<Protocol.Terms> {
         val found = HashMap<String, Protocol.Terms>()
         val lock = kotlinx.coroutines.sync.Mutex()
         val r = RelayClient(Protocol.RELAY, platform.sockets, { _, ev ->
