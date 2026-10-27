@@ -22,7 +22,7 @@ import com.kilombino.kilowallet.core.kilojoin.Protocol as IProtocol
 import com.kilombino.kilowallet.core.kilojoin.RelayClient as IRelayClient
 
 /**
- * Interop rounds between this iOS port's pool code and the Android app's own (1.3.0, compiled
+ * Interop rounds between this iOS port's pool code and the Android app's own (1.3.9, compiled
  * here unchanged), for real: relay.kilombino.com under a network name of their own (so nothing
  * shows in anyone's pool list), and a BLAKE2b regtest node of their own (KW_RPC, user:pass@host:port).
  * Coins are made on that regtest only. Each round checks that both sides build the same

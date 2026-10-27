@@ -101,6 +101,7 @@ class PoolSessionTest {
 
     inner class Env(val name: String, val chain: Chain) : PoolSession.Env {
         val events = CopyOnWriteArrayList<String>()
+        override fun now(): Long = NostrEvent.nowSeconds() + ahead
         override fun coinUnspent(coin: PoolTx.Coin) = chain.utxos[coin.outpoint] == coin.value
         override fun broadcast(rawHex: String) = chain.broadcast(rawHex)
         override fun confirmations(txid: String): Int? = when {
@@ -113,12 +114,17 @@ class PoolSessionTest {
         override fun log(msg: String) { if (System.getenv("KW_DEBUG") != null) println("[$name] $msg") }
     }
 
+    /** Seconds every wallet's clock is ahead: a deadline reached at once. */
+    @Volatile private var ahead = 0L
     private val relay = FakeRelay()
     private val chain = Chain()
     private val sessions = mutableListOf<PoolSession>()
 
     @BeforeTest fun quick() { Protocol.NETWORK = "blake2b-test"; PoolSession.handInDelaySeconds = { 0L } }
-    @AfterTest fun down() { sessions.forEach { it.dispose() }; Protocol.NETWORK = "blake2b" }
+    @AfterTest fun down() {
+        sessions.forEach { it.dispose() }; Protocol.NETWORK = "blake2b"
+        PoolSession.SEAT_CHECK_SECONDS = 120L; PoolSession.FAKE_GRACE = 600L
+    }
 
     private var n = 0
     private fun key(): ByteArray = Hashes.sha256("pool-session-test-${n++}-${System.nanoTime()}".encodeToByteArray())
@@ -212,5 +218,74 @@ class PoolSessionTest {
         val e = session("E", PoolSession.newState(np.terms, false, null, listOf(fake), listOf(k3), listOf("m"), listOf(script()), script(), password = "right"))
         waitFor("not real") { e.state.phase == PoolSession.Phase.REJECTED }
         assertEquals("that coin is not unspent on the chain", e.state.reason)
+    }
+
+    /** A, B and C in a pool, the creator first; all welcomed and seeing three seats. */
+    private suspend fun threeInAPool(): Triple<Member, Member, Member> {
+        val np = PoolSession.newPool(50_000, 2.0, 5, 1)
+        val t = np.terms
+        val (ca, ka) = coin(60_000)
+        val a = Member(session("A", PoolSession.newState(t, true, np.secret, listOf(ca), listOf(ka), listOf("m/a"), listOf(script()), script(),
+            creatorSecret = np.creatorSecret, blindPriv = np.blindPriv)), listOf(ka))
+        waitFor("A open") { a.s.state.phase == PoolSession.Phase.OPEN }
+        fun member(name: String): Member {
+            val (c, k) = coin(70_000)
+            return Member(session(name, PoolSession.newState(t, false, null, listOf(c), listOf(k), listOf("m"), listOf(script()), script())), listOf(k))
+        }
+        val b = member("B"); waitFor("B in") { b.s.state.phase == PoolSession.Phase.OPEN }
+        val c = member("C"); waitFor("C in") { c.s.state.phase == PoolSession.Phase.OPEN }
+        waitFor("three seats") { listOf(a, b, c).all { it.s.state.seats.size == 3 } }
+        return Triple(a, b, c)
+    }
+
+    /**
+     * A vote that ends by its deadline (C never answers) closes once: B holds the creator's round id,
+     * gets its blind signature, and the round of A and B is signed and broadcast. Android before 1.3.9
+     * could close such a vote again with a new round id, and the round timed out.
+     */
+    @Test fun aVoteOverByItsDeadlineClosesOnce() = runBlocking {
+        val (a, b, c) = threeInAPool()
+        b.s.requestClose()
+        waitFor("voting") { listOf(a, b, c).all { it.s.state.phase == PoolSession.Phase.VOTING } }
+        a.s.vote(true)
+        waitFor("A and B said yes") { a.s.state.accepts.size == 2 }
+        ahead = Protocol.VOTE_SECONDS + 5
+        waitFor("closing", 60) { a.s.state.phase == PoolSession.Phase.CLOSING && b.s.state.phase == PoolSession.Phase.CLOSING }
+        assertEquals(a.s.state.roundId, b.s.state.roundId)
+        assertEquals(2, a.s.state.round.size)
+        waitFor("signing", 60) { listOf(a, b).all { it.s.state.phase == PoolSession.Phase.SIGNING } }
+        listOf(a, b).forEach { it.s.sign(it.keys) }
+        waitFor("broadcast") { listOf(a, b).all { it.s.state.txid != null } }
+        waitFor("C out") { c.s.state.phase == PoolSession.Phase.ABORTED }
+        assertEquals(1, chain.txs.size)
+    }
+
+    /** A member asleep at closing never asks for its blind signature: the round closes again without it. */
+    @Test fun aSeatAsleepAtClosingIsLeftOut() = runBlocking {
+        val (a, b, c) = threeInAPool()
+        b.s.requestClose()
+        waitFor("voting") { listOf(a, b, c).all { it.s.state.phase == PoolSession.Phase.VOTING } }
+        // C says yes and falls asleep before the round closes: nothing more comes from it.
+        c.s.vote(true)
+        delay(300)
+        c.s.stop()
+        a.s.vote(true)
+        waitFor("closing") { listOf(a, b).all { it.s.state.phase == PoolSession.Phase.CLOSING } }
+        waitFor("B has its signature") { b.s.state.outSigs.isNotEmpty() }
+        ahead = Protocol.OUTPUTS_SECONDS + 20
+        waitFor("closed again", 60) { b.s.state.closeSeq == 1 && a.s.state.round.size == 2 }
+        waitFor("signing", 60) { listOf(a, b).all { it.s.state.phase == PoolSession.Phase.SIGNING } }
+        listOf(a, b).forEach { it.s.sign(it.keys) }
+        waitFor("broadcast") { listOf(a, b).all { it.s.state.txid != null } }
+    }
+
+    /** A seat whose coin is spent after it joined is taken out by the creator; nobody else leaves. */
+    @Test fun aSpentSeatIsTakenOut() = runBlocking {
+        PoolSession.SEAT_CHECK_SECONDS = 1L
+        val (a, b, c) = threeInAPool()
+        chain.utxos.remove(c.s.state.seat.coin.outpoint)
+        waitFor("C out of the roster", 60) { a.s.state.seats.size == 2 && b.s.state.seats.size == 2 }
+        waitFor("C told") { c.s.state.phase == PoolSession.Phase.ABORTED }
+        assertEquals(PoolSession.Phase.OPEN, b.s.state.phase)
     }
 }
