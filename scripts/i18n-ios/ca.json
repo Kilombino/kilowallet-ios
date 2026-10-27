@@ -102,7 +102,7 @@
  "New wallet · 24 words": "Moneder nou · 24 paraules",
  "Paste an extended PUBLIC key (zpub, also ypub/xpub) to watch balances without any way to spend. Careful: it reveals every address you will ever use — keep it like a bank statement.": "Enganxa una clau PÚBLICA estesa (zpub, també ypub/xpub) per veure saldos sense cap manera de gastar. Compte: revela totes les adreces que faràs servir — guarda-la com un extracte bancari.",
  "Watch a zpub": "Mira una zpub",
- "BTC here is Bitcoin on the BLAKE2b proof-of-work chain (XBT): same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "Aquí BTC és Bitcoin a la cadena amb prova de treball BLAKE2b (XBT): mateixes adreces i historial que Bitcoin fins al bloc 961 640, una altra prova de treball després.",
+ "BTC here is Bitcoin on the BLAKE2b proof-of-work chain: same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "Aquí BTC és Bitcoin a la cadena amb prova de treball BLAKE2b: mateixes adreces i historial que Bitcoin fins al bloc 961 640, una altra prova de treball després.",
  "Your recovery words": "Les teves paraules de recuperació",
  "Write these {0} words on paper, in order. They ARE your wallet: anyone with them can take your coins, and without them a lost phone means lost coins. Never type them into a website, never photograph them.": "Escriu aquestes {0} paraules en paper, en ordre. SÓN el teu moneder: qui les tingui pot endur-se les teves monedes, i sense elles un telèfon perdut són monedes perdudes. No les escriguis mai en una web, no els facis mai una foto.",
  "I wrote them down": "Les he apuntat",
@@ -298,5 +298,7 @@
  "Closing with {0} people · collecting the equal outputs": "Tancant amb {0} persones · recollint les sortides iguals",
  "Waiting for the others to answer, until {0}. Whoever has not answered by then is left out; if too few are left, the pool opens again without them.": "Esperant que responguin els altres, fins a les {0}. Qui no hagi respost per aleshores en queda fora; si en queden massa pocs, el pool es torna a obrir sense ells.",
  "{0}: {1} → {2} + {3} change · fee {4}": "{0}: {1} → {2} + {3} de canvi · comissió {4}",
- "{0}: {1} → {2} · fee {3}": "{0}: {1} → {2} · comissió {3}"
+ "{0}: {1} → {2} · fee {3}": "{0}: {1} → {2} · comissió {3}",
+ "the round closed with a seat whose coin is not real or could not be checked": "la ronda s'ha tancat amb un seient la moneda del qual no és real o no s'ha pogut comprovar",
+ "coin spent at closing": "moneda gastada en tancar"
 }

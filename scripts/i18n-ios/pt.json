@@ -102,7 +102,7 @@
  "New wallet · 24 words": "Carteira nova · 24 palavras",
  "Paste an extended PUBLIC key (zpub, also ypub/xpub) to watch balances without any way to spend. Careful: it reveals every address you will ever use — keep it like a bank statement.": "Cole uma chave PÚBLICA estendida (zpub, também ypub/xpub) para ver saldos sem nenhuma forma de gastar. Cuidado: ela revela todos os endereços que você vai usar — guarde-a como um extrato bancário.",
  "Watch a zpub": "Acompanhar uma zpub",
- "BTC here is Bitcoin on the BLAKE2b proof-of-work chain (XBT): same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "Aqui BTC é Bitcoin na cadeia com prova de trabalho BLAKE2b (XBT): mesmos endereços e histórico do Bitcoin até o bloco 961 640, outra prova de trabalho depois.",
+ "BTC here is Bitcoin on the BLAKE2b proof-of-work chain: same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "Aqui BTC é Bitcoin na cadeia com prova de trabalho BLAKE2b: mesmos endereços e histórico do Bitcoin até o bloco 961 640, outra prova de trabalho depois.",
  "Your recovery words": "Suas palavras de recuperação",
  "Write these {0} words on paper, in order. They ARE your wallet: anyone with them can take your coins, and without them a lost phone means lost coins. Never type them into a website, never photograph them.": "Escreva estas {0} palavras no papel, em ordem. Elas SÃO a sua carteira: quem as tiver pode levar suas moedas, e sem elas um telefone perdido significa moedas perdidas. Nunca as digite num site, nunca as fotografe.",
  "I wrote them down": "Eu as anotei",
@@ -298,5 +298,7 @@
  "Closing with {0} people · collecting the equal outputs": "Fechando com {0} pessoas · recolhendo as saídas iguais",
  "Waiting for the others to answer, until {0}. Whoever has not answered by then is left out; if too few are left, the pool opens again without them.": "Esperando os outros responderem, até {0}. Quem não tiver respondido até lá fica de fora; se sobrarem poucos demais, a pool reabre sem eles.",
  "{0}: {1} → {2} + {3} change · fee {4}": "{0}: {1} → {2} + {3} de troco · taxa {4}",
- "{0}: {1} → {2} · fee {3}": "{0}: {1} → {2} · taxa {3}"
+ "{0}: {1} → {2} · fee {3}": "{0}: {1} → {2} · taxa {3}",
+ "the round closed with a seat whose coin is not real or could not be checked": "a ronda fechou com um lugar cuja moeda não é real ou não pôde ser verificada",
+ "coin spent at closing": "moeda gasta ao fechar"
 }

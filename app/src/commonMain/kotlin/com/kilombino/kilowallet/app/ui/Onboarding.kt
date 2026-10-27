@@ -64,7 +64,7 @@ fun WelcomeScreen(model: WalletModel) {
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { Logo(150) }
         Text("Kilowallet", style = MaterialTheme.typography.displayLarge, color = Purple)
-        Text("BITCOIN BLAKE2b (XBT) WALLET", style = MaterialTheme.typography.titleLarge, color = TextSoft)
+        Text("BITCOIN BLAKE2b (BTC) WALLET", style = MaterialTheme.typography.titleLarge, color = TextSoft)
         Explain("Self-custodial: your keys are made on this iPhone and never leave it. No account, no tracking. " +
             "The app only talks to the Electrum server you choose.")
         Panel {
@@ -81,7 +81,7 @@ fun WelcomeScreen(model: WalletModel) {
                 "Careful: it reveals every address you will ever use — keep it like a bank statement.", color = TextSoft)
             SecondaryButton("Watch a zpub", Modifier.fillMaxWidth(), color = Orange) { model.go(com.kilombino.kilowallet.app.Screen.Watch) }
         }
-        Explain("BTC here is Bitcoin on the BLAKE2b proof-of-work chain (XBT): same addresses and history as Bitcoin " +
+        Explain("BTC here is Bitcoin on the BLAKE2b proof-of-work chain: same addresses and history as Bitcoin " +
             "up to block 961 640, a different proof of work after it.")
     }
 }

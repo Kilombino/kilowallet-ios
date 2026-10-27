@@ -102,7 +102,7 @@
  "New wallet · 24 words": "Neues Wallet · 24 Wörter",
  "Paste an extended PUBLIC key (zpub, also ypub/xpub) to watch balances without any way to spend. Careful: it reveals every address you will ever use — keep it like a bank statement.": "Füge einen erweiterten ÖFFENTLICHEN Schlüssel ein (zpub, auch ypub/xpub), um Guthaben zu sehen, ohne ausgeben zu können. Vorsicht: Er verrät jede Adresse, die du je nutzen wirst — bewahre ihn wie einen Kontoauszug auf.",
  "Watch a zpub": "Eine zpub beobachten",
- "BTC here is Bitcoin on the BLAKE2b proof-of-work chain (XBT): same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "BTC ist hier Bitcoin auf der BLAKE2b-Proof-of-Work-Kette (XBT): dieselben Adressen und derselbe Verlauf wie Bitcoin bis Block 961 640, danach ein anderer Proof-of-Work.",
+ "BTC here is Bitcoin on the BLAKE2b proof-of-work chain: same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "BTC ist hier Bitcoin auf der BLAKE2b-Proof-of-Work-Kette: dieselben Adressen und derselbe Verlauf wie Bitcoin bis Block 961 640, danach ein anderer Proof-of-Work.",
  "Your recovery words": "Deine Wiederherstellungswörter",
  "Write these {0} words on paper, in order. They ARE your wallet: anyone with them can take your coins, and without them a lost phone means lost coins. Never type them into a website, never photograph them.": "Schreib diese {0} Wörter der Reihe nach auf Papier. Sie SIND dein Wallet: Wer sie hat, kann deine Münzen nehmen, und ohne sie bedeutet ein verlorenes Handy verlorene Münzen. Tippe sie nie auf einer Website ein, fotografiere sie nie.",
  "I wrote them down": "Ich habe sie aufgeschrieben",
@@ -298,5 +298,7 @@
  "Closing with {0} people · collecting the equal outputs": "Schließt mit {0} Personen · sammelt die gleichen Ausgaben",
  "Waiting for the others to answer, until {0}. Whoever has not answered by then is left out; if too few are left, the pool opens again without them.": "Warte auf die Antworten der anderen, bis {0}. Wer bis dahin nicht geantwortet hat, bleibt draußen; sind es dann zu wenige, öffnet sich der Pool ohne sie wieder.",
  "{0}: {1} → {2} + {3} change · fee {4}": "{0}: {1} → {2} + {3} Wechselgeld · Gebühr {4}",
- "{0}: {1} → {2} · fee {3}": "{0}: {1} → {2} · Gebühr {3}"
+ "{0}: {1} → {2} · fee {3}": "{0}: {1} → {2} · Gebühr {3}",
+ "the round closed with a seat whose coin is not real or could not be checked": "die Runde wurde mit einem Platz geschlossen, dessen Münze nicht echt ist oder nicht geprüft werden konnte",
+ "coin spent at closing": "Münze beim Schließen ausgegeben"
 }

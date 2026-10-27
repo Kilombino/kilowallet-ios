@@ -102,7 +102,7 @@
  "New wallet · 24 words": "新钱包 · 24 个词",
  "Paste an extended PUBLIC key (zpub, also ypub/xpub) to watch balances without any way to spend. Careful: it reveals every address you will ever use — keep it like a bank statement.": "粘贴一个扩展【公钥】（zpub，也可以是 ypub/xpub），只查看余额而无法花费。注意：它会暴露你将来用到的每个地址——要像银行对账单一样保管。",
  "Watch a zpub": "观察一个 zpub",
- "BTC here is Bitcoin on the BLAKE2b proof-of-work chain (XBT): same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "这里的 BTC 是 BLAKE2b 工作量证明链（XBT）上的比特币：到区块 961 640 为止地址和历史与比特币相同，之后使用不同的工作量证明。",
+ "BTC here is Bitcoin on the BLAKE2b proof-of-work chain: same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "这里的 BTC 是 BLAKE2b 工作量证明链上的比特币：到区块 961 640 为止地址和历史与比特币相同，之后使用不同的工作量证明。",
  "Your recovery words": "你的助记词",
  "Write these {0} words on paper, in order. They ARE your wallet: anyone with them can take your coins, and without them a lost phone means lost coins. Never type them into a website, never photograph them.": "把这 {0} 个词按顺序写在纸上。它们【就是】你的钱包：任何拿到它们的人都能拿走你的币，没有它们，丢了手机就等于丢了币。绝不要在网站上输入它们，绝不要拍照。",
  "I wrote them down": "我已抄下",
@@ -298,5 +298,7 @@
  "Closing with {0} people · collecting the equal outputs": "正在以 {0} 人关闭 · 收集等额输出",
  "Waiting for the others to answer, until {0}. Whoever has not answered by then is left out; if too few are left, the pool opens again without them.": "正在等待其他人回答，截止 {0}。到时还没回答的人会被排除；如果剩下的人太少，池会在没有他们的情况下重新开放。",
  "{0}: {1} → {2} + {3} change · fee {4}": "{0}：{1} → {2} + {3} 找零 · 手续费 {4}",
- "{0}: {1} → {2} · fee {3}": "{0}：{1} → {2} · 手续费 {3}"
+ "{0}: {1} → {2} · fee {3}": "{0}：{1} → {2} · 手续费 {3}",
+ "the round closed with a seat whose coin is not real or could not be checked": "本轮关闭时包含一个币不真实或无法核实的席位",
+ "coin spent at closing": "关闭时币已被花费"
 }

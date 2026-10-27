@@ -102,7 +102,7 @@
  "New wallet · 24 words": "Nouveau portefeuille · 24 mots",
  "Paste an extended PUBLIC key (zpub, also ypub/xpub) to watch balances without any way to spend. Careful: it reveals every address you will ever use — keep it like a bank statement.": "Colle une clé PUBLIQUE étendue (zpub, aussi ypub/xpub) pour suivre des soldes sans aucun moyen de dépenser. Attention : elle révèle toutes les adresses que tu utiliseras — garde-la comme un relevé bancaire.",
  "Watch a zpub": "Suivre une zpub",
- "BTC here is Bitcoin on the BLAKE2b proof-of-work chain (XBT): same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "Ici, BTC est le Bitcoin de la chaîne à preuve de travail BLAKE2b (XBT) : mêmes adresses et même historique que Bitcoin jusqu'au bloc 961 640, une autre preuve de travail ensuite.",
+ "BTC here is Bitcoin on the BLAKE2b proof-of-work chain: same addresses and history as Bitcoin up to block 961 640, a different proof of work after it.": "Ici, BTC est le Bitcoin de la chaîne à preuve de travail BLAKE2b : mêmes adresses et même historique que Bitcoin jusqu'au bloc 961 640, une autre preuve de travail ensuite.",
  "Your recovery words": "Tes mots de récupération",
  "Write these {0} words on paper, in order. They ARE your wallet: anyone with them can take your coins, and without them a lost phone means lost coins. Never type them into a website, never photograph them.": "Écris ces {0} mots sur papier, dans l'ordre. Ils SONT ton portefeuille : quiconque les a peut prendre tes pièces, et sans eux un téléphone perdu, ce sont des pièces perdues. Ne les tape jamais sur un site web, ne les photographie jamais.",
  "I wrote them down": "Je les ai notés",
@@ -298,5 +298,7 @@
  "Closing with {0} people · collecting the equal outputs": "Fermeture avec {0} personnes · collecte des sorties égales",
  "Waiting for the others to answer, until {0}. Whoever has not answered by then is left out; if too few are left, the pool opens again without them.": "En attente des réponses des autres, jusqu'à {0}. Qui n'a pas répondu d'ici là est laissé de côté ; s'il en reste trop peu, le pool se rouvre sans eux.",
  "{0}: {1} → {2} + {3} change · fee {4}": "{0} : {1} → {2} + {3} de monnaie · frais {4}",
- "{0}: {1} → {2} · fee {3}": "{0} : {1} → {2} · frais {3}"
+ "{0}: {1} → {2} · fee {3}": "{0} : {1} → {2} · frais {3}",
+ "the round closed with a seat whose coin is not real or could not be checked": "le tour s'est fermé avec une place dont la pièce n'est pas réelle ou n'a pas pu être vérifiée",
+ "coin spent at closing": "pièce dépensée à la fermeture"
 }
