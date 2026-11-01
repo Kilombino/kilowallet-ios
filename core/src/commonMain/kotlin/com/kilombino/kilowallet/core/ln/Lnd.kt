@@ -505,6 +505,16 @@ object Lnd {
         }.onFailure { if (it.message?.contains("already connected") != true) throw it }
     }
 
+    suspend fun disconnect(pubkey: String) {
+        call { engine.call("disconnectPeer", Pb().string(1, pubkey).build(), it) }
+    }
+
+    /** The address each connected peer is reached at: pubkey → host:port (an onion when through Tor). */
+    suspend fun peerAddresses(): Map<String, String> {
+        val m = call { engine.call("listPeers", ByteArray(0), it) }
+        return m.msgs(1).associate { it.string(1) to it.string(3) }
+    }
+
     /** Opens a public channel of [sats] to [pubkey] from the node's on-chain coins; returns the funding txid. */
     /**
      * Channels from a phone are private (not announced): nobody routes through it, so a phone
@@ -738,6 +748,12 @@ object Lnd {
         val pk = pubkeyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
         runCatching { call { engine.call("watchtowerClientAddTower", Pb().bytes(1, pk).string(2, address).build(), it) } }
             .onFailure { if (it.message?.contains("already", true) != true) throw it }
+    }
+
+    /** The watchtowers the node knows: (pubkey hex, addresses, whether it would use it for new sessions). */
+    suspend fun towers(): List<Triple<String, List<String>, Boolean>> {
+        val m = call { engine.call("watchtowerClientListTowers", Pb().bool(1, false).build(), it) }
+        return m.msgs(1).map { t -> Triple(t.bytes(1).joinToString("") { b -> (b.toInt() and 0xff).toString(16).padStart(2, '0') }, t.strings(2), t.bool(3)) }
     }
 
     /**

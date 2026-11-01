@@ -226,6 +226,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
     private var events: Channel<NostrEvent>? = null
     private val poolKey: ByteArray? get() = s.poolSecret?.let { NostrEvent.secretOf(it) }
     private val joinKey = NostrEvent.secretOf(s.joinSecret)
+    /** This seat's own Tor circuit (see [RelayClient]): the same across restarts, another for every seat. */
+    private val isolation = "kj-" + Hashes.sha256(s.joinSecret.encodeToByteArray()).toHex().take(16)
     private val joinPub = NostrEvent.pubOf(joinKey)
     private val myTokenHash: String? get() = s.token?.let { Protocol.tokenHash(it) }
     /** True once the join went out (or the pool was opened): another seat waits [State.joinAfter] first. */
@@ -296,7 +298,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
 
     private suspend fun connect() {
         val ch = events
-        val r = RelayClient(Protocol.RELAY, sockets, { _, ev -> ch?.trySend(ev) }, { relay = null })
+        val r = RelayClient(Protocol.RELAY, sockets, { _, ev -> ch?.trySend(ev) }, { relay = null }, isolation)
         r.connect()
         relay = r
         r.subscribe("in", listOf(filter(listOf(Protocol.KIND_MSG), p = joinPub)))
@@ -977,7 +979,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
             "prefix" to s.blindPrefixes[i], "sig" to sig)
         val ev = NostrEvent.sign(fresh, Protocol.KIND_MSG, listOf(listOf("p", terms.creatorPub!!)),
             Nip44.encrypt(o.toString(), Nip44.conversationKey(fresh, Hashes.hexToBytes(terms.creatorPub))))
-        val r = RelayClient(Protocol.RELAY, sockets, { _, _ -> })
+        val r = RelayClient(Protocol.RELAY, sockets, { _, _ -> }, {}, "kj-out-" + secureRandomBytes(8).toHex())
         return try {
             r.connect()
             val res = r.publish(ev)

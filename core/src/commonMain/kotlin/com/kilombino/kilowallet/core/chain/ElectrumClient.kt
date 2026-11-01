@@ -39,6 +39,9 @@ class CertificateChangedException(val endpoint: String, val fingerprint: String)
  * first use (trust on first use, a later change is refused until the user accepts it); a node on
  * the local network without TLS is spoken to in the clear, never one we hold a pin for.
  */
+/** A Tor onion service address (Android's ElectrumClient.isOnion). */
+fun isOnionHost(host: String): Boolean = host.trim().lowercase().trimEnd('.').endsWith(".onion")
+
 class ElectrumClient(
     val endpoint: NodeEndpoint,
     private val pinnedFingerprint: String?,
@@ -76,16 +79,27 @@ class ElectrumClient(
     }
 
     fun connect() {
+        // An onion is its own authentication and encryption (its address is its key): Fulcrum's
+        // plain port behind it (50001, the one most onions publish) is tried that way first, and
+        // any other port in plain TCP when TLS fails (Android's ElectrumClient). Through Tor, always.
+        val onion = isOnion(endpoint.host)
+        if (onion && endpoint.port == 50001 && pinnedFingerprint == null) {
+            runCatching { transports.open(endpoint.host, endpoint.port, tls = false, pinnedFingerprint = null) }.getOrNull()?.let { return finishConnect(it) }
+        }
         val c = try {
             transports.open(endpoint.host, endpoint.port, tls = true, pinnedFingerprint = pinnedFingerprint)
         } catch (e: CertificateChangedException) {
             throw e
         } catch (e: Exception) {
-            if (isLocal(endpoint.host) && pinnedFingerprint == null) {
+            if ((isLocal(endpoint.host) || onion) && pinnedFingerprint == null) {
                 try { transports.open(endpoint.host, endpoint.port, tls = false, pinnedFingerprint = null) }
                 catch (e2: Exception) { throw ElectrumException("Could not connect to $endpoint: ${e2.message}", e2) }
             } else throw ElectrumException("Could not establish TLS with $endpoint: ${e.message}", e)
         }
+        finishConnect(c)
+    }
+
+    private fun finishConnect(c: LineTransport) {
         conn = c
         serverFingerprint = c.fingerprint
         negotiate()
@@ -97,6 +111,9 @@ class ElectrumClient(
             throw ElectrumException("$endpoint does not follow the BLAKE2b chain (its block headers are ${tip.length / 2} bytes, not 164).")
         }
     }
+
+    /** A Tor onion service: reached through the app's Tor only. */
+    private fun isOnion(host: String): Boolean = isOnionHost(host)
 
     /** A private-network address (192.168.x.x, 10.x, 172.16–31.x, localhost, *.local, fd00::/8). */
     private fun isLocal(host: String): Boolean {

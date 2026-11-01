@@ -34,6 +34,13 @@ interface WebSocketListener {
 fun interface WebSocketFactory {
     /** Open [url] and return once the handshake is done; throws when it fails. Blocking. */
     fun open(url: String, listener: WebSocketListener): WebSocket
+
+    /**
+     * The same, on a Tor circuit of its own when the app's Tor is running (Android's RelayClient:
+     * Arti never shares a circuit between SOCKS usernames, so each seat and each output handed in
+     * leaves Tor from its own exit). [isolation] null: Tor's default circuit.
+     */
+    fun openIsolated(url: String, listener: WebSocketListener, isolation: String?): WebSocket = open(url, listener)
 }
 
 /**
@@ -47,6 +54,8 @@ class RelayClient(
     private val sockets: WebSocketFactory,
     private val onEvent: suspend (subId: String, event: NostrEvent) -> Unit,
     private val onClosed: (String?) -> Unit = {},
+    /** This connection's own Tor circuit (see [WebSocketFactory.openIsolated]). */
+    private val isolation: String? = null,
 ) {
     private var socket: WebSocket? = null
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
@@ -76,7 +85,7 @@ class RelayClient(
                 onClosed(error)
             }
         }
-        socket = sockets.open(url, listener)
+        socket = sockets.openIsolated(url, listener, isolation)
         connected = true; lastHeard = nowMs()
         scope.launch {
             for (text in inbox) handle(text)
