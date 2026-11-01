@@ -36,15 +36,17 @@ for t in $targets; do
   time cargo build --locked --profile release-small --lib --target "$t"
 done
 # One object per slice that exports only the C functions.
-hide() { # target arch out
+hide() { # target arch platform out
   local a=$CARGO_TARGET_DIR/$1/release-small/libkilombino_tor.a
-  xcrun ld -r -arch "$2" -exported_symbols_list "$crate/exported_symbols.txt" -force_load "$a" -o "$out/$1.o"
-  xcrun libtool -static -o "$3" "$out/$1.o" 2>&1 | grep -v "has no symbols" || true
+  local sdk; sdk=$( [ "$3" = ios ] && echo iphoneos || echo iphonesimulator )
+  xcrun --sdk "$sdk" ld -r -arch "$2" -platform_version "$3" "$IPHONEOS_DEPLOYMENT_TARGET" "$(xcrun --sdk "$sdk" --show-sdk-version)" \
+    -exported_symbols_list "$crate/exported_symbols.txt" -force_load "$a" -o "$out/$1.o"
+  xcrun libtool -static -o "$4" "$out/$1.o" 2>&1 | grep -v "has no symbols" || true
 }
 mkdir -p "$out/dev" "$out/sim" "$out/headers"
-hide aarch64-apple-ios arm64 "$out/dev/libkilombino_tor.a"
-hide aarch64-apple-ios-sim arm64 "$out/sim-arm64.a"
-hide x86_64-apple-ios x86_64 "$out/sim-x86_64.a"
+hide aarch64-apple-ios arm64 ios "$out/dev/libkilombino_tor.a"
+hide aarch64-apple-ios-sim arm64 ios-simulator "$out/sim-arm64.a"
+hide x86_64-apple-ios x86_64 ios-simulator "$out/sim-x86_64.a"
 lipo -create "$out/sim-arm64.a" "$out/sim-x86_64.a" -output "$out/sim/libkilombino_tor.a"
 cp "$crate/include/kilombino_tor.h" "$crate/include/module.modulemap" "$out/headers/"
 cd "$out"
