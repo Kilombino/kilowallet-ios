@@ -111,9 +111,29 @@ fun main(args: Array<String>) {
     require(back.words == words && back.passphrase == "" && back.movements == 3 && back.created == 1_793_000_000_001L &&
         JSONObject(back.app!!).similar(app)) { "the Android code read the iOS backup file differently" }
     require(runCatching { ArkBackup.decode(iosFile, "wrong") }.exceptionOrNull() is ArkBackup.WrongPassword)
+    // With Ark (config, database and WAL; Ark's words derived from the wallet's) and Lightning
+    // (birthday and channel backup in the app part), both ways: the whole wallet moves between phones.
+    val config = "server_address = \"https://ark.paperclippool.xyz\"\nesplora_address = \"https://mempool.kilombino.com/api\"\nnetwork = \"bitcoin\"\n"
+    val db = det("kw-ios-kab-db", 4096); val wal = det("kw-ios-kab-wal", 1024)
+    val scb = det("kw-ios-kab-scb", 345)
+    val fullApp = JSONObject(app.toString()).put("lightning", JSONObject().put("birthday", 1_788_220_800L)
+        .put("scb", android.util.Base64.encodeToString(scb, android.util.Base64.NO_WRAP)))
+    val androidFull = ArkBackup.encode(ArkBackup.Snapshot(words, "", config, db, wal, 12, 1_793_000_000_002L,
+        null, fullApp.toString(), arkDerived = true), "correct horse")
+    val iosFull = com.kilombino.kilowallet.core.backup.Kab.encode(com.kilombino.kilowallet.core.backup.Kab.Snapshot(words, "", 1_793_000_000_003L, 4,
+        kotlinx.serialization.json.Json.parseToJsonElement(fullApp.toString()) as kotlinx.serialization.json.JsonObject,
+        config = config, db = db, dbWal = wal, arkDerived = true), "battery staple")
+    val backFull = ArkBackup.decode(iosFull, "battery staple")
+    require(backFull.hasArk && backFull.arkDerived && backFull.config == config && backFull.db!!.contentEquals(db) &&
+        backFull.dbWal!!.contentEquals(wal) && JSONObject(backFull.app!!).similar(fullApp) &&
+        android.util.Base64.decode(JSONObject(backFull.app!!).getJSONObject("lightning").getString("scb"), android.util.Base64.NO_WRAP).contentEquals(scb)) {
+        "the Android code read the iOS whole-wallet file (Ark + Lightning) differently"
+    }
     val kab = JSONObject().put("words", words.joinToString(" "))
         .put("androidFile", androidFile.toHex()).put("androidPassword", "correct horse").put("androidPassphrase", "pass phrase")
         .put("app", app)
+        .put("androidFull", androidFull.toHex()).put("fullApp", fullApp).put("config", config)
+        .put("db", db.toHex()).put("wal", wal.toHex()).put("scb", scb.toHex())
 
     // PSBTs for a watch-only wallet of each type: what the app exports, a signed copy as a signer
     // returns it (unified 0x21 signatures put in by the Android code), and the transaction it builds.

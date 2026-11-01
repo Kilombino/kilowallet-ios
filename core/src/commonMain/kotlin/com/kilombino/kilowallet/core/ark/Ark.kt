@@ -104,6 +104,52 @@ object Ark {
         setRejected(emptySet())
     }
 
+    /** What the backup file (.kab) keeps of Ark: config.toml, the database and its WAL (Android's `Ark.snapshot`). */
+    class Files(val config: String, val db: ByteArray, val dbWal: ByteArray?)
+
+    /** The engine's files as they are with it stopped (it starts again after). Null when there is no Ark wallet here. */
+    suspend fun snapshotFiles(): Files? = lock.withLock {
+        if (!hasWords() || !host.exists("${host.dir}/db.sqlite")) return@withLock null
+        val wasRunning = token != null
+        stopLocked()
+        try {
+            val config = host.readText("${host.dir}/config.toml") ?: return@withLock null
+            val db = host.readBytes("${host.dir}/db.sqlite") ?: return@withLock null
+            val wal = host.readBytes("${host.dir}/db.sqlite-wal")?.takeIf { it.isNotEmpty() }
+            Files(config, db, wal)
+        } finally {
+            if (wasRunning) runCatching { startLocked() }
+        }
+    }
+
+    /**
+     * Puts back an Ark wallet from a backup file (Android's `Ark.restore`): the engine's old files
+     * go (its lock files stay), the file's config with this app's own server and chain source (a
+     * crafted file must not point the engine elsewhere), its database, and Ark's words.
+     */
+    suspend fun restoreFiles(f: Files, arkWords: List<String>, arkPassphrase: String, derived: Boolean) = lock.withLock {
+        stopLocked()
+        host.list(host.dir).filter { it != "LOCK" && it != "barkd.lock" }.forEach { host.delete("${host.dir}/$it") }
+        host.writeText("${host.dir}/config.toml", withOurServers(f.config))
+        host.writeBytes("${host.dir}/db.sqlite", f.db)
+        f.dbWal?.let { host.writeBytes("${host.dir}/db.sqlite-wal", it) }
+        host.saveWords(arkWords.joinToString(" ") + if (arkPassphrase.isEmpty()) "" else "\n$arkPassphrase")
+            ?.let { throw IllegalStateException("Could not keep the Ark words: $it") }
+        setWordsDerived(derived)
+        setEnabled(true)
+    }
+
+    /** [config] with this app's Ark server and chain source, and no other chain source (Android's `withOurServers`). */
+    fun withOurServers(config: String): String = config.lines()
+        .filterNot { it.trimStart().startsWith("bitcoind") }
+        .joinToString("\n") { l ->
+            when {
+                l.trimStart().startsWith("server_address") -> "server_address = \"$SERVER\""
+                l.trimStart().startsWith("esplora_address") -> "esplora_address = \"$ESPLORA\""
+                else -> l
+            }
+        }
+
     class ArkError(val status: Int, message: String) : Exception(message)
 
     /** The engine words amounts as "0.00009000 BTC"; the wallet speaks in sats. */

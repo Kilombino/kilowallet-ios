@@ -136,6 +136,27 @@ class OnchainTest {
         assertFailsWith<Kab.WrongPassword> { Kab.decode(hex(k["androidFile"]!!.jsonPrimitive.content), "wrong password") }
     }
 
+    /** A whole-wallet file made by Android (Ark derived from the words, its database and WAL, Lightning's birthday and channel backup). */
+    @Test
+    fun wholeWalletFileFromAndroidOpensHere() {
+        val k = root["kab"]!!.jsonObject
+        val s = Kab.decode(hex(k["androidFull"]!!.jsonPrimitive.content), "correct horse")
+        assertEquals(k["words"]!!.jsonPrimitive.content, s.words.joinToString(" "))
+        assertTrue(s.hasArk && s.arkDerived)
+        assertEquals(k["config"]!!.jsonPrimitive.content, s.config)
+        assertTrue(hex(k["db"]!!.jsonPrimitive.content).contentEquals(s.db!!))
+        assertTrue(hex(k["wal"]!!.jsonPrimitive.content).contentEquals(s.dbWal!!))
+        assertEquals(k["fullApp"]!!.jsonObject, s.app)
+        val ln = s.app!!["lightning"]!!.jsonObject
+        assertEquals(1_788_220_800L, ln["birthday"]!!.jsonPrimitive.content.toLong())
+        @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+        val scb = kotlin.io.encoding.Base64.Default.decode(ln["scb"]!!.jsonPrimitive.content)
+        assertTrue(hex(k["scb"]!!.jsonPrimitive.content).contentEquals(scb))
+        // And back through this code: the same Ark files and version 4.
+        val again = Kab.decode(Kab.encode(Kab.Snapshot(s.words, "", 1, 2, s.app, config = s.config, db = s.db, dbWal = s.dbWal, arkDerived = true), "a long password"), "a long password")
+        assertTrue(again.hasArk && again.arkDerived && again.db!!.contentEquals(s.db!!) && again.dbWal!!.contentEquals(s.dbWal!!))
+    }
+
     @Test
     fun backupFileRoundTrip() {
         val words = Bip39.generate(12)

@@ -16,11 +16,17 @@ import org.kotlincrypto.macs.hmac.sha2.HmacSHA256
  * one phone restores on the other. Layout: "KARKBAK1", one flag byte (1 = password), a 16-byte
  * salt, a 12-byte IV, then AES-256-GCM over gzip(JSON), the key from PBKDF2-HMAC-SHA256 × 310 000.
  *
- * The JSON holds the words and, only when there is one, their passphrase, and the app's settings
- * ([Snapshot.app], Android's `AppBackup` JSON). This iOS build has no Ark wallet: a file with one
- * restores the words and settings, and says the Ark part was left out.
+ * The JSON holds the words and, only when there is one, their passphrase, the app's settings
+ * ([Snapshot.app], Android's `AppBackup` JSON, with Lightning's birthday and channel backup under
+ * "lightning"), and the Ark wallet when there is one: its config.toml and its SQLite database
+ * (and WAL), base64, as Android's `Ark.snapshot` takes them. Versions as Android: 3 without Ark,
+ * 1/2 with Ark on the wallet's own words (2 with a passphrase), 4 with Ark on words derived from
+ * them ("ark_words": "derived").
  */
+@OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
 object Kab {
+    /** Android's Base64.NO_WRAP: the standard alphabet, padded, one line. */
+    private val B64 = kotlin.io.encoding.Base64.Default
     private val MAGIC = "KARKBAK1".encodeToByteArray()
     const val ITERATIONS = 310_000
     /** The shortest password a new backup file takes (Android app value). */
@@ -35,9 +41,18 @@ object Kab {
         val app: JsonObject? = null,
         /** The contacts list as JSON text, or null. */
         val contacts: String? = null,
-        /** The file carries an Ark wallet (its config and database), which this build cannot restore. */
-        val hasArk: Boolean = false,
-    )
+        /** Ark's config.toml, when the file carries an Ark wallet. */
+        val config: String? = null,
+        /** Ark's db.sqlite, when the file carries an Ark wallet. */
+        val db: ByteArray? = null,
+        /** Ark's db.sqlite-wal, when it had one. */
+        val dbWal: ByteArray? = null,
+        /** Ark's words are derived from [words] (Android 1.1.4 on), not [words] themselves. */
+        val arkDerived: Boolean = false,
+    ) {
+        /** The file carries an Ark wallet (its config and database). */
+        val hasArk: Boolean get() = !config.isNullOrEmpty() && db != null
+    }
 
     class WrongPassword : Exception("Wrong password.")
 
@@ -49,12 +64,15 @@ object Kab {
         val json = buildJsonObject {
             put("format", "kilombino-ark-backup")
             // As the Android app: 3 when there is no Ark wallet in it (an older app could not restore it).
-            put("version", 3)
+            put("version", if (s.hasArk && s.arkDerived) 4 else if (!s.hasArk) 3 else if (s.passphrase.isEmpty()) 1 else 2)
+            if (s.hasArk && s.arkDerived) put("ark_words", "derived")
             put("network", "mainnet")
             put("created", s.created)
             put("movements", s.movements)
             put("mnemonic", s.words.joinToString(" "))
             if (s.passphrase.isNotEmpty()) put("passphrase", s.passphrase)
+            if (s.hasArk) { put("config", s.config); put("db", B64.encode(s.db!!)) }
+            s.dbWal?.let { put("db_wal", B64.encode(it)) }
             s.contacts?.let { put("contacts", Json.parseToJsonElement(it)) }
             s.app?.let { put("app", it) }
         }
@@ -84,7 +102,10 @@ object Kab {
             movements = j["movements"]?.jsonPrimitive?.intOrNull ?: 0,
             app = j["app"] as? JsonObject,
             contacts = j["contacts"]?.toString(),
-            hasArk = !str("config").isNullOrEmpty() && !str("db").isNullOrEmpty(),
+            config = str("config")?.ifEmpty { null },
+            db = str("db")?.ifEmpty { null }?.let { B64.decode(it) },
+            dbWal = str("db_wal")?.ifEmpty { null }?.let { B64.decode(it) },
+            arkDerived = str("ark_words") == "derived",
         )
     }
 

@@ -22,6 +22,8 @@ interface ArkHost {
     fun http(method: String, url: String, body: String?, headers: Map<String, String>, timeoutMs: Int): Pair<Int, String>
     fun readText(path: String): String?
     fun writeText(path: String, text: String)
+    fun readBytes(path: String): ByteArray?
+    fun writeBytes(path: String, bytes: ByteArray)
     fun exists(path: String): Boolean
     /** Deletes a file or a folder with everything in it. */
     fun delete(path: String)
