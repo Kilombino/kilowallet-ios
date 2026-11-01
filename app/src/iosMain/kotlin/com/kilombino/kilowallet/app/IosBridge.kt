@@ -61,6 +61,29 @@ interface IosBridge {
     /** A background task while a payment is on its way; returns its id (0 when none was given). */
     fun beginBackgroundWork(name: String): Long
     fun endBackgroundWork(id: Long)
+
+    // ---- Ark (iosApp/iosApp/ArkEngine.swift): the Paperclip/bark wallet linked in as KilombinoArk.xcframework
+
+    /** False when the app was built without the engine. */
+    fun arkAvailable(): Boolean
+    /** Starts the engine (blocking; never on the main thread): the bearer token, or "ERR:<message>". */
+    fun arkStart(datadir: String, port: Int, mnemonic: String?, passphrase: String): String
+    fun arkStop()
+    /** The engine's folder: Application Support/ark, excluded from iCloud and device backups. */
+    fun arkDir(): String
+    /** Ark's words: a Keychain item without Face ID (after first unlock, this device only). */
+    fun arkWordsLoad(): String?
+    fun arkWordsSave(text: String): String?
+    fun arkWordsDelete()
+    /**
+     * HTTP request to the engine on 127.0.0.1 (http) or to the chain source (https), blocking:
+     * status and body, or status 0 and the error. [bearer] goes in the Authorization header.
+     */
+    fun arkHttp(method: String, url: String, body: String?, bearer: String?, timeoutMs: Int): IosHttpResult
+    /** A local notification at [atEpochSeconds] (0: remove the one set before). */
+    fun arkRemind(atEpochSeconds: Long, title: String, body: String)
+    /** Ask iOS for a background run to renew Ark coins (BGProcessingTask). */
+    fun arkScheduleBackground()
 }
 
 /** An animated QR being read part by part. */

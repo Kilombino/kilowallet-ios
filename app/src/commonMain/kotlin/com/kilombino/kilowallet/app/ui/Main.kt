@@ -133,29 +133,6 @@ fun MainTabs(tab: Tab, hot: Boolean, onSelect: (Tab) -> Unit) {
     }
 }
 
-/** The ARK tab before Ark is set up, as Android's warnings; the engine comes in a later build. */
-@Composable
-fun ArkTab() {
-    Panel(accent = ArkRed) {
-        SectionLabel("Ark", ArkRed)
-        Explain("Ark will let you send BTC instantly between wallets and pay Lightning invoices " +
-            "without opening channels, through the Paperclip Ark server (ark.paperclippool.xyz).")
-        Text("The Ark engine for iPhone comes with this version's next build: until then Ark cannot be turned on.",
-            style = MaterialTheme.typography.bodySmall, color = Warn)
-    }
-    Panel(accent = Warn) {
-        SectionLabel("Before you use Ark", Warn)
-        listOf(
-            "Ark funds expire after 4,320 blocks (about 30 days). The wallet must go online before then to renew them, or they have to be withdrawn on-chain with fees and waiting times.",
-            "Minimum to move funds into Ark: 20,000 sats.",
-            "Maximum per Ark coin: 1,000,000 sats.",
-            "Lightning: up to 250,000 sats per payment, no channels needed.",
-            "Rounds every 60 seconds; moving funds in needs 3 confirmations.",
-            "Ark is beta software. Start with small amounts.",
-        ).forEach { Text("•  $it", style = MaterialTheme.typography.bodySmall, color = TextSoft) }
-    }
-}
-
 /** Simple mode: the balance and RECEIVE / SEND, nothing else ("advanced" in the bar brings the tabs back). */
 @Composable
 fun SimpleHome(model: WalletModel, state: UiState) {

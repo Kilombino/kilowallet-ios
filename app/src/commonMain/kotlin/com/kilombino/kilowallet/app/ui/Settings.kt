@@ -87,8 +87,10 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             }
 
             if (hot) {
-                SettingRow("Ark", "Off. Instant payments and Lightning through an Ark server: read how it works first.") {
-                    LinkText("MORE INFO", color = Purple) { model.selectTab(Tab.ARK) }
+                val arkOn = model.ark.enabled()
+                SettingRow("Ark", if (arkOn) "On. Instant payments and Lightning through the Paperclip Ark server."
+                    else "Off. Instant payments and Lightning through an Ark server: read how it works first.") {
+                    LinkText(if (arkOn) "OPEN" else "MORE INFO", color = Purple) { model.selectTab(Tab.ARK) }
                 }
                 SettingRow("Kilojoin", if (poolsOn) "On. Shared transactions with other people's coins, in pools with equal outputs."
                     else "Off. Read how it works first.") {

@@ -85,6 +85,10 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
      */
     override val lightning: LightningPlatform? =
         if (bridge.lndAvailable() && (demoScreen == null || demoScreen == "ln-live")) IosLightning(bridge, memoryPassword = demoScreen != null) else null
+
+    /** Ark when the app was built with the engine; screenshot demos only for the live start ("ark-live"). */
+    override val ark: ArkPlatform? =
+        if (bridge.arkAvailable() && (demoScreen == null || demoScreen == "ark-live")) IosArk(bridge, prefs, memoryWords = demoScreen != null) else null
 }
 
 @OptIn(ExperimentalForeignApi::class)

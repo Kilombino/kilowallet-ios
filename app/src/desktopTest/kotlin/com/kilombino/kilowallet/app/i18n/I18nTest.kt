@@ -194,7 +194,16 @@ class I18nTest {
         "Taproot (bc1p)", "Taproot · bc1p… (BIP86)", "POOLS",
         // Screenshot names and a made-up txid of the new demos.
         "dice", "backup", "cpfp", "receive-taproot", "settings-taproot", "pool-history", "6b", "psbt", "ur:",
+        // Ark: the engine's state and kind words the code matches (the screen shows its own texts for
+        // them), the sheets' keys, screenshot names, demo ids, address and invoice prefixes, the word to
+        // type to confirm the exit, the background task's name, and the error prefix.
+        "activate", "words", "board", "ark-ready", "ark-live", "demo-1", "demo-2", "demo-3", "demo-4", "ark1", "ln",
+        "awaiting-delta", "claimable", "claimed", "claim-in-progress", "processing", "htlcs-ready", "preimage-revealed",
+        "delivering", "settled", "BOLT12", "Lightning", "EXIT", "Ark renewal", "Error", "Error: ", "Error: 12", "Error: …",
+        // " UTC" after a date; "normal" (the fee speed) is the same word in Spanish.
+        " UTC", "normal",
     ).map { Regex(Regex.escape(it)) } + listOf(
+        Regex("""(12 345 · )?12(/12 345)? conf"""), Regex(""" · 12/12 345 conf"""), Regex("""\d{4}-\d\d-\d\dT[0-9:]+"""),
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates
         Regex("""m/.*"""), Regex("""pin\..*"""), Regex("""mempool\.kilombino\.com/tx/.*"""), Regex("""bc1q[a-z0-9]{30,}"""),
         Regex(""".*kilombino\.com:17717"""), Regex("""kilojoin\..*"""),

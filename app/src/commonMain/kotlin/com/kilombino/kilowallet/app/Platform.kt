@@ -1,6 +1,8 @@
 package com.kilombino.kilowallet.app
 
 import androidx.compose.ui.graphics.ImageBitmap
+import com.kilombino.kilowallet.core.ark.ArkEngine
+import com.kilombino.kilowallet.core.ark.ArkHost
 import com.kilombino.kilowallet.core.chain.TransportFactory
 import com.kilombino.kilowallet.core.kilojoin.WebSocketFactory
 import com.kilombino.kilowallet.core.ln.LndEngine
@@ -47,6 +49,26 @@ interface LightningPlatform {
     fun endBackgroundWork(token: Any?) {}
 }
 
+/**
+ * Ark's platform side: the engine (the Paperclip/bark wallet linked in as a library), its folder,
+ * the HTTP client to it and the store of its words (iOS: a Keychain item readable after the first
+ * unlock, with no Face ID, so coins can be renewed when the app opens; the words open Ark only).
+ */
+interface ArkPlatform {
+    val engine: ArkEngine
+    val host: ArkHost
+    /** While Ark works (a payment, a renewal), leaving the app keeps it going the little time iOS allows. */
+    fun beginBackgroundWork(name: String): Any? = null
+    fun endBackgroundWork(token: Any?) {}
+    /**
+     * A local notification at [atEpochSeconds] (null: cancel the one set before), to open the app
+     * before an Ark coin expires: iOS does not let the wallet stay up to renew it by itself.
+     */
+    fun remind(atEpochSeconds: Long?, title: String, body: String) {}
+    /** Ask iOS for a background run to renew Ark coins (it picks the time, usually while charging). */
+    fun scheduleBackgroundRenewal() {}
+}
+
 interface AppPlatform {
     val seeds: SeedStore
     val prefs: Prefs
@@ -83,4 +105,6 @@ interface AppPlatform {
     fun openFile(done: (ByteArray?) -> Unit) = done(null)
     /** The Lightning node, or null where it is not available (desktop, screenshot demos). */
     val lightning: LightningPlatform? get() = null
+    /** Ark, or null where it is not available (desktop, screenshot demos). */
+    val ark: ArkPlatform? get() = null
 }

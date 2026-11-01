@@ -76,7 +76,7 @@ fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                 state.simple -> SimpleHome(model, state)
                 tab == Tab.LIGHTNING -> TabColumn { LightningTab(model, state, platform) }
                 tab == Tab.POOLS -> PoolsScreen(model, state, platform, embedded = true)
-                tab == Tab.ARK -> TabColumn { ArkTab() }
+                tab == Tab.ARK -> TabColumn { ArkTab(model, state, platform) }
                 else -> BtcTab(model, state)
             }
         }

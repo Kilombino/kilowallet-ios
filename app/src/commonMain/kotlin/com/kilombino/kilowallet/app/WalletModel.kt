@@ -22,6 +22,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -172,6 +173,7 @@ class WalletModel(private val platform: AppPlatform) {
 
     /** Lightning: the node on this phone (LND linked in), ported from Android's ln/Lightning.kt. */
     val lightning = LightningModel(platform)
+    val ark = ArkModel(platform)
 
     private companion object {
         // Before 1.0 one wallet at a time (kind + key); read once and moved to the keys below.
@@ -232,6 +234,7 @@ class WalletModel(private val platform: AppPlatform) {
         refreshPrice()
         if (platform.demoScreen == null) pools.attach()
         if (platform.demoScreen == null && kind == WalletKind.HOT) lightning.resume()
+        if (platform.demoScreen == null && kind == WalletKind.HOT) ark.resume()
     }
 
     // ------------------------------------------------------------------ Lightning
@@ -252,6 +255,17 @@ class WalletModel(private val platform: AppPlatform) {
                     withContext(Dispatchers.Default) { lightning.enable(seed) }
                 }.onFailure { say(it.message ?: "Lightning did not start.") }
             }
+        }
+    }
+
+    /**
+     * Unlocks the hot wallet's words once (Face ID / passcode) and hands them to [use] with their
+     * passphrase, for Ark: its own words are made from them, and restoring compares against them.
+     */
+    fun withWords(reason: String, use: (List<String>, String) -> Unit) {
+        platform.seeds.load(I18n.tr(reason)) { secret, error ->
+            if (secret == null) { ark.say("Error: " + (error ?: "not unlocked")); return@load }
+            runCatching { decodeSecret(secret) }.onSuccess { (w, p) -> use(w, p) }.onFailure { ark.say("Error: " + (it.message ?: "$it")) }
         }
     }
 
@@ -470,6 +484,8 @@ class WalletModel(private val platform: AppPlatform) {
         if (s.kind == WalletKind.HOT) {
             platform.seeds.delete()
             prefs.put(K_HOT, null); prefs.put(K_TPUB, null); prefs.put(K_RECV_TR, null)
+            // Ark's words are made from these: its wallet goes too (the coins stay with the server).
+            if (ark.available) ark.turnOff()
         } else {
             prefs.put(K_WATCH, null); prefs.put(K_WATCH_TYPE, null)
         }
@@ -1028,6 +1044,22 @@ class WalletModel(private val platform: AppPlatform) {
                         }
                     }
                     "ark" -> { selectTab(Tab.ARK); platform.markReady(screen) }
+                    "ark-ready" -> {
+                        ark.setDemo(ArkModel.View.Ready, demoArk())
+                        selectTab(Tab.ARK); platform.markReady(screen)
+                    }
+                    "ark-live" -> {
+                        // The real engine and the real server, a throwaway Ark wallet made from the
+                        // "abandon … about" words: it starts, creates its wallet and hands out an
+                        // address. No funds move.
+                        selectTab(Tab.ARK)
+                        launch {
+                            ark.view.collect { v ->
+                                if (v == ArkModel.View.Ready || v is ArkModel.View.Failed) { delay(4_000); platform.markReady(screen) }
+                            }
+                        }
+                        ark.activate(words, "")
+                    }
                     "simple" -> { _state.update { it.copy(simple = true) }; scan() }
                     "locked" -> { _state.update { it.copy(locked = true) }; platform.markReady(screen) }
                     "replace" -> {
@@ -1081,6 +1113,22 @@ class WalletModel(private val platform: AppPlatform) {
 }
 
 /** Screenshot demos of the LIGHTNING tab: made-up figures, never a real node. */
+/** Made-up Ark figures for the "ark-ready" screenshot. */
+private fun demoArk(): ArkModel.Figures = ArkModel.Figures(
+    balance = com.kilombino.kilowallet.core.ark.Ark.Balance(
+        spendable = 184_250, pendingBoard = 40_000, pendingRound = 0, needsRefresh = 0, pendingExit = 0,
+        onchainConfirmed = 12_500, onchainPending = 0, lightningPending = 0,
+    ),
+    expiry = 3_870,
+    activity = listOf(
+        com.kilombino.kilowallet.core.ark.Ark.Movement("demo-1", "pending", "move into Ark", 40_000, "2026-11-01T10:12:00", 2_000,
+            onchainTxid = "6b".repeat(32), confirmations = 1),
+        com.kilombino.kilowallet.core.ark.Ark.Movement("demo-2", "successful", "Lightning payment", -12_480, "2026-10-31T18:40:00", 4_120),
+        com.kilombino.kilowallet.core.ark.Ark.Movement("demo-3", "successful", "Ark received", 25_000, "2026-10-30T09:05:00"),
+        com.kilombino.kilowallet.core.ark.Ark.Movement("demo-4", "successful", "renewal", -1_056, "2026-10-28T21:00:00", 1_056),
+    ),
+)
+
 private fun demoLightning(screen: String): LightningModel.Status = when (screen) {
     "ln-starting" -> LightningModel.Status.Starting("catching up with the chain", 812_450)
     "ln-failed" -> LightningModel.Status.Failed("The node stopped: unable to connect to any peer")

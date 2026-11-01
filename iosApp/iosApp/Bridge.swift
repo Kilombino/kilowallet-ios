@@ -207,6 +207,72 @@ final class Bridge: NSObject, IosBridge {
 
     // MARK: Pools (Kilojoin): the nostr relay
 
+    // MARK: Ark (ArkEngine.swift: KilombinoArk.xcframework)
+
+    func arkAvailable() -> Bool { true }
+
+    func arkStart(datadir: String, port: Int32, mnemonic: String?, passphrase: String) -> String {
+        ArkEngine.start(datadir: datadir, port: port, mnemonic: mnemonic, passphrase: passphrase)
+    }
+
+    func arkStop() { ArkEngine.stop() }
+
+    func arkDir() -> String {
+        let fm = FileManager.default
+        var url = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ark", isDirectory: true)
+        try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
+        return url.path
+    }
+
+    func arkWordsLoad() -> String? { ArkWords.load() }
+    func arkWordsSave(text: String) -> String? { ArkWords.save(text) }
+    func arkWordsDelete() { ArkWords.delete() }
+
+    /// The engine on 127.0.0.1 (plain http, nothing else), or the chain source over https.
+    func arkHttp(method: String, url: String, body: String?, bearer: String?, timeoutMs: Int32) -> IosHttpResult {
+        guard let u = URL(string: url), u.scheme == "https" || (u.scheme == "http" && u.host == "127.0.0.1") else {
+            return HttpResult(0, "not an allowed URL")
+        }
+        var req = URLRequest(url: u, timeoutInterval: max(5, Double(timeoutMs) / 1000))
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue("Kilowallet", forHTTPHeaderField: "User-Agent")
+        if let t = bearer { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
+        if let body = body {
+            req.httpBody = Data(body.utf8)
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let done = DispatchSemaphore(value: 0)
+        var result = HttpResult(0, "no answer")
+        Self.arkSession.dataTask(with: req) { data, response, error in
+            if let http = response as? HTTPURLResponse {
+                result = HttpResult(Int32(http.statusCode), data.flatMap { String(data: $0, encoding: .utf8) } ?? "")
+            } else {
+                result = HttpResult(0, error?.localizedDescription ?? "no answer")
+            }
+            done.signal()
+        }.resume()
+        done.wait()
+        return result
+    }
+
+    /// Long calls (a renewal waits for a round): no cache, no cookies, up to 5 minutes.
+    private static let arkSession: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForResource = 330
+        c.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: c)
+    }()
+
+    func arkRemind(atEpochSeconds: Int64, title: String, body: String) {
+        ArkReminder.set(at: atEpochSeconds, title: title, body: body)
+    }
+
+    func arkScheduleBackground() { ArkReminder.scheduleBackground() }
+
     func openWebSocket(url: String, listener: IosSocketListener) -> IosSocket {
         RelaySocket(url: url, listener: listener)
     }
