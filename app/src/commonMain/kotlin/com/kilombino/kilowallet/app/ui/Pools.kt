@@ -134,7 +134,7 @@ fun PoolsScreen(model: WalletModel, state: UiState, platform: AppPlatform, embed
             SectionLabel("Your rounds")
             going.forEach { RoundCard(model, pools, it, ui.rev, platform) }
         }
-        PrimaryButton("＋  Open a pool", Modifier.fillMaxWidth()) { pools.startPayment(null); model.go(Screen.PoolCreate) }
+        PrimaryButton("＋  Open a pool", Modifier.fillMaxWidth(), color = PoolBlue) { pools.startPayment(null); model.go(Screen.PoolCreate) }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionLabel("Open pools")
@@ -204,7 +204,7 @@ private fun Intro(pools: PoolsModel, onDecline: () -> Unit) {
             "not what is yours.", color = TextSoft)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SecondaryButton("Not now", Modifier.weight(1f), color = TextSoft) { onDecline() }
-            PrimaryButton("Turn on", Modifier.weight(1f)) { pools.setEnabled(true) }
+            PrimaryButton("Turn on", Modifier.weight(1f), color = PoolBlue) { pools.setEnabled(true) }
         }
     }
     ForegroundNote()
@@ -270,7 +270,7 @@ private fun WatchKeyPanel(pools: PoolsModel, ui: PoolsUi) {
             error?.let { Text(reasonText(it), style = MaterialTheme.typography.bodySmall, color = Bad) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SecondaryButton("Cancel", Modifier.weight(1f), color = TextSoft) { editing = false; key = "" }
-                PrimaryButton("Save", Modifier.weight(1f), enabled = key.isNotBlank()) {
+                PrimaryButton("Save", Modifier.weight(1f), enabled = key.isNotBlank(), color = PoolBlue) {
                     error = pools.setWatchKey(key)
                     if (error == null) { editing = false; key = "" }
                 }
@@ -342,7 +342,7 @@ private fun RoundCard(model: WalletModel, pools: PoolsModel, st: PoolSession.Sta
             }
             PoolSession.Phase.OPEN -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (people >= t.minPeers) PrimaryButton("Ask to close now", Modifier.weight(1f)) { pools.requestClose(st.poolId) }
+                    if (people >= t.minPeers) PrimaryButton("Ask to close now", Modifier.weight(1f), color = PoolBlue) { pools.requestClose(st.poolId) }
                     SecondaryButton(if (st.creator) "Cancel pool" else "Leave", Modifier.weight(1f), color = TextSoft) { confirmLeave = true }
                 }
                 if (people < t.minPeers) Explain("It can close once ${t.minPeers} people are in.")
@@ -356,7 +356,7 @@ private fun RoundCard(model: WalletModel, pools: PoolsModel, st: PoolSession.Sta
                     Explain("Someone asked to close the pool now. Answer before ${clock(st.voteDeadline)}: if you accept, the round starts " +
                         "and you will be asked to check and sign it.")
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PrimaryButton("Accept", Modifier.weight(1f)) { pools.vote(st.poolId, true) }
+                        PrimaryButton("Accept", Modifier.weight(1f), color = PoolBlue) { pools.vote(st.poolId, true) }
                         SecondaryButton("Not yet", Modifier.weight(1f), color = TextSoft) { pools.vote(st.poolId, false) }
                     }
                 }
@@ -506,7 +506,7 @@ fun PoolJoinScreen(model: WalletModel, state: UiState, poolId: String) {
         val total = chosen.sumOf { it.value }
         val ok = chosen.isNotEmpty() && PoolTx.change(total, t.amount, t.feeRate, chosen.size, t.script, t.outputs) != null &&
             (!t.private || password.isNotEmpty()) && ui.busy == null
-        PrimaryButton("Join with ${model.unlockName}", Modifier.fillMaxWidth(), enabled = ok) {
+        PrimaryButton("Join with ${model.unlockName}", Modifier.fillMaxWidth(), enabled = ok, color = PoolBlue) {
             pools.join(t, chosen.toList(), dest, password) { joined -> if (joined) model.go(Screen.Pools) }
         }
         Explain("Joining signs nothing that can move your coins: it only proves you own them. You sign the round at the end, after checking it.")
@@ -557,7 +557,7 @@ fun PoolPayScreen(model: WalletModel, state: UiState) {
             check.paymentOk -> "${formatSats(sum)} sats to ${rs.size} recipient(s): a shared payment"
             else -> reasonText(check.reason ?: "")
         }, style = MaterialTheme.typography.bodySmall, color = if (check.any) Good else Warn)
-        PrimaryButton("Continue", Modifier.fillMaxWidth(), enabled = ready && check.any && feeRate != null && feeRate in 1.0..500.0) {
+        PrimaryButton("Continue", Modifier.fillMaxWidth(), enabled = ready && check.any && feeRate != null && feeRate in 1.0..500.0, color = PoolBlue) {
             pools.startPayment(PoolPayRequest(rs, feeRate!!)); model.go(Screen.PoolCreate)
         }
     }
@@ -681,7 +681,7 @@ fun PoolCreateScreen(model: WalletModel, state: UiState) {
         }
         if (pay == null) Panel { DestChooser(ui, dest) { dest = it }; if (ui.watchKey == null) Explain("Your equal outputs go to fresh addresses of this wallet.") }
         error?.let { Text(reasonText(it), style = MaterialTheme.typography.bodySmall, color = Warn) }
-        PrimaryButton("Open the pool with ${model.unlockName}", Modifier.fillMaxWidth(), enabled = error == null && ui.busy == null) {
+        PrimaryButton("Open the pool with ${model.unlockName}", Modifier.fillMaxWidth(), enabled = error == null && ui.busy == null, color = PoolBlue) {
             pools.create(amount!!, feeRate!!, minPeers!!, peers!!, hours!!, maxInputs!!, outputs!!, password, chosen.toList(), dest, pay) { ok ->
                 if (ok) model.go(Screen.Pools)
             }

@@ -4,7 +4,7 @@ package com.kilombino.kilowallet.core.crypto
 enum class ScriptType(val label: String, val explain: String) {
     P2PKH("Legacy", "Addresses that start with 1. Bitcoin's original format."),
     P2SH_P2WPKH("Nested SegWit", "Addresses that start with 3. SegWit wrapped for older wallets."),
-    P2WPKH("Native SegWit", "Addresses that start with bc1q. The cheapest to spend."),
+    P2WPKH("Native SegWit", "Addresses that start with bc1q. The most widely used."),
 }
 
 /**
