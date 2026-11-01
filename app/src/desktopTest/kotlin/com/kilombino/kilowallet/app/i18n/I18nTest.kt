@@ -212,6 +212,11 @@ class I18nTest {
         "kilowallet-channel.backup", "bc1…", "12…  12 sats · 12",
         // Tor: the screenshot runs' names, a preference key, the state words the CI log shows.
         "tor-live", "tor-log", "tower_added", "it stopped", "still connecting after 3 minutes", "Tor",
+        // The backup file's Lightning keys and the node's channel backup path.
+        "restore_scb", "scb", "12/data/chain/bitcoin/mainnet/channel.backup",
+        // What the Ark backup round trip of the screenshot run prints to the CI log.
+        "FAILED: ", "demo password", "file 12 345 bytes, db 12 345 bytes, wal 12 345, derived 12; after restore: 12",
+        "no Ark files to back up", "the Ark database did not come back",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""(12 345 · )?12(/12 345)? conf"""), Regex(""" · 12/12 345 conf"""), Regex("""\d{4}-\d\d-\d\dT[0-9:]+"""),
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates

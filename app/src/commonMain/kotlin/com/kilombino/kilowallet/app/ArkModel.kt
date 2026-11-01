@@ -170,6 +170,34 @@ class ArkModel(private val platform: AppPlatform) {
     }
 
     /** Ark off on this phone: the engine stops and its folder and words go; the coins stay with the server. */
+    /**
+     * The Ark files for the backup file, and whether Ark's words are derived from the wallet's
+     * ([words]/[passphrase]); null when there is no Ark here or it runs on other words (Android's
+     * fullSnapshot keeps the file to the wallet's words then).
+     */
+    suspend fun backupFiles(words: List<String>, passphrase: String): Pair<Ark.Files, Boolean>? = withContext(ioDispatcher) {
+        if (!available || !Ark.hasWords()) return@withContext null
+        val arkWords = Ark.loadWords() ?: return@withContext null
+        val derived = Ark.passphrase().isEmpty() && arkWords == ArkDerive.words(words, passphrase)
+        val same = arkWords == words && Ark.passphrase() == passphrase
+        if (!derived && !same) return@withContext null
+        runCatching { Ark.snapshotFiles() }.getOrNull()?.let { it to derived }
+    }
+
+    /** Puts back the Ark wallet of a backup file and starts it (Android's Ark.restore). */
+    fun restoreFromBackup(snap: com.kilombino.kilowallet.core.backup.Kab.Snapshot) {
+        if (!available) { say("Wallet restored. The file also holds an Ark wallet, which this build can't open: keep the file."); return }
+        scope.launch {
+            val r = runCatching {
+                val words = if (snap.arkDerived) ArkDerive.words(snap.words, snap.passphrase) else snap.words
+                val pass = if (snap.arkDerived) "" else snap.passphrase
+                Ark.restoreFiles(Ark.Files(snap.config!!, snap.db!!, snap.dbWal), words, pass, snap.arkDerived)
+            }
+            say(if (r.isSuccess) "Wallet and Ark restored from the backup file." else "Wallet restored; Ark did not: ${r.exceptionOrNull()?.message}")
+            if (r.isSuccess) start()
+        }
+    }
+
     fun turnOff() {
         scope.launch {
             runCatching { Ark.wipe() }

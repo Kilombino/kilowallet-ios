@@ -2819,5 +2819,11 @@
 "Watchtower: not reachable. The node started without Tor, and Kilombino's tower is an onion service. Turn \"Only over Tor\" on in Settings (it starts with Tor next time), and keep the app opening every few days while you have channels.": "Watchtower：无法连接。节点在没有 Tor 的情况下启动，而 Kilombino 的塔是 onion 服务。在设置中开启“仅通过 Tor”（下次会带 Tor 启动），有通道期间请每隔几天打开一次应用。",
 "What goes over Tor waits for it: Lightning doesn't start without Tor, and says why if Tor doesn't come up. Nothing is sent over the clear net instead.": "通过 Tor 的内容会等待它：没有 Tor 时 Lightning 不会启动，并在 Tor 无法启动时说明原因。不会改为通过公开网络发送任何内容。",
 "Connecting to a server through Tor needs iOS 17 or later: nothing was sent without it.": "通过 Tor 连接服务器需要 iOS 17 或更高版本：没有在没有它的情况下发送任何内容。",
-"connecting to Tor": "正在连接 Tor"
+"connecting to Tor": "正在连接 Tor",
+"One encrypted file with your recovery words, their passphrase if you set one, the app's settings, your Ark wallet and Lightning's channel backup. It restores on another iPhone or on Kilowallet for Android. Keep the file and its password apart: together they open the wallet. Your words on paper still work without it.": "一个加密文件，包含你的恢复词、你设置的密码短语（如有）、应用设置、你的 Ark 钱包和 Lightning 通道备份。可在另一部 iPhone 或 Android 版 Kilowallet 上恢复。请把文件和密码分开保存：两者一起才能打开钱包。即使没有它，你纸上的恢复词仍然有效。",
+"One encrypted file with your words, settings, Ark wallet and Lightning channel backup, the same format as Kilowallet for Android: it restores on either.": "一个加密文件，包含你的恢复词、设置、Ark 钱包和 Lightning 通道备份，与 Android 版 Kilowallet 格式相同：可在两者上恢复。",
+"Wallet and Ark restored from the backup file.": "已从备份文件恢复钱包和 Ark。",
+"Wallet restored. The file also holds an Ark wallet, which this build can't open: keep the file.": "钱包已恢复。文件中还有一个 Ark 钱包，此版本无法打开：请保留该文件。",
+"Wallet restored. The file has a channel backup: turning Lightning on hands it to the node, which asks each peer to close.": "钱包已恢复。文件中有通道备份：开启 Lightning 时会交给节点，节点会请每个对等方关闭通道。",
+"Wallet restored; Ark did not: {0}": "钱包已恢复；Ark 未恢复：{0}"
 }

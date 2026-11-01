@@ -1020,6 +1020,8 @@ class WalletModel(private val platform: AppPlatform) {
                 put("ios_gap_limit", typed("i", kotlinx.serialization.json.JsonPrimitive(s.gapLimit)))
                 put("ios_street_mode", typed("b", kotlinx.serialization.json.JsonPrimitive(s.streetMode)))
             })
+            // Lightning's birthday and channel backup, under Android's key (AppBackup "lightning").
+            lightning.exportBackup()?.let { put("lightning", it) }
         }
     }
 
@@ -1031,6 +1033,7 @@ class WalletModel(private val platform: AppPlatform) {
         v("ios_gap_limit")?.content?.toIntOrNull()?.let { setGapLimit(it) }
         v("ios_street_mode")?.content?.toBooleanStrictOrNull()?.let { setStreetMode(it) }
         v("coinjoin_enabled")?.content?.toBooleanStrictOrNull()?.let { pools.setEnabled(it) }
+        (app["lightning"] as? kotlinx.serialization.json.JsonObject)?.let { runCatching { lightning.stageRestore(it) } }
     }
 
     /** Make the backup file (words, passphrase and settings, sealed with [password]) and ask where to save it. */
@@ -1040,9 +1043,14 @@ class WalletModel(private val platform: AppPlatform) {
             if (secret == null) { say(error ?: "Not unlocked: no file was written."); return@load }
             scope.launch {
                 val (words, pass) = decodeSecret(secret)
+                // Ark's wallet goes in when it runs on the wallet's words or on words derived from them
+                // (Android's fullSnapshot); an Ark of other words keeps its own backup.
+                val arkFiles = ark.backupFiles(words, pass)
                 val file = withContext(Dispatchers.Default) {
                     com.kilombino.kilowallet.core.backup.Kab.encode(
-                        com.kilombino.kilowallet.core.backup.Kab.Snapshot(words, pass, nowMs(), _state.value.txs.size, settingsJson()), password)
+                        com.kilombino.kilowallet.core.backup.Kab.Snapshot(words, pass, nowMs(), _state.value.txs.size, settingsJson(),
+                            config = arkFiles?.first?.config, db = arkFiles?.first?.db, dbWal = arkFiles?.first?.dbWal,
+                            arkDerived = arkFiles?.second == true), password)
                 }
                 val day = kotlin.time.Clock.System.now().toString().take(10).replace("-", "")
                 platform.saveFile("kilowallet-$day.kab", file) { err ->
@@ -1073,7 +1081,8 @@ class WalletModel(private val platform: AppPlatform) {
                     if (!Bip39.isValid(snap.words)) { say("The words in this file are not a valid backup."); return@onSuccess }
                     storeHot(snap.words, snap.passphrase) {
                         applySettings(snap.app)
-                        if (snap.hasArk) say("Wallet restored. The file also holds an Ark wallet, which this version can't open yet: keep the file.")
+                        if (snap.hasArk) ark.restoreFromBackup(snap)
+                        else if (lightning.hasStagedChannels()) say("Wallet restored. The file has a channel backup: turning Lightning on hands it to the node, which asks each peer to close.")
                     }
                 }
                 .onFailure { e ->
@@ -1106,6 +1115,29 @@ class WalletModel(private val platform: AppPlatform) {
         val peers = runCatching { ln.peerAddresses().toString() }.getOrElse { it.message ?: it.toString() }
         println("KW ln-live: connect Kilombino by onion: $how; peers $peers")
         runCatching { lightning.refresh() }
+    }
+
+    /**
+     * Screenshot run, real Ark engine: the whole-wallet backup file end to end on iPhone. Ark's
+     * files are taken with the engine stopped, sealed in a .kab, opened again, put back and the
+     * engine started on them; the CI log says what came back.
+     */
+    private suspend fun arkBackupRoundTrip(words: List<String>) {
+        val kab = com.kilombino.kilowallet.core.backup.Kab
+        val r = runCatching {
+            val (files, derived) = ark.backupFiles(words, "") ?: error("no Ark files to back up")
+            val file = withContext(Dispatchers.Default) {
+                kab.encode(com.kilombino.kilowallet.core.backup.Kab.Snapshot(words, "", nowMs(), 0, settingsJson(), config = files.config, db = files.db, dbWal = files.dbWal, arkDerived = derived), "demo password")
+            }
+            val back = withContext(Dispatchers.Default) { kab.decode(file, "demo password") }
+            check(back.hasArk && back.db!!.contentEquals(files.db)) { "the Ark database did not come back" }
+            ark.restoreFromBackup(back)
+            delay(3_000)
+            val v = withTimeoutOrNull(120_000) { ark.view.first { it == ArkModel.View.Ready || it is ArkModel.View.Failed } }
+            "file ${file.size} bytes, db ${files.db.size} bytes, wal ${files.dbWal?.size ?: 0}, derived $derived; after restore: $v"
+        }
+        val how = r.getOrElse { "FAILED: " + (it.message ?: it.toString()) }
+        println("KW ark-live: backup round trip: $how")
     }
 
     /** Throwaway state for the screenshot run in CI: the well-known "abandon … about" test wallet. */
@@ -1173,9 +1205,9 @@ class WalletModel(private val platform: AppPlatform) {
                         // address. No funds move.
                         selectTab(Tab.ARK)
                         launch {
-                            ark.view.collect { v ->
-                                if (v == ArkModel.View.Ready || v is ArkModel.View.Failed) { delay(4_000); platform.markReady(screen) }
-                            }
+                            val v = ark.view.first { it == ArkModel.View.Ready || it is ArkModel.View.Failed }
+                            if (v == ArkModel.View.Ready) arkBackupRoundTrip(words)
+                            delay(4_000); platform.markReady(screen)
                         }
                         ark.activate(words, "")
                     }

@@ -42,9 +42,13 @@ import com.kilombino.kilowallet.core.crypto.Bip39
 import org.jetbrains.compose.resources.painterResource
 
 @Composable
-fun ScreenColumn(content: @Composable () -> Unit) {
+fun ScreenColumn(content: @Composable () -> Unit) = ScreenColumn(rememberScrollState(), content)
+
+/** The same, scrolled by [scroll] (a screen that moves itself, as Tor's log to its end). */
+@Composable
+fun ScreenColumn(scroll: androidx.compose.foundation.ScrollState, content: @Composable () -> Unit) {
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp, vertical = 12.dp),
+        Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 18.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(Gap),
     ) { content() }
 }
@@ -304,7 +308,8 @@ fun BackupScreen(model: WalletModel) {
     ScreenColumn {
         BackLink { model.go(com.kilombino.kilowallet.app.Screen.Settings) }
         Text("Backup file", style = MaterialTheme.typography.titleLarge, color = TextMain)
-        Explain("One encrypted file with your recovery words, their passphrase if you set one, and the app's settings. " +
+        Explain("One encrypted file with your recovery words, their passphrase if you set one, the app's settings, " +
+            "your Ark wallet and Lightning's channel backup. " +
             "It restores on another iPhone or on Kilowallet for Android. Keep the file and its password apart: " +
             "together they open the wallet. Your words on paper still work without it.", color = TextSoft)
         Field(p1, { p1 = it }, "password (${com.kilombino.kilowallet.core.backup.Kab.MIN_PASSWORD}+ characters)", password = true)

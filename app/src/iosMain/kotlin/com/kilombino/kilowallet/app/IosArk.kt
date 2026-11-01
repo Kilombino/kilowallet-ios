@@ -31,6 +31,11 @@ class IosArk(private val bridge: IosBridge, private val prefs: Prefs, private va
             fm.createDirectoryAtPath(path.substringBeforeLast('/'), true, null, null)
             (NSString.create(string = text)).writeToFile(path, true, NSUTF8StringEncoding, null)
         }
+        override fun readBytes(path: String): ByteArray? = NSData.create(contentsOfFile = path)?.toBytes()
+        override fun writeBytes(path: String, bytes: ByteArray) {
+            fm.createDirectoryAtPath(path.substringBeforeLast('/'), true, null, null)
+            bytes.toNSData().writeToFile(path, true)
+        }
         override fun exists(path: String) = fm.fileExistsAtPath(path)
         override fun delete(path: String) { fm.removeItemAtPath(path, null) }
         override fun list(path: String): List<String> = fm.contentsOfDirectoryAtPath(path, null)?.map { it.toString() } ?: emptyList()

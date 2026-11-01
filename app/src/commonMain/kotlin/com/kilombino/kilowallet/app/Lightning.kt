@@ -98,6 +98,40 @@ class LightningModel(private val platform: AppPlatform) {
         return hex.encodeToByteArray()
     }
 
+    // ---------------------------------------------------------------- backup file (Android's exportBackup / stageRestore)
+
+    private fun channelBackupPath(): String? = ln?.host?.dir?.let { "$it/data/chain/bitcoin/mainnet/channel.backup" }
+
+    /**
+     * What the backup file keeps of Lightning (Android's `Lightning.exportBackup`): the wallet's
+     * birthday and LND's static channel backup (kept current by the node, encrypted with its keys).
+     * Null when no node was ever made here.
+     */
+    @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+    fun exportBackup(): JsonObject? {
+        val birthday = pref("birthday")?.toLongOrNull()?.takeIf { it > 0 } ?: return null
+        val scb = channelBackupPath()?.let { p -> runCatching { ln?.host?.readBytes(p) }.getOrNull() }
+        return kotlinx.serialization.json.buildJsonObject {
+            put("birthday", kotlinx.serialization.json.JsonPrimitive(birthday))
+            scb?.takeIf { it.isNotEmpty() }?.let { put("scb", kotlinx.serialization.json.JsonPrimitive(kotlin.io.encoding.Base64.Default.encode(it))) }
+        }
+    }
+
+    /**
+     * A backup file's Lightning part (Android's `stageRestore`): its birthday, and its channel backup
+     * handed to the node when its wallet is made (turning Lightning on), so each peer is asked to close.
+     */
+    fun stageRestore(o: JsonObject) {
+        (o["birthday"] as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull?.takeIf { it > 0 }?.let { setPref("birthday", it.toString()) }
+        (o["scb"] as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull?.takeIf { it.isNotEmpty() }?.let { setPref("restore_scb", it) }
+    }
+
+    /** A channel backup from a restored backup file waits for the node's wallet. */
+    fun hasStagedChannels(): Boolean = pref("restore_scb") != null
+
+    @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+    private fun stagedScb(): ByteArray? = pref("restore_scb")?.let { runCatching { kotlin.io.encoding.Base64.Default.decode(it) }.getOrNull() }
+
     // ---------------------------------------------------------------- name, fees, peers
 
     /** The node's name, which peers see: a random tag until one is chosen; takes effect on the next start. */
@@ -229,8 +263,8 @@ class LightningModel(private val platform: AppPlatform) {
                     // The same words may have run a node before: without a birthday from a backup
                     // file, the wallet looks from the chain's activation, so no coin of that node is missed.
                     val birthday = pref("birthday")?.toLongOrNull()?.takeIf { it > 0 } ?: activationTime
-                    Lnd.initWallet(password(), LnSeed.masterXprv(bip39Seed), birthday, null)
-                    setPref("birthday", birthday.toString())
+                    Lnd.initWallet(password(), LnSeed.masterXprv(bip39Seed), birthday, stagedScb())
+                    setPref("birthday", birthday.toString()); setPref("restore_scb", null)
                 }
             }
             setPref("expected_pubkey", LnSeed.nodePubkey(bip39Seed))

@@ -191,7 +191,7 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             }
 
             Text("Backup file", style = MaterialTheme.typography.bodyMedium, color = TextMain)
-            Explain(if (hot) "One encrypted file with your words and settings, the same format as Kilowallet for Android: it restores on either."
+            Explain(if (hot) "One encrypted file with your words, settings, Ark wallet and Lightning channel backup, the same format as Kilowallet for Android: it restores on either."
                 else "The backup file holds a spending wallet's words: switch to the hot wallet to save one.")
             SecondaryButton("SAVE A BACKUP FILE", Modifier.fillMaxWidth(), enabled = hot) { model.go(com.kilombino.kilowallet.app.Screen.Backup) }
             // Both wallets live side by side (Android 1.4.4): add the one that is missing, or remove the one on screen.
@@ -298,7 +298,10 @@ fun TorLogScreen(model: WalletModel) {
     val clipboard = LocalClipboardManager.current
     var log by remember { mutableStateOf(if (Tor.available) Tor.logTail() else "") }
     LaunchedEffect(Unit) { while (true) { delay(2_000); if (Tor.available) log = Tor.logTail() } }
-    ScreenColumn {
+    // The newest lines are at the end: the screen opens there and follows them as they come.
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    LaunchedEffect(log, scroll.maxValue) { scroll.scrollTo(scroll.maxValue) }
+    ScreenColumn(scroll) {
         BackLink("← back") { model.back() }
         Panel {
             SectionLabel("Tor's log")
