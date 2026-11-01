@@ -8,6 +8,7 @@ import com.kilombino.kilowallet.core.chain.TransportFactory
 import com.kilombino.kilowallet.core.crypto.Address
 import com.kilombino.kilowallet.core.crypto.Bip32
 import com.kilombino.kilowallet.core.crypto.BlockHeader
+import com.kilombino.kilowallet.core.crypto.Hashes
 import com.kilombino.kilowallet.core.crypto.ScriptType
 import com.kilombino.kilowallet.core.crypto.TxParse
 import com.kilombino.kilowallet.core.platform.ioDispatcher
@@ -241,6 +242,47 @@ class Scanner(
         }
     }
 
+    /** A mined reward still locked, and the first block it can be spent at. */
+    data class ImmatureCoin(val coin: SpendableUtxo, val maturesAt: Int)
+
+    /** The wallet's immature mined rewards at [tip], and how long blocks have been taking lately (seconds). */
+    data class Immature(val tip: Int, val coins: List<ImmatureCoin>, val secondsPerBlock: Double) {
+        val total: Long get() = coins.sumOf { it.coin.value }
+        /** Roughly when block [height] comes (epoch seconds), from the recent pace. */
+        fun eta(height: Int, now: Long): Long = now + ((height - tip).coerceAtLeast(0) * secondsPerBlock).toLong()
+        fun of(u: SpendableUtxo): ImmatureCoin? = coins.firstOrNull { it.coin.txid == u.txid && it.coin.vout == u.vout }
+    }
+
+    /**
+     * Every immature mined reward in [rows] (what [gatherUtxos] leaves out of spending), for showing:
+     * the coins of the addresses, the transactions only of those young enough to be one (cached), and
+     * the pace of the last day's blocks for the dates (Android app `Scanner.immature`, 1.4.0).
+     */
+    suspend fun immature(rows: List<AddressRow>, endpoint: NodeEndpoint, pinnedFingerprint: String?): Immature = withContext(worker) {
+        val client = client(endpoint, pinnedFingerprint)
+        try {
+            client.connect()
+            val all = client.listUnspentMany(rows.map { it.scriptHash }).zip(rows).flatMap { (us, r) ->
+                us.map { SpendableUtxo(it.txid, it.vout, it.value, r.chainIndex, r.index, it.height, r.type) }
+            }
+            val tip = client.blockHeight()
+            val coins = all.filter { mayBeImmature(it.height, tip) }.mapNotNull { u ->
+                val tx = txCache[u.txid] ?: runCatching { TxParse.parse(client.transaction(u.txid)) }.getOrNull()
+                    ?.also { txCache[u.txid] = it } ?: return@mapNotNull null
+                val coinbase = tx.inputs.size == 1 && tx.inputs[0].txid.all { it == '0' } && tx.inputs[0].vout == -1
+                if (immature(coinbase, u.height, tip)) ImmatureCoin(u, maturesAt(u.height)) else null
+            }
+            val pace = if (coins.isEmpty()) DEFAULT_BLOCK_SECONDS else runCatching {
+                val span = minOf(144, tip - 1)
+                val t1 = blockTime(client.blockHeader(tip)); val t0 = blockTime(client.blockHeader(tip - span))
+                ((t1 - t0).toDouble() / span).takeIf { it in 30.0..86_400.0 }
+            }.getOrNull() ?: DEFAULT_BLOCK_SECONDS
+            Immature(tip, coins.sortedBy { it.maturesAt }, pace)
+        } finally {
+            client.close()
+        }
+    }
+
     /**
      * Check every coin about to be spent against the transaction that created it (Android app:
      * `WalletViewModel.verifyCoins`): amount and script must be what the server listed, before
@@ -414,6 +456,15 @@ class Scanner(
 
         /** Whether a coin at [height] (a mined reward when [coinbase]) is still locked at [tip]. */
         fun immature(coinbase: Boolean, height: Int, tip: Int): Boolean = coinbase && height > 0 && tip - height + 1 < maturityFor(height)
+
+        /** Seconds per block when the pace can't be read: ten minutes. */
+        const val DEFAULT_BLOCK_SECONDS = 600.0
+
+        /** A header's time (bytes 68–71, little-endian), the same in an 80- and a 164-byte header. */
+        fun blockTime(headerHex: String): Long {
+            val b = Hashes.hexToBytes(headerHex)
+            return (0 until 4).fold(0L) { a, i -> a or ((b[68 + i].toLong() and 0xff) shl (8 * i)) }
+        }
 
         fun purposeFor(type: ScriptType): Int = when (type) {
             ScriptType.P2PKH -> 44

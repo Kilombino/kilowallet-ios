@@ -2509,7 +2509,6 @@
 "Joining signs nothing that can move your coins: it only proves you own them. You sign the round at the end, after checking it.": "Entrar não assina nada que possa mover suas moedas: só prova que são suas. Você assina a rodada no final, depois de conferi-la.",
 "KEEP KILOWALLET OPEN DURING A ROUND": "MANTENHA O KILOWALLET ABERTO DURANTE UMA RODADA",
 "KILOJOIN: SHARED TRANSACTIONS": "KILOJOIN: TRANSAÇÕES COMPARTILHADAS",
-"Kilojoin is an open protocol over nostr, the same one Kilowallet for Android and for desktop use, so you can be in a pool with people on any of them. Native SegWit (bc1q) pools only in this app; Taproot pools are not shown. Pools are open from {0} sats per person, {1} sats per output at least.": "O Kilojoin é um protocolo aberto sobre nostr, o mesmo que o Kilowallet para Android e para desktop usam, então você pode estar numa pool com pessoas de qualquer um deles. Neste app só pools SegWit nativo (bc1q); as pools Taproot não aparecem. As pools vão de {0} sats por pessoa, com pelo menos {1} sats por saída.",
 "Kilojoin needs a wallet that can sign: a watch-only wallet has no keys to take part in a pool. A watch-only key can still receive a pool's outputs: set it in a spending wallet's Kilojoin screen.": "O Kilojoin precisa de uma carteira que possa assinar: uma carteira somente leitura não tem chaves para participar de uma pool. Uma chave somente leitura ainda pode receber as saídas de uma pool: configure-a na tela Kilojoin de uma carteira que pode gastar.",
 "Leave": "Sair",
 "Making the pool's keys and announcing it…": "Criando as chaves da pool e anunciando-a…",
@@ -2803,5 +2802,9 @@
 "⚡ INVOICE": "⚡ FATURA",
 "⚡ OFFER": "⚡ OFERTA",
 "Next coin expires in {0} blocks (≈ {1} days). Opening the app renews it; tap RENEW to do it now.": "A próxima moeda expira em {0} blocos (≈ {1} dias). Abrir a app renova-a; toca em RENOVAR para o fazer já.",
-"{0} of {1} confirmations": "{0} de {1} confirmações"
+"{0} of {1} confirmations": "{0} de {1} confirmações",
+"Kilojoin is an open protocol over nostr, the same one Kilowallet for Android and for desktop use, so you can be in a pool with people on any of them. A pool is all native SegWit (bc1q) or all Taproot (bc1p); Taproot pools show once Taproot is on in Settings. Several seats of yours in one pool count as one person. Pools are open from {0} sats per person, {1} sats per output at least.": "O Kilojoin é um protocolo aberto sobre nostr, o mesmo que o Kilowallet para Android e para computador usam, por isso podes estar num pool com pessoas de qualquer um deles. Um pool é todo SegWit nativo (bc1q) ou todo Taproot (bc1p); os pools Taproot aparecem quando ativas o Taproot nas Definições. Vários lugares teus no mesmo pool contam como uma só pessoa. Há pools a partir de {0} sats por pessoa, {1} sats por saída no mínimo.",
+"A Taproot pool's outputs go to this wallet: the watch-only key is native SegWit.": "As saídas de um pool Taproot vão para esta carteira: a chave só de leitura é SegWit nativo.",
+"Taproot is not turned on in this wallet.": "O Taproot não está ativado nesta carteira.",
+"The coins and the recipients' addresses must be of the same type.": "As moedas e os endereços dos destinatários têm de ser do mesmo tipo."
 }

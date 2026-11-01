@@ -175,7 +175,6 @@
  "Joining signs nothing that can move your coins: it only proves you own them. You sign the round at the end, after checking it.": "加入不会签署任何能移动你的币的东西：只是证明这些币是你的。你在最后检查过这一轮之后才签名。",
  "KEEP KILOWALLET OPEN DURING A ROUND": "一轮进行时请保持 KILOWALLET 打开",
  "KILOJOIN: SHARED TRANSACTIONS": "KILOJOIN：共享交易",
- "Kilojoin is an open protocol over nostr, the same one Kilowallet for Android and for desktop use, so you can be in a pool with people on any of them. Native SegWit (bc1q) pools only in this app; Taproot pools are not shown. Pools are open from {0} sats per person, {1} sats per output at least.": "Kilojoin 是基于 nostr 的开放协议，与 Android 版和桌面版 Kilowallet 使用的是同一个，所以你可以和使用其中任何一个的人在同一个池里。本应用只支持原生 SegWit（bc1q）池；不显示 Taproot 池。池的最低金额为每人 {0} sats，每个输出至少 {1} sats。",
  "Kilojoin needs a wallet that can sign: a watch-only wallet has no keys to take part in a pool. A watch-only key can still receive a pool's outputs: set it in a spending wallet's Kilojoin screen.": "Kilojoin 需要一个能签名的钱包：观察钱包没有密钥，无法参与池。观察密钥仍然可以接收池的输出：请在能支付的钱包的 Kilojoin 页面里设置它。",
  "Leave": "退出",
  "Making the pool's keys and announcing it…": "正在生成池的密钥并发布…",
@@ -474,5 +473,9 @@
  "⚡ INVOICE": "⚡ 发票",
  "⚡ OFFER": "⚡ 报价",
  "Next coin expires in {0} blocks (≈ {1} days). Opening the app renews it; tap RENEW to do it now.": "下一枚币将在 {0} 个区块后过期（≈ {1} 天）。打开应用即可续期；点“续期”立即续期。",
- "{0} of {1} confirmations": "{1} 个确认中的 {0} 个"
+ "{0} of {1} confirmations": "{1} 个确认中的 {0} 个",
+ "Kilojoin is an open protocol over nostr, the same one Kilowallet for Android and for desktop use, so you can be in a pool with people on any of them. A pool is all native SegWit (bc1q) or all Taproot (bc1p); Taproot pools show once Taproot is on in Settings. Several seats of yours in one pool count as one person. Pools are open from {0} sats per person, {1} sats per output at least.": "Kilojoin 是基于 nostr 的开放协议，与 Android 版和桌面版 Kilowallet 使用的相同，所以你可以和任何一个版本的用户在同一个池中。一个池要么全是原生 SegWit（bc1q），要么全是 Taproot（bc1p）；在设置中开启 Taproot 后才会显示 Taproot 池。你在同一个池中的多个座位只算一个人。池的起点为每人 {0} sats，每个输出至少 {1} sats。",
+ "A Taproot pool's outputs go to this wallet: the watch-only key is native SegWit.": "Taproot 池的输出会进入本钱包：只读密钥是原生 SegWit。",
+ "Taproot is not turned on in this wallet.": "本钱包未开启 Taproot。",
+ "The coins and the recipients' addresses must be of the same type.": "币和收款人的地址必须是同一类型。"
 }

@@ -27,7 +27,7 @@ xcrun simctl install "$UDID" "$APP"
 
 n=0
 # "screen@lang" shows that screen in another language (the app's language picker, set by the demo).
-for screen in welcome create restore watch home simple lightning ln-starting ln-running ln-failed ark locked receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round home@es receive@es settings@es lightning@es ln-running@es pools@es pool-round@zh home@zh dice backup cpfp receive-taproot settings-taproot pool-history psbt dice@es backup@es pool-history@es psbt@es ark-ready ark-ready@es ark@es ark-live ln-live; do
+for screen in welcome create restore watch home simple lightning ln-starting ln-running ln-failed ark locked receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round home@es receive@es settings@es lightning@es ln-running@es pools@es pool-round@zh home@zh dice backup cpfp receive-taproot settings-taproot pool-history psbt immature dice@es backup@es pool-history@es psbt@es ark-ready ark-ready@es ark@es ark-live ln-live; do
   n=$((n + 1))
   base=${screen%@*}
   name=${screen/@/-}
@@ -36,7 +36,7 @@ for screen in welcome create restore watch home simple lightning ln-starting ln-
   rm -f "$DATA/Documents/kw-ready-$base"
   SIMCTL_CHILD_KW_DEMO="$screen" xcrun simctl launch --console-pty "$UDID" "$BUNDLE" > "screenshots-logs/$name.log" 2>&1 &
   LP=$!
-  limit=20; { [ "$base" = home ] || [ "$base" = simple ]; } && limit=150
+  limit=20; { [ "$base" = home ] || [ "$base" = simple ] || [ "$base" = immature ]; } && limit=150
   case "$base" in pool*) limit=90 ;; esac
   # The real Lightning engine: LND starts, makes a throwaway wallet and syncs with the chain's peers.
   [ "$base" = ln-live ] && limit=900

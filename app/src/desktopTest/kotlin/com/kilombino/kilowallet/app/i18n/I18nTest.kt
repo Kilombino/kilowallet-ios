@@ -202,6 +202,8 @@ class I18nTest {
         "delivering", "settled", "BOLT12", "Lightning", "EXIT", "Ark renewal", "Error", "Error: ", "Error: 12", "Error: …",
         // " UTC" after a date; "normal" (the fee speed) is the same word in Spanish.
         " UTC", "normal",
+        // The locked-rewards screenshot's name and made-up txids.
+        "immature", "c0", "c1",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""(12 345 · )?12(/12 345)? conf"""), Regex(""" · 12/12 345 conf"""), Regex("""\d{4}-\d\d-\d\dT[0-9:]+"""),
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates

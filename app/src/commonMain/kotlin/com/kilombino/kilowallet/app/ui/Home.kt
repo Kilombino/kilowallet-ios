@@ -24,6 +24,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import com.kilombino.kilowallet.core.kilojoin.NostrEvent
+import com.kilombino.kilowallet.core.wallet.Scanner
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -105,8 +108,10 @@ private fun BtcTab(model: WalletModel, state: UiState) {
                 Explain("No movements yet. Receive to an address from RECEIVE.")
             } else {
                 Explain("tap a movement for its details")
+                val im by model.immature.collectAsState()
                 state.txs.take(200).forEach { tx ->
-                    MovementRow(tx, state.hidden, canReplace = hot && tx.pending && (tx.amount ?: 0) < 0,
+                    MovementRow(tx, state.hidden, immature = im?.let { i -> i.coins.firstOrNull { it.coin.txid == tx.txid }?.let { immatureLine(i, it) } },
+                        canReplace = hot && tx.pending && (tx.amount ?: 0) < 0,
                         canCpfp = hot && tx.pending && (tx.amount ?: 0) > 0,
                         onCpfp = { model.go(Screen.Cpfp(tx.txid)) },
                         onReplace = { cancel -> model.go(Screen.Replace(tx.txid, cancel)) }) { detail = tx }
@@ -207,12 +212,40 @@ internal fun BalanceCard(model: WalletModel, state: UiState) {
         }
         if (state.unconfirmed != 0L && !state.hidden) Text("of which ${formatSats(state.unconfirmed)} sats unconfirmed",
             style = MaterialTheme.typography.bodySmall, color = Warn)
+        ImmatureBalanceNote(model, state)
         Spacer(Modifier.height(4.dp))
         Text("${state.rows.count { it.isUsed }} used addresses · height ${state.height}", style = MaterialTheme.typography.bodySmall, color = TextSoft)
         Text(state.scriptType.label, style = MaterialTheme.typography.bodySmall, color = TextFaint)
         Text(state.scriptType.explain, style = MaterialTheme.typography.bodySmall, color = TextFaint)
         Explain("BTC: Bitcoin with BLAKE2b proof of work. 164-byte headers.")
     }
+}
+
+/** Roughly the day block [height] comes, from the recent pace (Android's `approxDay`). */
+internal fun approxDay(im: Scanner.Immature, height: Int): String =
+    civilDay(im.eta(height, NostrEvent.nowSeconds()) / 86400).let { (y, m, d) -> "$y-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}" }
+
+/** A movement's line when it made a mined reward still locked: from which block it can be spent, and about when. */
+internal fun immatureLine(im: Scanner.Immature, c: Scanner.ImmatureCoin): String =
+    "⛏ mined reward · matures at block ${c.maturesAt} (~${approxDay(im, c.maturesAt)})"
+
+/**
+ * Under the balance: how much of it is mined rewards still locked (the balance counts them, SEND
+ * can't spend them yet), and until when. Nothing when there are none. Looked up again when the
+ * balance or the tip moves (Android 1.4.0 `ImmatureBalanceNote`).
+ */
+@Composable
+private fun ImmatureBalanceNote(model: WalletModel, state: UiState) {
+    LaunchedEffect(state.zpub, state.height, state.total, state.rows.size) { model.refreshImmature() }
+    val im by model.immature.collectAsState()
+    val i = im ?: return
+    if (i.coins.isEmpty() || state.hidden) return
+    val first = i.coins.first(); val last = i.coins.last()
+    Text(if (first.maturesAt == last.maturesAt)
+        "of which ${formatSats(i.total)} sats are mined rewards still locked (until block ${last.maturesAt}, ~${approxDay(i, last.maturesAt)})"
+        else "of which ${formatSats(i.total)} sats are mined rewards still locked: the next unlocks at block ${first.maturesAt} " +
+            "(~${approxDay(i, first.maturesAt)}), the last at block ${last.maturesAt} (~${approxDay(i, last.maturesAt)})",
+        style = MaterialTheme.typography.bodySmall, color = Warn)
 }
 
 /** USD · EUR · ▾ by the value, as Android's `FiatPicker` (▾ opens the full list in settings). */
@@ -239,7 +272,7 @@ internal fun TabColumn(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MovementRow(tx: TxConf, hidden: Boolean, canReplace: Boolean, onReplace: (cancel: Boolean) -> Unit,
+private fun MovementRow(tx: TxConf, hidden: Boolean, immature: String? = null, canReplace: Boolean, onReplace: (cancel: Boolean) -> Unit,
                         canCpfp: Boolean = false, onCpfp: () -> Unit = {}, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
@@ -248,6 +281,7 @@ private fun MovementRow(tx: TxConf, hidden: Boolean, canReplace: Boolean, onRepl
             Text(if (hidden) MASK else if (a == null) "? sats" else (if (a > 0) "+" else "") + formatSats(a) + " sats",
                 style = MaterialTheme.typography.bodyLarge, color = if (a != null && a > 0) Good else TextMain)
             Text(shortTxid(tx.txid), style = MaterialTheme.typography.bodySmall, color = TextFaint)
+            immature?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Warn) }
         }
         if (canReplace) {
             // Status above, actions below: side by side they squeezed the amount (Android 1.2.5).

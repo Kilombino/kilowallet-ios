@@ -166,10 +166,40 @@ class WalletModel(private val platform: AppPlatform) {
 
     /** Kilojoin: the pools and this wallet's rounds in them. */
     val pools = PoolsModel(platform, { _state.value },
-        // Pools are native SegWit (this build's Kilojoin has no Taproot pools): Taproot coins stay out.
-        gatherCoins = { val s = _state.value; scanner.gatherUtxos(s.rows.filter { it.isUsed && it.type == null }, s.endpoint, s.pinned) },
-        verifyCoins = { coins -> val s = _state.value; scanner.verifyCoins(s.zpub ?: error("No wallet."), coins, s.endpoint, s.pinned) },
+        // Native SegWit coins (type null) and the Taproot account's: a pool takes coins of its own type only.
+        gatherCoins = { val s = _state.value; scanner.gatherUtxos(s.rows.filter { it.isUsed && (it.type == null || it.type == ScriptType.P2TR) }, s.endpoint, s.pinned) },
+        verifyCoins = { coins -> val s = _state.value; scanner.verifyCoins(s.zpub ?: error("No wallet."), coins, s.endpoint, s.pinned, taprootXpub = s.taprootXpub) },
         onRoundDone = { refresh() })
+
+    /** The wallet's mined rewards still locked (shown under the balance), or null before they were looked up. */
+    private val _immature = MutableStateFlow<Scanner.Immature?>(null)
+    val immature: StateFlow<Scanner.Immature?> = _immature
+    private var immatureAsked: String? = null
+
+    /**
+     * Looks up the mined rewards that can't be spent yet (what SEND leaves out), again only when the
+     * wallet, its balance or the tip changed (Android 1.4.0 `refreshImmature`).
+     */
+    fun refreshImmature() {
+        val s = _state.value
+        val rows = s.rows.filter { it.isUsed }
+        if (rows.isEmpty() || s.height <= 0) return
+        val key = "${s.zpub}|${s.activeTaproot}|${s.height}|${s.total}|${rows.size}"
+        if (immatureAsked == key) return
+        immatureAsked = key
+        if (platform.demoScreen?.substringBefore('@') == "immature") {
+            // Screenshot mode: two made-up rewards mined from the long-maturity block, so the note shows.
+            val a = SpendableUtxo("c0".repeat(32), 0, 312_500_000, 0, 3, s.height - 1200)
+            val b = SpendableUtxo("c1".repeat(32), 0, 312_480_000, 0, 5, s.height - 40)
+            _immature.value = Scanner.Immature(s.height, listOf(a, b).map { Scanner.ImmatureCoin(it, Scanner.maturesAt(it.height)) }, 540.0)
+            return
+        }
+        scope.launch {
+            runCatching { scanner.immature(rows, s.endpoint, s.pinned) }
+                .onSuccess { im -> if (sameWallet(s)) _immature.value = im }
+                .onFailure { immatureAsked = null }
+        }
+    }
 
     /** Lightning: the node on this phone (LND linked in), ported from Android's ln/Lightning.kt. */
     val lightning = LightningModel(platform)
@@ -568,13 +598,13 @@ class WalletModel(private val platform: AppPlatform) {
                         pinIfFirst(s.endpoint, ev.fingerprint)
                         if (!sameWallet(s)) return@collect
                         _state.update { it.copy(scan = ScanPhase.Done, rows = ev.rows, txs = ev.txs, height = ev.height) }
-                        platform.demoScreen?.substringBefore('@')?.takeIf { it == "home" || it == "simple" }?.let { platform.markReady(it) }
+                        platform.demoScreen?.substringBefore('@')?.takeIf { it == "home" || it == "simple" || it == "immature" }?.let { platform.markReady(it) }
                     }
                     is ScanEvent.Failed -> _state.update { it.copy(scan = ScanPhase.Error(ev.message)) }
                     is ScanEvent.CertificateChanged -> _state.update { it.copy(scan = ScanPhase.Error(ev.message), certChanged = ev.fingerprint) }
                 }
             }
-            if (_state.value.scan is ScanPhase.Error) platform.demoScreen?.substringBefore('@')?.takeIf { it == "home" || it == "simple" }?.let { platform.markReady(it) }
+            if (_state.value.scan is ScanPhase.Error) platform.demoScreen?.substringBefore('@')?.takeIf { it == "home" || it == "simple" || it == "immature" }?.let { platform.markReady(it) }
         }
     }
 
@@ -1020,6 +1050,7 @@ class WalletModel(private val platform: AppPlatform) {
                 _state.update { it.copy(kind = WalletKind.HOT, zpub = zpub, screen = Screen.Home) }
                 when (screen) {
                     "home" -> scan()
+                    "immature" -> scan()
                     "receive" -> { go(Screen.Receive); platform.markReady(screen) }
                     "settings" -> { go(Screen.Settings); platform.markReady(screen) }
                     "lightning" -> { selectTab(Tab.LIGHTNING); platform.markReady(screen) }
