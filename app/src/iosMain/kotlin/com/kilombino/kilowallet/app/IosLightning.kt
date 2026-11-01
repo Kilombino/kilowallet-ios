@@ -43,6 +43,9 @@ class IosLightning(private val bridge: IosBridge, private val memoryPassword: Bo
         }
         override fun exists(path: String) = fm.fileExistsAtPath(path)
         override fun delete(path: String) { fm.removeItemAtPath(path, null) }
+        override fun files(dir: String): List<String> =
+            (fm.subpathsOfDirectoryAtPath(dir, null) ?: emptyList<Any?>()).mapNotNull { it as? String }.map { "$dir/$it" }
+                .filter { p -> fm.attributesOfItemAtPath(p, null)?.get(NSFileType) == NSFileTypeRegular }
         override fun tail(path: String, maxBytes: Int): String? {
             val h = NSFileHandle.fileHandleForReadingAtPath(path) ?: return null
             val size = h.seekToEndOfFile()

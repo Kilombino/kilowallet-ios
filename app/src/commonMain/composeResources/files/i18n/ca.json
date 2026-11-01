@@ -2841,5 +2841,9 @@
 "Wallet restored; Ark did not: {0}": "Moneder restaurat; Ark no: {0}",
 "Bridge fee {0} %, at the market price. If the price moves before paying, at most {1} sats; above that nothing is paid. Plus the routing fee to the bridge, at most {2} sats.": "Comissió del pont {0} %, al preu de mercat. Si el preu es mou abans de pagar, com a màxim {1} sats; per sobre no es paga res. Més la comissió d'enrutament fins al pont, com a màxim {2} sats.",
 "PAY {0} SATS": "PAGA {0} SATS",
-"Getting the final price (after a small proof of work, a few seconds)…": "Obtenint el preu final (després d'una petita prova de treball, uns segons)…"
+"Getting the final price (after a small proof of work, a few seconds)…": "Obtenint el preu final (després d'una petita prova de treball, uns segons)…",
+"Close the app and open it again first: the old node has to let go of its files.": "Tanca l'app i torna-la a obrir primer: el node anterior ha de deixar anar els seus fitxers.",
+"Error: {0}": "Error: {0}",
+"Not unlocked: nothing was moved.": "No desbloquejat: no s'ha mogut res.",
+"could not open the file": "no s'ha pogut obrir el fitxer"
 }

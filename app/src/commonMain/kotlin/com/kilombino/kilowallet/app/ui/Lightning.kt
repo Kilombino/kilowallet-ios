@@ -67,7 +67,7 @@ fun LightningTab(model: WalletModel, state: UiState, platform: AppPlatform) {
     val status by ln.status.collectAsState()
     DisposableEffect(Unit) { ln.watch(true); onDispose { ln.watch(false) } }
     when (val s = status) {
-        LightningModel.Status.Off -> LnIntro(ln) { model.enableLightning() }
+        LightningModel.Status.Off -> { LnIntro(ln) { model.enableLightning() }; if (ln.available) MoveInPanel(ln, platform) }
         is LightningModel.Status.Starting -> LnStarting(s, ln)
         is LightningModel.Status.Failed -> LnFailed(s, ln)
         is LightningModel.Status.Running -> LnNode(s, ln, state, platform, model)
@@ -272,6 +272,7 @@ private fun LnNode(s: LightningModel.Status.Running, ln: LightningModel, state: 
     InboundPanel(ln, s)
     if ((b?.onchainConfirmed ?: 0) + (b?.onchainUnconfirmed ?: 0) > 0) PayOnchainPanel(ln)
     ChannelBackupPanel(model, ln, platform)
+    MoveOutPanel(ln, platform)
     LnSettingsPanels(ln, i.alias)
     IphoneLimits(ln)
     Panel(accent = Warn) {

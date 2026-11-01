@@ -2841,5 +2841,9 @@
 "Wallet restored; Ark did not: {0}": "Portefeuille restauré ; Ark non : {0}",
 "Bridge fee {0} %, at the market price. If the price moves before paying, at most {1} sats; above that nothing is paid. Plus the routing fee to the bridge, at most {2} sats.": "Frais du pont {0} %, au prix du marché. Si le prix bouge avant le paiement, au plus {1} sats ; au-delà rien n'est payé. Plus les frais de routage jusqu'au pont, au plus {2} sats.",
 "PAY {0} SATS": "PAYER {0} SATS",
-"Getting the final price (after a small proof of work, a few seconds)…": "Obtention du prix final (après une petite preuve de travail, quelques secondes)…"
+"Getting the final price (after a small proof of work, a few seconds)…": "Obtention du prix final (après une petite preuve de travail, quelques secondes)…",
+"Close the app and open it again first: the old node has to let go of its files.": "Ferme l'app et rouvre-la d'abord : l'ancien nœud doit lâcher ses fichiers.",
+"Error: {0}": "Erreur : {0}",
+"Not unlocked: nothing was moved.": "Non déverrouillé : rien n'a été déplacé.",
+"could not open the file": "impossible d'ouvrir le fichier"
 }

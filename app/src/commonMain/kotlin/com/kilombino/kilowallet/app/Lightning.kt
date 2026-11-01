@@ -277,7 +277,7 @@ class LightningModel(private val platform: AppPlatform) {
                 }
             }
             setPref("expected_pubkey", LnSeed.nodePubkey(bip39Seed))
-            setPref("enabled", "1")
+            setPref("enabled", "1"); setPref("moving", null)
         } catch (e: Exception) {
             _status.value = Status.Failed(e.message ?: "Lightning did not start"); throw e
         } finally { bip39Seed.fill(0) }
@@ -286,6 +286,9 @@ class LightningModel(private val platform: AppPlatform) {
     /** Brings an enabled node up (once per process); a no-op when it already runs. */
     fun resume() {
         if (ln == null || !enabled()) { _status.value = Status.Off; return }
+        // A move to another phone was under way when the app last stopped: this node must not come
+        // up by itself (it may already run there). Turning Lightning on by hand clears it.
+        if (pref("moving") == "1") { _status.value = Status.Off; return }
         scope.launch {
             lock.withLock {
                 if (Lnd.running && _status.value is Status.Running) return@withLock
@@ -434,6 +437,65 @@ class LightningModel(private val platform: AppPlatform) {
         poller = scope.launch {
             while (isActive) { runCatching { refresh() }; delay(5_000) }
         }
+    }
+
+    // ---------------------------------------------------------------- moving the node (Android's LnMove)
+
+    /** This phone's node was moved to another phone: turn Lightning on here only if that one no longer runs it. */
+    fun movedAway(): Boolean = pref("moved_away") == "1"
+
+    /**
+     * Stops the node and packs it (channels open) sealed with [password], checking the file opens
+     * again. Marked "moving" first: if the app dies before the node is forgotten here, it won't
+     * come up again by itself. The caller saves the file, then [forgetHere] or [cancelMove].
+     */
+    suspend fun moveOut(filePassword: String): ByteArray = withContext(ioDispatcher) {
+        val p = ln ?: throw LndError("Lightning is not available in this build")
+        require(filePassword.length >= com.kilombino.kilowallet.core.ln.LnMove.MIN_PASSWORD) { "The password needs at least ${com.kilombino.kilowallet.core.ln.LnMove.MIN_PASSWORD} characters." }
+        setPref("moving", "1")
+        watch(false)
+        Lnd.stop()
+        delay(6_000)    // LND lets go of its database files a little after StopDaemon answers
+        val dir = p.host.dir
+        val files = p.host.files(dir).map { it.removePrefix("$dir/") }
+            .filterNot { com.kilombino.kilowallet.core.ln.LnMove.skip(it) }
+            .map { it to (p.host.readBytes("$dir/$it") ?: ByteArray(0)) }
+        val walletPassword = password()
+        val pack = com.kilombino.kilowallet.core.ln.LnMove.pack(files, walletPassword, pref("birthday")?.toLongOrNull() ?: 0L, filePassword)
+        check(com.kilombino.kilowallet.core.ln.LnMove.hasWallet(com.kilombino.kilowallet.core.ln.LnMove.entries(pack, filePassword))) { "The pack did not read back" }
+        _status.value = Status.Off
+        pack
+    }
+
+    /** The move did not happen (not saved): the node stays here, and starts again with the app. */
+    fun cancelMove() = setPref("moving", null)
+
+    /** After the move file is saved: the node no longer lives on this phone. */
+    fun forgetHere() {
+        ln?.let { it.host.delete(it.host.dir) }
+        setPref("enabled", null); setPref("moving", null); setPref("tower_added", null); setPref("moved_away", "1")
+        _status.value = Status.Off
+    }
+
+    /** Puts a node moved from another phone (Android or iPhone) in place and starts it. */
+    suspend fun moveIn(pack: ByteArray, filePassword: String) = withContext(ioDispatcher) {
+        val p = ln ?: throw LndError("Lightning is not available in this build")
+        check(!Lnd.running) { "Lightning is running on this phone already" }
+        if (Lnd.stoppedThisRun) throw LndError("Close the app and open it again first: the old node has to let go of its files.")
+        val M = com.kilombino.kilowallet.core.ln.LnMove
+        val files = M.entries(pack, filePassword)
+        require(M.hasWallet(files)) { "This pack has no Lightning wallet" }
+        val dir = p.host.dir
+        p.host.delete(dir)
+        for ((name, bytes) in files) {
+            when (name) {
+                M.PASSWORD_ENTRY -> p.savePassword(bytes.decodeToString())?.let { throw LndError("Could not keep the node's password: $it") }
+                M.BIRTHDAY_ENTRY -> bytes.decodeToString().toLongOrNull()?.takeIf { it > 0 }?.let { setPref("birthday", it.toString()) }
+                else -> { require(M.safePath(name)) { "bad entry $name" }; p.host.writeBytes("$dir/$name", bytes) }
+            }
+        }
+        setPref("enabled", "1"); setPref("moved_away", null); setPref("moving", null); setPref("tower_added", null)
+        resume()
     }
 
     /** Stops and deletes an empty node (the screen checks it holds nothing). */

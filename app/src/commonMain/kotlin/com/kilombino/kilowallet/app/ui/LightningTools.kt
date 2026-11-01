@@ -482,3 +482,90 @@ internal fun LnSettingsPanels(ln: LightningModel, current: String) {
         }
     }
 }
+
+/**
+ * Moves the node, channels open, to another phone (Android's MoveOut): a password-protected file
+ * with its whole state, the same format as Kilowallet for Android. Once the file is saved the node
+ * is deleted here, so it can never run twice.
+ */
+@Composable
+internal fun MoveOutPanel(ln: LightningModel, platform: AppPlatform) {
+    val scope = rememberCoroutineScope()
+    var ask by remember { mutableStateOf(false) }
+    var pw1 by remember { mutableStateOf("") }
+    var pw2 by remember { mutableStateOf("") }
+    var msg by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    val min = com.kilombino.kilowallet.core.ln.LnMove.MIN_PASSWORD
+    Panel(accent = LnGold) {
+        SectionLabel("Move Lightning to another phone", LnGold)
+        Explain("Takes the node with its channels OPEN to a new phone: a file protected by a password, with the whole node. Once it is saved, Lightning is deleted from this phone. On the new phone, before turning Lightning on, choose MOVE IN FROM ANOTHER PHONE.")
+        Text("Never use a copy of this file twice, and never turn Lightning on again here with these words while the other phone runs it: an old channel state is punished by losing the whole channel.",
+            style = MaterialTheme.typography.bodySmall, color = Warn)
+        LinkText("MOVE TO ANOTHER PHONE", color = LnGold) { ask = true; msg = null }
+        msg?.let { (t, ok) -> Text(t, color = if (ok) Good else Bad, style = MaterialTheme.typography.bodySmall) }
+    }
+    if (ask) AlertDialog(onDismissRequest = { ask = false },
+        title = { Text("Move Lightning out of this phone?", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("The node stops, its whole state goes into a file protected by this password, and Lightning is deleted here once the file is saved. Keep the file and the password: they are the only copy of the open channels until the other phone takes it in.",
+                    style = MaterialTheme.typography.bodySmall)
+                Text("At least $min characters: the file holds the node's keys.", style = MaterialTheme.typography.bodySmall, color = TextSoft)
+                Field(pw1, { pw1 = it }, "password", password = true)
+                Field(pw2, { pw2 = it }, "the same password again", password = true)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = pw1.length >= min && pw1 == pw2, onClick = {
+                val pw = pw1; ask = false; pw1 = ""; pw2 = ""
+                platform.seeds.load(com.kilombino.kilowallet.app.i18n.I18n.tr("Move Lightning out")) { secret, error ->
+                    if (secret == null) { msg = (error ?: "Not unlocked: nothing was moved.") to false; return@load }
+                    msg = "Stopping the node and packing it…" to true
+                    scope.launch {
+                        runCatching { ln.moveOut(pw) }
+                            .onSuccess { pack ->
+                                platform.saveFile("kilowallet-lightning.move", pack) { err ->
+                                    if (err == null) { ln.forgetHere(); msg = null }
+                                    else { ln.cancelMove(); msg = "Not saved. Lightning stays on this phone (it starts again when you reopen the app)." to false }
+                                }
+                            }
+                            .onFailure { ln.cancelMove(); msg = "Error: ${it.message}" to false }
+                    }
+                }
+            }) { Text("STOP AND PACK", color = Warn) }
+        },
+        dismissButton = { TextButton(onClick = { ask = false; pw1 = ""; pw2 = "" }) { Text("CANCEL", color = TextSoft) } },
+        containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft)
+}
+
+/** Takes in a node moved from another phone (Android's MoveIn), before Lightning is turned on here. */
+@Composable
+internal fun MoveInPanel(ln: LightningModel, platform: AppPlatform) {
+    val scope = rememberCoroutineScope()
+    var file by remember { mutableStateOf<ByteArray?>(null) }
+    var pw by remember { mutableStateOf("") }
+    var msg by remember { mutableStateOf<String?>(null) }
+    Panel(accent = LnGold) {
+        SectionLabel("Migrate to this phone (channels stay open)", LnGold)
+        Explain("If the old phone saved its node with MOVE TO ANOTHER PHONE, load that file here: the node starts with its channels open, as they were.")
+        if (ln.movedAway()) Text("This phone's own node was moved out. Turn Lightning on here again only if the other phone no longer runs it.",
+            style = MaterialTheme.typography.bodySmall, color = Warn)
+        if (com.kilombino.kilowallet.core.ln.Lnd.stoppedThisRun) Text("Close the app and open it again first: the old node has to let go of its files.",
+            style = MaterialTheme.typography.bodySmall, color = Warn)
+        else if (file == null) LinkText("MOVE IN FROM ANOTHER PHONE", color = LnGold) {
+            platform.openFile { b -> if (b != null) { file = b; msg = null } }
+        } else {
+            Field(pw, { pw = it }, "password", password = true)
+            PrimaryButton("OPEN AND START", Modifier.fillMaxWidth(), color = LnGold, enabled = pw.isNotEmpty() && msg != "Unpacking…") {
+                val b = file!!; val p = pw
+                msg = "Unpacking…"
+                scope.launch {
+                    runCatching { ln.moveIn(b, p) }
+                        .onSuccess { file = null; pw = ""; msg = null }
+                        .onFailure { msg = it.message ?: "could not open the file" }
+                }
+            }
+        }
+        msg?.let { Text(it, color = if (it == "Unpacking…") TextSoft else Bad, style = MaterialTheme.typography.bodySmall) }
+    }
+}

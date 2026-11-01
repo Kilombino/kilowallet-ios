@@ -512,5 +512,9 @@
  "Wallet restored; Ark did not: {0}": "Carteira restaurada; Ark não: {0}",
  "Bridge fee {0} %, at the market price. If the price moves before paying, at most {1} sats; above that nothing is paid. Plus the routing fee to the bridge, at most {2} sats.": "Comissão da ponte {0} %, ao preço de mercado. Se o preço mudar antes de pagar, no máximo {1} sats; acima disso nada é pago. Mais a comissão de encaminhamento até à ponte, no máximo {2} sats.",
  "PAY {0} SATS": "PAGAR {0} SATS",
- "Getting the final price (after a small proof of work, a few seconds)…": "A obter o preço final (após uma pequena prova de trabalho, alguns segundos)…"
+ "Getting the final price (after a small proof of work, a few seconds)…": "A obter o preço final (após uma pequena prova de trabalho, alguns segundos)…",
+ "Close the app and open it again first: the old node has to let go of its files.": "Fecha a app e abre-a de novo primeiro: o nó antigo tem de largar os seus ficheiros.",
+ "Error: {0}": "Erro: {0}",
+ "Not unlocked: nothing was moved.": "Não desbloqueado: nada foi movido.",
+ "could not open the file": "não foi possível abrir o ficheiro"
 }

@@ -2828,5 +2828,9 @@
 "Wallet restored; Ark did not: {0}": "钱包已恢复；Ark 未恢复：{0}",
 "Bridge fee {0} %, at the market price. If the price moves before paying, at most {1} sats; above that nothing is paid. Plus the routing fee to the bridge, at most {2} sats.": "桥接费 {0} %，按市场价。如果付款前价格变动，最多 {1} sats；超过则不付款。另加到桥的路由费，最多 {2} sats。",
 "PAY {0} SATS": "支付 {0} SATS",
-"Getting the final price (after a small proof of work, a few seconds)…": "正在获取最终价格（先做一个小的工作量证明，几秒钟）…"
+"Getting the final price (after a small proof of work, a few seconds)…": "正在获取最终价格（先做一个小的工作量证明，几秒钟）…",
+"Close the app and open it again first: the old node has to let go of its files.": "请先关闭应用再重新打开：旧节点需要释放它的文件。",
+"Error: {0}": "错误：{0}",
+"Not unlocked: nothing was moved.": "未解锁：没有移动任何内容。",
+"could not open the file": "无法打开文件"
 }
