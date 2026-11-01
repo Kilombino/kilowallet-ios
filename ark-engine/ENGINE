@@ -5,7 +5,7 @@
 # run's artifact and checks it against sha256 before linking it.
 repo=https://github.com/Kilombino/paperclip-wallet-app
 branch=kilombino-ios
-commit=10a1a0cb8526abb95b6076a81e31698ea5487b8d
+commit=fe7cccd73bdb0b44312a56b65c01b33823c264b6
 base=kilombino-esplora 349d199 (Android 1.4.4's engine)
 build=kilombino-ark/build-ios.sh
 rustc=1.98.0
