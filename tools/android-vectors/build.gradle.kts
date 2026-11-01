@@ -46,6 +46,30 @@ val maturitySrc = tasks.register("extractMaturity") {
 }
 sourceSets["main"].kotlin.srcDir(maturitySrc.map { layout.buildDirectory.dir("maturitySrc") })
 
+// Lightning: the protobuf encoder and transaction sizes (ln/Proto.kt, ln/TxSize.kt, verbatim) and the
+// node key derivation (the two pure functions of ln/LnSeed.kt, taken out of it verbatim).
+val lnSrc = tasks.register("extractLn") {
+    val dir = file("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/ln")
+    val out = layout.buildDirectory.dir("lnSrc")
+    inputs.dir(dir); outputs.dir(out)
+    doLast {
+        val o = out.get().asFile.resolve("ln"); o.mkdirs()
+        listOf("Proto", "TxSize").forEach { dir.resolve("$it.kt").copyTo(o.resolve("$it.kt"), overwrite = true) }
+        val lines = dir.resolve("LnSeed.kt").readLines()
+        val from = lines.indexOfFirst { it.contains("private const val TAG") }
+        val to = lines.indexOfFirst { it.contains("fun expectedPubkey(") }
+        require(from in 0 until to) { "LnSeed functions not found" }
+        val body = lines.subList(from, to).dropLastWhile { it.isBlank() || it.trim().startsWith("/**") || it.trim().startsWith("*") }
+        o.resolve("AndroidLnSeed.kt").writeText(
+            "package com.kilombino.pyblockwatch.ln\n\nimport com.kilombino.pyblockwatch.crypto.Base58\n" +
+                "import com.kilombino.pyblockwatch.crypto.Hashes\nimport com.kilombino.pyblockwatch.crypto.Secp256k1\n" +
+                "import java.math.BigInteger\n\n// Taken verbatim from the Android app's ln/LnSeed.kt.\nobject AndroidLnSeed {\n" +
+                body.joinToString("\n") + "\n}\n"
+        )
+    }
+}
+sourceSets["main"].kotlin.srcDir(lnSrc.map { layout.buildDirectory.dir("lnSrc") })
+
 kotlin { jvmToolchain(25) }
 repositories { mavenCentral() }
 dependencies {
@@ -81,6 +105,17 @@ tasks.register<JavaExec>("maturity") {
     workingDir = rootDir
     args = listOf(
         file("../../core/src/commonTest/kotlin/com/kilombino/kilowallet/core/MaturityVectors.kt").absolutePath,
+        providers.exec { commandLine("git", "-C", androidRepo, "rev-parse", "HEAD") }.standardOutput.asText.get().trim(),
+    )
+}
+
+// Lightning vectors from the Android code (core/src/commonTest/.../LnVectors.kt).
+tasks.register<JavaExec>("ln") {
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("LnKt")
+    workingDir = rootDir
+    args = listOf(
+        file("../../core/src/commonTest/kotlin/com/kilombino/kilowallet/core/LnVectors.kt").absolutePath,
         providers.exec { commandLine("git", "-C", androidRepo, "rev-parse", "HEAD") }.standardOutput.asText.get().trim(),
     )
 }
