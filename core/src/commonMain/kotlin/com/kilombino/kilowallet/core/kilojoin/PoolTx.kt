@@ -24,8 +24,7 @@ import kotlin.math.floor
  * Signatures are the unified sighash with SIGHASH_ALL (0x21): every input signs every input and
  * every output, and the spend is valid only on the BLAKE2b chain, never on Corecoin.
  *
- * This app's wallet is native SegWit (bc1q): it joins and opens P2WPKH pools only. Taproot pools
- * are listed (and their terms read) but not joined.
+ * A pool has one address type: native SegWit (P2WPKH) or Taproot (P2TR, BIP-86 key path), never both.
  */
 object PoolTx {
     const val VERSION = 2L
@@ -43,11 +42,8 @@ object PoolTx {
     data class Coin(val txid: String, val vout: Int, val value: Long, val pubkey: ByteArray,
                     val type: PoolType = PoolType.P2WPKH) {
         val outpoint: String get() = "$txid:$vout"
-        /** The coin's scriptPubKey (P2WPKH only: this app never derives Taproot keys). */
-        val script: ByteArray get() {
-            require(type == PoolType.P2WPKH) { "Taproot pools are not supported in this app" }
-            return Address.scriptPubKey(pubkey, ScriptType.P2WPKH)
-        }
+        /** For Taproot, [pubkey] is the BIP-86 internal key; the script holds its tweaked output key. */
+        val script: ByteArray get() = Address.scriptPubKey(pubkey, scriptType(type))
         override fun equals(other: Any?): Boolean = other is Coin && outpoint == other.outpoint && value == other.value &&
             pubkey.contentEquals(other.pubkey) && type == other.type
         override fun hashCode(): Int = outpoint.hashCode()
@@ -88,12 +84,15 @@ object PoolTx {
     class Plan(val coins: List<Coin>, val outputs: List<TxBuilder.Output>) {
         /** The private key is never read when only assembling or checking: a placeholder. */
         val inputs: List<TxBuilder.Input> get() = coins.map {
-            TxBuilder.Input(it.txid, it.vout, it.value, PLACEHOLDER_KEY, it.pubkey, SEQUENCE)
+            TxBuilder.Input(it.txid, it.vout, it.value, PLACEHOLDER_KEY, it.pubkey, SEQUENCE, scriptType(it.type))
         }
         val fee: Long get() = coins.sumOf { it.value } - outputs.sumOf { it.value }
     }
 
     private val PLACEHOLDER_KEY = ByteArray(32).also { it[31] = 1 }
+
+    /** The wallet's address type for a pool's. */
+    fun scriptType(t: PoolType): ScriptType = if (t == PoolType.P2TR) ScriptType.P2TR else ScriptType.P2WPKH
 
     private fun cmp(a: ByteArray, b: ByteArray): Int = a.toHex().compareTo(b.toHex())
 
@@ -132,25 +131,27 @@ object PoolTx {
         PoolType.P2WPKH -> script.size == 22 && script[0] == 0.toByte() && script[1] == 0x14.toByte()
     }
 
-    /** Our signature for our input [mine] in [plan]: unified sighash, SIGHASH_ALL, ECDSA ground to a low R. */
+    /** Our signature for our input [mine] in [plan]: unified sighash, SIGHASH_ALL (ECDSA ground to a low R, or Schnorr for Taproot). */
     fun sign(plan: Plan, mine: Coin, privateKey: ByteArray): ByteArray {
-        require(mine.type == PoolType.P2WPKH) { "Taproot pools are not supported in this app" }
         val i = plan.coins.indexOfFirst { it.outpoint == mine.outpoint }
         require(i >= 0) { "our coin is not in the transaction" }
         require(Ec.publicKey(privateKey).contentEquals(mine.pubkey)) { "that key is not our coin's" }
         val inputs = plan.inputs.toMutableList()
         val x = inputs[i]
-        inputs[i] = TxBuilder.Input(x.txid, x.vout, x.value, privateKey, x.pubkey, x.sequence)
+        inputs[i] = TxBuilder.Input(x.txid, x.vout, x.value, privateKey, x.pubkey, x.sequence, x.type)
         return TxBuilder.witnessSignature(VERSION, inputs, plan.outputs, i, 0, unified = true, grindLowR = true)
     }
 
     /** True when [sig] is a valid unified SIGHASH_ALL signature of [coin]'s input in [plan]. */
     fun verify(plan: Plan, coin: Coin, sig: ByteArray): Boolean = runCatching {
         val i = plan.coins.indexOfFirst { it.outpoint == coin.outpoint }
-        if (i < 0 || sig.isEmpty() || coin.type != PoolType.P2WPKH) return false
+        if (i < 0 || sig.isEmpty()) return false
         if ((sig.last().toInt() and 0xFF) != (TxBuilder.SIGHASH_UNIFIED or TxBuilder.SIGHASH_ALL)) return false
         val h = TxBuilder.unifiedSighash(VERSION, plan.inputs, plan.outputs, i, 0)
-        Ec.verifyDer(coin.pubkey, h, sig.copyOfRange(0, sig.size - 1))
+        if (coin.type == PoolType.P2TR) {
+            // Key path: 64-byte Schnorr + the hash byte, against the tweaked output key.
+            sig.size == 65 && Ec.schnorrVerify(coin.script.copyOfRange(2, 34), h, sig.copyOfRange(0, 64))
+        } else Ec.verifyDer(coin.pubkey, h, sig.copyOfRange(0, sig.size - 1))
     }.getOrDefault(false)
 
     /** The txid [plan] will have: it does not cover the witnesses, so it is known before signing. */

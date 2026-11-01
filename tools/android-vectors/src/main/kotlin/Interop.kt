@@ -22,7 +22,7 @@ import com.kilombino.kilowallet.core.kilojoin.Protocol as IProtocol
 import com.kilombino.kilowallet.core.kilojoin.RelayClient as IRelayClient
 
 /**
- * Interop rounds between this iOS port's pool code and the Android app's own (1.3.9, compiled
+ * Interop rounds between this iOS port's pool code and the Android app's own (1.4.4, compiled
  * here unchanged), for real: relay.kilombino.com under a network name of their own (so nothing
  * shows in anyone's pool list), and a BLAKE2b regtest node of their own (KW_RPC, user:pass@host:port).
  * Coins are made on that regtest only. Each round checks that both sides build the same
@@ -50,20 +50,23 @@ private fun mine(n: Int = 1) { rpc("generatetoaddress", n, rpc("getnewaddress", 
 private fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
 private val rnd = SecureRandom()
 
-/** A fresh key and a coin of exactly [value] sats to its native SegWit address, confirmed on the regtest. */
-private class Key(val secret: ByteArray) {
+/** A fresh key and a coin of exactly [value] sats to its native SegWit (or Taproot, BIP-86) address, confirmed on the regtest. */
+private class Key(val secret: ByteArray, val taproot: Boolean = false) {
     val big get() = BigInteger(1, secret)
     val pub get() = IEc.publicKey(secret)
-    val script get() = IAddress.scriptPubKey(pub, IScriptType.P2WPKH)
-    /** The regtest address (bcrt1…) of that script. */
-    val address get() = com.kilombino.kilowallet.core.crypto.Bech32.encodeSegwit("bcrt", 0, script.copyOfRange(2, 22))
+    val script get() = IAddress.scriptPubKey(pub, if (taproot) IScriptType.P2TR else IScriptType.P2WPKH)
+    /** The regtest address (bcrt1q… or bcrt1p…) of that script. */
+    val address get() = if (taproot) com.kilombino.kilowallet.core.crypto.Bech32.encodeSegwit("bcrt", 1, script.copyOfRange(2, 34))
+        else com.kilombino.kilowallet.core.crypto.Bech32.encodeSegwit("bcrt", 0, script.copyOfRange(2, 22))
 }
-private fun newKey(): Key { while (true) { val k = ByteArray(32).also { rnd.nextBytes(it) }; if (IEc.isValidSecret(k)) return Key(k) } }
+private fun newKey(taproot: Boolean = false): Key {
+    while (true) { val k = ByteArray(32).also { rnd.nextBytes(it) }; if (IEc.isValidSecret(k)) return Key(k, taproot) }
+}
 
 private class Funded(val key: Key, val txid: String, val vout: Int, val value: Long)
 
-private fun fund(values: List<Long>): List<Funded> {
-    val keys = values.map { newKey() }
+private fun fund(values: List<Long>, taproot: Boolean = false): List<Funded> {
+    val keys = values.map { newKey(taproot) }
     val outs = JSONObject()
     keys.forEachIndexed { i, k -> outs.put(k.address, "%.8f".format(java.util.Locale.ROOT, values[i] / 1e8)) }
     val txid = rpc("sendmany", "", outs, wallet = true) as String
@@ -95,7 +98,9 @@ private class AEnv(val name: String) : APoolSession.Env {
     override fun log(msg: String) { if (System.getenv("KW_DEBUG") != null) println("  [$name android] $msg") }
 }
 
-private class IEnv(val name: String) : IPoolSession.Env {
+private class IEnv(val name: String, val mates: MutableList<IPoolSession> = mutableListOf()) : IPoolSession.Env {
+    /** The seats this wallet holds in the pool: [mates] share one list, as one phone's seats do. */
+    override fun ownSeats(poolId: String) = mates.filter { it.state.poolId == poolId }.mapNotNull { it.state.token?.let { t -> IProtocol.tokenHash(t) } }.toSet()
     override fun coinUnspent(coin: IPoolTx.Coin) = unspent(coin.txid, coin.vout, coin.value, coin.script)
     override fun broadcast(rawHex: String) = rpc("sendrawtransaction", rawHex) as String
     override fun confirmations(txid: String) = confs(txid)
@@ -172,17 +177,22 @@ private fun iosTerms(id: String): IProtocol.Terms = kotlinx.coroutines.runBlocki
 }
 
 private fun androidJoin(name: String, t: AProtocol.Terms, values: List<Long>, outputs: Int): AndroidMember {
-    val f = fund(values)
-    val st = APoolSession.newState(t, false, null, f.map { ACoinjoinTx.Coin(it.txid, it.vout, it.value, it.key.pub, AScriptType.P2WPKH) },
-        f.map { it.key.big }, f.map { "m/$name" }, List(outputs) { newKey().script }, newKey().script)
+    val tr = t.script == AScriptType.P2TR
+    val f = fund(values, tr)
+    val st = APoolSession.newState(t, false, null, f.map { ACoinjoinTx.Coin(it.txid, it.vout, it.value, it.key.pub, t.script) },
+        f.map { it.key.big }, f.map { "m/$name" }, List(outputs) { newKey(tr).script }, newKey(tr).script)
     return AndroidMember(name, APoolSession(AEnv(name), st), f.map { it.key }).also { it.s.start() }
 }
 
-private fun iosJoin(name: String, t: IProtocol.Terms, values: List<Long>, outputs: Int): IosMember {
-    val f = fund(values)
-    val st = IPoolSession.newState(t, false, null, f.map { IPoolTx.Coin(it.txid, it.vout, it.value, it.key.pub) },
-        f.map { it.key.secret }, f.map { "m/$name" }, List(outputs) { newKey().script }, newKey().script)
-    return IosMember(name, IPoolSession(IEnv(name), st, JvmWebSocket), f.map { it.key }).also { it.s.start() }
+private fun iosJoin(name: String, t: IProtocol.Terms, values: List<Long>, outputs: Int,
+                    mates: MutableList<IPoolSession> = mutableListOf(), seatId: String = "", joinAfter: Long = 0): IosMember {
+    val tr = t.script == com.kilombino.kilowallet.core.kilojoin.PoolType.P2TR
+    val f = fund(values, tr)
+    val st = IPoolSession.newState(t, false, null, f.map { IPoolTx.Coin(it.txid, it.vout, it.value, it.key.pub, t.script) },
+        f.map { it.key.secret }, f.map { "m/$name" }, List(outputs) { newKey(tr).script }, newKey(tr).script, seatId = seatId, joinAfter = joinAfter)
+    val session = IPoolSession(IEnv(name, mates), st, JvmWebSocket)
+    mates += session
+    return IosMember(name, session, f.map { it.key }).also { it.s.start() }
 }
 
 private fun runRound(title: String, creator: Member, joiners: List<Member>) {
@@ -281,6 +291,57 @@ fun main() {
         check(t.version == IProtocol.V5 && t.payments == pays)
         val b = iosJoin("B", t, listOf(23_000), 1)
         runRound("v5 (Android pays 2 recipients, iOS joins)", a, listOf(b))
+    }
+    if (which == null || "tri" in which) {
+        // Taproot (BIP-86 key path), opened by this port; Android and iOS join.
+        val np = IPoolSession.newPool(30_000, 2.0, 5, 1, script = com.kilombino.kilowallet.core.kilojoin.PoolType.P2TR)
+        val f = fund(listOf(50_000), taproot = true)
+        val a = IosMember("A", IPoolSession(IEnv("A"), IPoolSession.newState(np.terms, true, np.secret,
+            f.map { IPoolTx.Coin(it.txid, it.vout, it.value, it.key.pub, com.kilombino.kilowallet.core.kilojoin.PoolType.P2TR) }, f.map { it.key.secret },
+            listOf("m/A"), listOf(newKey(true).script), newKey(true).script, creatorSecret = np.creatorSecret, blindPriv = np.blindPriv), JvmWebSocket), f.map { it.key })
+        a.s.start()
+        waitFor("A open") { a.phase == "OPEN" }
+        val t = androidTerms(np.terms.id)
+        check(t.script == AScriptType.P2TR)
+        val b = androidJoin("B", t, listOf(ACoinjoinTx.minimumCoin(30_000, 2.0, AScriptType.P2TR)), 1)
+        val c = iosJoin("C", iosTerms(np.terms.id), listOf(41_000), 1)
+        runRound("Taproot v3 (iOS pool, Android and iOS join)", a, listOf(b, c))
+    }
+    if (which == null || "tra" in which) {
+        // Taproot v4, opened by the Android app; this port joins with two coins.
+        val np = APoolSession.newPool(20_000, 3.0, 5, 1, script = AScriptType.P2TR, maxInputs = 2, v3 = true, outputs = 2)
+        val f = fund(listOf(50_000), taproot = true)
+        val a = AndroidMember("A", APoolSession(AEnv("A"), APoolSession.newState(np.terms, true, np.secret,
+            f.map { ACoinjoinTx.Coin(it.txid, it.vout, it.value, it.key.pub, AScriptType.P2TR) }, f.map { it.key.big }, listOf("m/A"),
+            List(2) { newKey(true).script }, newKey(true).script, null, np.creatorSecret, np.blindPriv)), f.map { it.key })
+        a.s.start()
+        waitFor("A open") { a.phase == "OPEN" }
+        val t = iosTerms(np.terms.id)
+        check(t.script == com.kilombino.kilowallet.core.kilojoin.PoolType.P2TR && t.outputs == 2)
+        val b = iosJoin("B", t, listOf(25_000, 22_000), 2)
+        runRound("Taproot v4 (Android pool, iOS joins with two coins)", a, listOf(b))
+    }
+    if (which == null || "seats" in which) {
+        // Two seats of this port's one wallet in an Android pool of at least three people: they are one
+        // person, so they can't close it with the creator alone; a third person makes it a round.
+        val np = APoolSession.newPool(20_000, 2.0, 5, 1, minPeers = 3, v3 = true)
+        val f = fund(listOf(30_000))
+        val a = AndroidMember("A", APoolSession(AEnv("A"), APoolSession.newState(np.terms, true, np.secret,
+            f.map { ACoinjoinTx.Coin(it.txid, it.vout, it.value, it.key.pub, AScriptType.P2WPKH) }, f.map { it.key.big }, listOf("m/A"),
+            listOf(newKey().script), newKey().script, null, np.creatorSecret, np.blindPriv)), f.map { it.key })
+        a.s.start()
+        waitFor("A open") { a.phase == "OPEN" }
+        val t = iosTerms(np.terms.id)
+        val mates = mutableListOf<IPoolSession>()
+        val b1 = iosJoin("B1", t, listOf(25_000), 1, mates)
+        val b2 = iosJoin("B2", t, listOf(26_000), 1, mates, seatId = "5ea75ea7", joinAfter = INostrEvent.nowSeconds() + 3)
+        val two = listOf<Member>(a, b1, b2)
+        waitFor("seats: A and the two iOS seats") { two.all { it.phase == "OPEN" && it.seats == 3 } }
+        check(b1.s.people() == 2 && b2.s.people() == 2) { "seats: the two iOS seats should count as one person" }
+        val refused = runCatching { b1.requestClose() }.exceptionOrNull()?.message
+        check(refused == IPoolSession.OWN_SEATS_ONE.replace("%d", "3")) { "seats: closing with own seats as people was not refused ($refused)" }
+        val c = androidJoin("C", androidTerms(np.terms.id), listOf(24_000), 1)
+        runRound("own seats (two iOS seats are one person, Android pool of 3)", a, listOf(b1, b2, c))
     }
     println("all interop rounds passed")
     System.exit(0)

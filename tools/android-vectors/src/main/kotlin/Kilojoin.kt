@@ -28,6 +28,7 @@ private fun det(tag: String, n: Int = 32) = Hashes.sha256(tag.toByteArray()).cop
 private fun key(tag: String) = BigInteger(1, det("kj-key-$tag")).mod(Secp256k1.N)
 private fun pub(k: BigInteger) = Secp256k1.compress(Secp256k1.multiply(k, Secp256k1.G))
 private fun wpkh(tag: String) = Address.scriptPubKey(pub(key(tag)), ScriptType.P2WPKH)
+private fun script(tag: String, type: ScriptType) = Address.scriptPubKey(pub(key(tag)), type)
 private fun b32(k: BigInteger) = NativeSecp.b32(k).toHex()
 
 fun kilojoinVectors(): JSONObject {
@@ -188,7 +189,10 @@ fun kilojoinVectors(): JSONObject {
     out.put("rounds", JSONArray(listOf(round("v3", 50_000, 2.0, 1, emptyList(), listOf(listOf(60_000L), listOf(-1L), listOf(20_000L, 25_000L, 9_000L))),
         round("v4", 20_000, 3.0, 2, emptyList(), listOf(listOf(45_000L), listOf(30_000L, 30_000L), listOf(-1L), listOf(80_000L))),
         round("v5", 100_000, 1.0, 2, listOf(30_000L, 45_000L, 125_000L), listOf(listOf(250_000L), listOf(220_000L), listOf(-1L))),
-        round("v5one", 20_000, 5.0, 1, listOf(7_500L, 12_500L), listOf(listOf(15_000L, 15_000L), listOf(-1L)))) ))
+        round("v5one", 20_000, 5.0, 1, listOf(7_500L, 12_500L), listOf(listOf(15_000L, 15_000L), listOf(-1L))),
+        // Taproot pools (BIP-86 key path, Schnorr): v3 and v4.
+        round("v3tr", 50_000, 2.0, 1, emptyList(), listOf(listOf(60_000L), listOf(-1L), listOf(20_000L, 40_000L)), ScriptType.P2TR),
+        round("v4tr", 20_000, 3.0, 2, emptyList(), listOf(listOf(45_000L), listOf(-1L), listOf(50_000L)), ScriptType.P2TR)) ))
     return out
 }
 
@@ -198,9 +202,10 @@ fun kilojoinVectors(): JSONObject {
  * and its outputs are [payments]); the canonical plan, every input signed, the raw transaction,
  * and each member's own check before signing (all pass), and a tampered plan's (it fails).
  */
-private fun round(name: String, amount: Long, rate: Double, perPerson: Int, payments: List<Long>, values: List<List<Long>>): JSONObject {
+private fun round(name: String, amount: Long, rate: Double, perPerson: Int, payments: List<Long>, values: List<List<Long>>,
+                  type: ScriptType = ScriptType.P2WPKH): JSONObject {
     val v5 = payments.isNotEmpty()
-    val type = ScriptType.P2WPKH
+    fun wpkh(tag: String) = script(tag, type)
     data class Seat(val coins: List<CoinjoinTx.Coin>, val keys: List<BigInteger>, val change: TxBuilder.Output?, val mine: List<TxBuilder.Output>)
     val seats = values.mapIndexed { si, vs ->
         val creator = v5 && si == 0
@@ -229,7 +234,7 @@ private fun round(name: String, amount: Long, rate: Double, perPerson: Int, paym
         else CoinjoinTx.checkPayment(p, s.mine, s.change, amount, rate, seatInputs, seats.indices.map { if (it == 0) payments.size else perPerson },
             perPerson, payments, seats.count { it.change != null })
     val tampered = CoinjoinTx.Plan(plan.coins, plan.outputs.mapIndexed { i, o -> if (i == plan.outputs.size - 1) TxBuilder.Output(o.scriptPubKey, o.value - 1) else o })
-    return JSONObject().put("name", name).put("amount", amount).put("rate", rate).put("perPerson", perPerson).put("payments", JSONArray(payments))
+    return JSONObject().put("name", name).put("type", if (type == ScriptType.P2TR) "p2tr" else "p2wpkh").put("amount", amount).put("rate", rate).put("perPerson", perPerson).put("payments", JSONArray(payments))
         .put("seats", JSONArray(seats.mapIndexed { si, s -> JSONObject()
             .put("coins", JSONArray(s.coins.mapIndexed { i, c -> JSONObject().put("txid", c.txid).put("vout", c.vout).put("value", c.value).put("key", b32(s.keys[i])) }))
             .put("change", s.change?.let { JSONObject().put("script", it.scriptPubKey.toHex()).put("value", it.value) } ?: JSONObject.NULL)

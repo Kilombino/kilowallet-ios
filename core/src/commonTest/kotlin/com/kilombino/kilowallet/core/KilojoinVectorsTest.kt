@@ -168,16 +168,17 @@ class KilojoinVectorsTest {
 
     @Test fun wholeRoundsComeOutByteIdentical() {
         val rounds = root.list("rounds")
-        assertEquals(listOf("v3", "v4", "v5", "v5one"), rounds.map { it.s("name") })
+        assertEquals(listOf("v3", "v4", "v5", "v5one", "v3tr", "v4tr"), rounds.map { it.s("name") })
         for (r in rounds) {
             val amount = r.l("amount"); val rate = r.d("rate"); val per = r.i("perPerson")
+            val type = Protocol.parseScript(r.s("type"))!!
             val payments = r["payments"]!!.jsonArray.map { it.jsonPrimitive.long }
             val v5 = payments.isNotEmpty()
             class Seat(val coins: List<PoolTx.Coin>, val keys: List<ByteArray>, val change: TxBuilder.Output?, val mine: List<TxBuilder.Output>,
                        val check: String, val tamperedFails: Boolean)
             val seats = r.list("seats").map { s ->
                 val keys = s.list("coins").map { hex(it.s("key")) }
-                Seat(s.list("coins").mapIndexed { i, c -> PoolTx.Coin(c.s("txid"), c.i("vout"), c.l("value"), Ec.publicKey(keys[i])) }, keys,
+                Seat(s.list("coins").mapIndexed { i, c -> PoolTx.Coin(c.s("txid"), c.i("vout"), c.l("value"), Ec.publicKey(keys[i]), type) }, keys,
                     (s["change"] as? JsonObject)?.let { TxBuilder.Output(hex(it.s("script")), it.l("value")) },
                     s.list("mine").map { TxBuilder.Output(hex(it.s("script")), it.l("value")) }, s.s("check"), s.b("tamperedFails"))
             }
@@ -185,7 +186,7 @@ class KilojoinVectorsTest {
             seats.forEachIndexed { si, s ->
                 val outs = if (v5 && si == 0) payments.size else per
                 val total = if (v5 && si == 0) payments.sum() else amount * per
-                assertEquals(s.change?.value ?: 0L, PoolTx.changeOf(s.coins.sumOf { it.value }, total, rate, s.coins.size, PoolType.P2WPKH, outs))
+                assertEquals(s.change?.value ?: 0L, PoolTx.changeOf(s.coins.sumOf { it.value }, total, rate, s.coins.size, type, outs))
             }
             val joiners = if (v5) seats.drop(1) else seats
             val plan = PoolTx.plan(seats.flatMap { it.coins }, joiners.flatMap { s -> s.mine.map { it.scriptPubKey } }, seats.mapNotNull { it.change },
@@ -199,9 +200,15 @@ class KilojoinVectorsTest {
             seats.forEach { s -> s.coins.forEachIndexed { i, c -> sigs[c.outpoint] = PoolTx.sign(plan, c, s.keys[i]) } }
             val want = r["sigs"]!!.jsonObject
             for ((op, sig) in sigs) {
-                assertEquals(want[op]!!.jsonPrimitive.content, sig.toHex(), "$name $op: low-R ground as Android")
-                assertTrue(PoolTx.verify(plan, plan.coins.first { it.outpoint == op }, sig))
+                val coin = plan.coins.first { it.outpoint == op }
+                // ECDSA ground to a low R is deterministic, as Android's; a Schnorr signature has fresh aux
+                // randomness, so ours and Android's differ and both must verify.
+                if (type == PoolType.P2WPKH) assertEquals(want[op]!!.jsonPrimitive.content, sig.toHex(), "$name $op: low-R ground as Android")
+                else assertTrue(PoolTx.verify(plan, coin, hex(want[op]!!.jsonPrimitive.content)), "$name $op: Android's Schnorr signature")
+                assertTrue(PoolTx.verify(plan, coin, sig))
             }
+            // The raw transaction from Android's own signatures comes out byte for byte.
+            if (type == PoolType.P2TR) for (op in sigs.keys.toList()) sigs[op] = hex(want[op]!!.jsonPrimitive.content)
             val signed = PoolTx.assemble(plan, sigs)
             assertEquals(r.s("raw"), signed.rawHex, name)
             assertEquals(r.s("signedTxid"), signed.txid)

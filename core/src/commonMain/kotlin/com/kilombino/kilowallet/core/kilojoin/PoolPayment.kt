@@ -25,13 +25,15 @@ object PoolPayment {
         val any: Boolean get() = ok || paymentOk
     }
 
-    /** One address type for every recipient, and this app's pools are native SegWit. */
-    const val NEEDS = "Needs native SegWit (bc1q) addresses only."
+    /** One address type for every recipient (as the Android app says it). */
+    const val NEEDS = "Needs one address type (all bc1q or all bc1p)."
+    /** Taproot recipients while this wallet has no Taproot account to pay them from. */
+    const val NEEDS_SEGWIT = "Needs native SegWit (bc1q) addresses only."
 
     /**
      * Whether [recipients] (address, sats) can be paid by one pool: 1 to [Protocol.MAX_OUTPUTS] of
-     * them, all plain native SegWit (bc1q) addresses (this app has no Taproot pools), none twice.
-     * [taprootOk] is the Android app's switch, kept for the vectors; this app passes false.
+     * them, all of one address type (all bc1q, or all bc1p when [taprootOk]: the wallet's Taproot
+     * account pays a Taproot pool), none twice.
      */
     fun check(recipients: List<Pair<String, Long>>, taprootOk: Boolean = false, minAmount: Long = Protocol.MIN_AMOUNT): Check {
         fun no(reason: String) = Check(null, 0, emptyList(), reason)
@@ -48,7 +50,7 @@ object PoolPayment {
             scripts.all { PoolTx.isType(it, PoolType.P2TR) } -> PoolType.P2TR
             else -> return no(NEEDS)
         }
-        if (type == PoolType.P2TR && !taprootOk) return no(NEEDS)
+        if (type == PoolType.P2TR && !taprootOk) return no(NEEDS_SEGWIT)
         if (scripts.map { it.toList() }.toSet().size != scripts.size) return no("The same address twice: every output of a pool is a different address.")
         val amounts = recipients.map { it.second }
         val total = amounts.sum()
