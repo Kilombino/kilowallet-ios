@@ -40,7 +40,10 @@ hide() { # target arch platform out
   local a=$CARGO_TARGET_DIR/$1/release-small/libkilombino_tor.a
   local sdk; sdk=$( [ "$3" = ios ] && echo iphoneos || echo iphonesimulator )
   xcrun --sdk "$sdk" ld -r -arch "$2" -platform_version "$3" "$IPHONEOS_DEPLOYMENT_TARGET" "$(xcrun --sdk "$sdk" --show-sdk-version)" \
-    -S -exported_symbols_list "$crate/exported_symbols.txt" -force_load "$a" -o "$out/$1.o"
+    -S -exported_symbols_list "$crate/exported_symbols.txt" -force_load "$a" -o "$out/$1-bc.o"
+  # Rust's own prebuilt pieces (compiler_builtins) carry bitcode of rustc's LLVM, newer than
+  # Xcode's: its tools stop on it. The machine code is all the app links, so the bitcode goes.
+  xcrun bitcode_strip -r "$out/$1-bc.o" -o "$out/$1.o"
   echo "== $1: the C functions before and after hiding the rest"
   { nm -gU "$a" 2>&1 || true; } | grep -i 'kilombino_tor_\|error' | grep -v '_R' | sort -u | head -20 || true
   { nm -m "$out/$1.o" 2>&1 || true; } | grep -i 'kilombino_tor_\|error' | grep -v '_R' | head -20 || true
