@@ -125,33 +125,6 @@ fun MainTabs(tab: Tab, hot: Boolean, onSelect: (Tab) -> Unit) {
     }
 }
 
-/**
- * The LIGHTNING tab before the node is turned on, as Android's `LnIntro`. The engine (LND for the
- * BLAKE2b chain, with neutrino) is being built for iPhone: until it is in, the switch stays off.
- */
-@Composable
-fun LightningTab() {
-    Panel(accent = LnGold) {
-        SectionLabel("Lightning · beta", LnGold)
-        Text("Your own Lightning node, on this phone", style = MaterialTheme.typography.titleMedium, color = TextMain)
-        Explain("It runs LND for the BLAKE2b chain with neutrino: it follows the chain itself from compact block filters, checks the proof of work, and keeps the channels and their keys here. Nobody holds your money. The keys come from your recovery words.")
-    }
-    Panel(accent = Warn) {
-        SectionLabel("Before you turn it on", Warn)
-        listOf(
-            "BETA. Put in only what you can afford to lose.",
-            "NEVER run Lightning with these words on two phones or profiles at once. Two nodes with the same keys break the channels and can lose their money. (Ark can be copied back; Lightning cannot.)",
-            "To receive, the phone must be online with the app open. Paying needs a channel with enough balance.",
-            "Opening and closing a channel are on-chain transactions with their fees.",
-            "The first start downloads a few hundred MB.",
-        ).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = TextSoft) }
-        Spacer(Modifier.height(6.dp))
-        Text("The Lightning engine for iPhone comes with this version's next build: until then it cannot be turned on.",
-            style = MaterialTheme.typography.bodySmall, color = Warn)
-        PrimaryButton("TURN ON LIGHTNING", Modifier.fillMaxWidth(), enabled = false, color = LnGold) {}
-    }
-}
-
 /** The ARK tab before Ark is set up, as Android's warnings; the engine comes in a later build. */
 @Composable
 fun ArkTab() {

@@ -140,6 +140,9 @@ class WalletModel(private val platform: AppPlatform) {
         verifyCoins = { coins -> val s = _state.value; scanner.verifyCoins(s.zpub ?: error("No wallet."), coins, s.endpoint, s.pinned) },
         onRoundDone = { refresh() })
 
+    /** Lightning: the node on this phone (LND linked in), ported from Android's ln/Lightning.kt. */
+    val lightning = LightningModel(platform)
+
     private companion object {
         const val K_KIND = "wallet.kind"
         const val K_ZPUB = "wallet.zpub"
@@ -176,6 +179,28 @@ class WalletModel(private val platform: AppPlatform) {
         if (kind != null && zpub != null) scan()
         refreshPrice()
         if (platform.demoScreen == null) pools.attach()
+        if (platform.demoScreen == null && kind == WalletKind.HOT) lightning.resume()
+    }
+
+    // ------------------------------------------------------------------ Lightning
+
+    /**
+     * Turns Lightning on: the words are unlocked once (Face ID), the node's wallet is made from
+     * them and they never reach it otherwise.
+     */
+    fun enableLightning() {
+        if (!lightning.available) { say("This build has no Lightning engine."); return }
+        platform.seeds.load(I18n.tr("Turn on Lightning")) { secret, error ->
+            if (secret == null) { say(error ?: "Not unlocked: Lightning stays off."); return@load }
+            scope.launch {
+                runCatching {
+                    val (words, pass) = decodeSecret(secret)
+                    val seed = withContext(Dispatchers.Default) { Bip39.toSeed(words, pass) }
+                    lightning.chainTip = _state.value.height
+                    withContext(Dispatchers.Default) { lightning.enable(seed) }
+                }.onFailure { say(it.message ?: "Lightning did not start.") }
+            }
+        }
     }
 
     // ------------------------------------------------------------------ price (Android 1.2.3: 36 currencies)
@@ -388,7 +413,7 @@ class WalletModel(private val platform: AppPlatform) {
             scanner.scan(zpub, s.endpoint, s.pinned, s.gapLimit).collect { ev ->
                 when (ev) {
                     is ScanEvent.Connecting -> Unit
-                    is ScanEvent.Connected -> _state.update { it.copy(height = ev.height, serverVersion = ev.server) }
+                    is ScanEvent.Connected -> { lightning.chainTip = ev.height; _state.update { it.copy(height = ev.height, serverVersion = ev.server) } }
                     is ScanEvent.Deriving -> _state.update {
                         val p = it.scan as? ScanPhase.Scanning
                         it.copy(scan = ScanPhase.Scanning(ev.path, ev.chainIndex, p?.gap ?: 0, p?.gapLimit ?: s.gapLimit, found))
@@ -643,6 +668,26 @@ class WalletModel(private val platform: AppPlatform) {
                     "receive" -> { go(Screen.Receive); platform.markReady(screen) }
                     "settings" -> { go(Screen.Settings); platform.markReady(screen) }
                     "lightning" -> { selectTab(Tab.LIGHTNING); platform.markReady(screen) }
+                    "ln-starting", "ln-running", "ln-failed" -> {
+                        lightning.chainTip = 979_937
+                        lightning.setDemo(demoLightning(screen))
+                        selectTab(Tab.LIGHTNING); platform.markReady(screen)
+                    }
+                    "ln-live" -> {
+                        // The real engine, a throwaway wallet ("abandon … about") and the password in
+                        // memory: LND starts, makes its wallet and syncs against the chain's peers.
+                        selectTab(Tab.LIGHTNING)
+                        lightning.chainTip = 979_937
+                        launch {
+                            lightning.status.collect { st ->
+                                if (st is LightningModel.Status.Running || st is LightningModel.Status.Failed) platform.markReady(screen)
+                            }
+                        }
+                        runCatching {
+                            val seed = withContext(Dispatchers.Default) { Bip39.toSeed(words, "") }
+                            withContext(Dispatchers.Default) { lightning.enable(seed) }
+                        }
+                    }
                     "ark" -> { selectTab(Tab.ARK); platform.markReady(screen) }
                     "simple" -> { _state.update { it.copy(simple = true) }; scan() }
                     "locked" -> { _state.update { it.copy(locked = true) }; platform.markReady(screen) }
@@ -673,6 +718,23 @@ class WalletModel(private val platform: AppPlatform) {
                 }
             }
         }
+    }
+}
+
+/** Screenshot demos of the LIGHTNING tab: made-up figures, never a real node. */
+private fun demoLightning(screen: String): LightningModel.Status = when (screen) {
+    "ln-starting" -> LightningModel.Status.Starting("catching up with the chain", 812_450)
+    "ln-failed" -> LightningModel.Status.Failed("The node stopped: unable to connect to any peer")
+    else -> {
+        val k = com.kilombino.kilowallet.core.ln.Kilombino.NODE
+        LightningModel.Status.Running(
+            com.kilombino.kilowallet.core.ln.Lnd.Info("02" + "7a".repeat(32), "Kilowallet-demo", 979_937, true, true, 1, 1, 0, 1_793_480_000L),
+            com.kilombino.kilowallet.core.ln.Lnd.Balances(48_200, 0, 412_350, 0),
+            listOf(com.kilombino.kilowallet.core.ln.Lnd.Channel(true, k, "4f".repeat(32) + ":0", 1_000_000, 412_350, 584_650, "Kilombino", 1L)),
+            emptyList(), 979_937,
+            invoices = listOf(com.kilombino.kilowallet.core.ln.Lnd.Invoice("coffee", 2_100, 2_100, 1_793_470_000L, 1_793_470_060L, 1)),
+            payments = listOf(com.kilombino.kilowallet.core.ln.Lnd.Payment(15_000, 3, 1_793_475_000L, 2, "ab".repeat(32))),
+        )
     }
 }
 

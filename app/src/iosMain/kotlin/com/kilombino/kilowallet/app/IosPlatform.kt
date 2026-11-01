@@ -72,6 +72,13 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
     override fun markReady(name: String) = bridge.markReady(name)
     override val appVersion: String get() = bridge.appVersion()
     override fun httpGet(url: String, done: (String?) -> Unit) = bridge.httpGet(url) { done(it) }
+
+    /**
+     * The node when the app was built with the engine. Screenshot demos use it only for the live
+     * start ("ln-live"), with a throwaway wallet and the password kept in memory.
+     */
+    override val lightning: LightningPlatform? =
+        if (bridge.lndAvailable() && (demoScreen == null || demoScreen == "ln-live")) IosLightning(bridge, memoryPassword = demoScreen != null) else null
 }
 
 @OptIn(ExperimentalForeignApi::class)

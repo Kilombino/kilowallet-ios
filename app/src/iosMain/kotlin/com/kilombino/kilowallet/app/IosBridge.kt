@@ -36,6 +36,36 @@ interface IosBridge {
      * certificate checks). Blocks until it is open or failed: check [IosSocket.error]. Never on the main thread.
      */
     fun openWebSocket(url: String, listener: IosSocketListener): IosSocket
+
+    // ---- Lightning (iosApp/iosApp/LndEngine.swift): LND linked in as Lndmobile.xcframework
+
+    /** False when the app was built without the engine. */
+    fun lndAvailable(): Boolean
+    fun lndStart(args: String, listener: IosLndListener)
+    fun lndCall(method: String, request: NSData?, listener: IosLndListener)
+    fun lndStream(method: String, request: NSData?, listener: IosLndListener)
+    /** The node's directory: Application Support/lnd, excluded from iCloud and device backups. */
+    fun lndDir(): String
+    /** The node wallet's password: a Keychain item without Face ID (after first unlock, this device only). */
+    fun lndPasswordLoad(): String?
+    fun lndPasswordSave(hex: String): String?
+    fun lndPasswordDelete()
+    /** HTTPS request (blocking; never on the main thread): status and body, or status 0 and the error. */
+    fun httpRequest(method: String, url: String, body: String?): IosHttpResult
+    /** A background task while a payment is on its way; returns its id (0 when none was given). */
+    fun beginBackgroundWork(name: String): Long
+    fun endBackgroundWork(id: Long)
+}
+
+/** What LND answers (one call, or each message of a stream). Called on any thread. */
+interface IosLndListener {
+    fun onResponse(bytes: NSData?)
+    fun onError(message: String)
+}
+
+interface IosHttpResult {
+    fun status(): Int
+    fun body(): String
 }
 
 /** What a WebSocket tells the shared code; called on any thread. */

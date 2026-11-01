@@ -3,6 +3,8 @@ package com.kilombino.kilowallet.app
 import androidx.compose.ui.graphics.ImageBitmap
 import com.kilombino.kilowallet.core.chain.TransportFactory
 import com.kilombino.kilowallet.core.kilojoin.WebSocketFactory
+import com.kilombino.kilowallet.core.ln.LndEngine
+import com.kilombino.kilowallet.core.ln.LndHost
 
 /**
  * Where the recovery words live. On iOS: one Keychain item, readable only on this device while it
@@ -22,6 +24,27 @@ interface SeedStore {
 interface Prefs {
     fun get(key: String): String?
     fun put(key: String, value: String?)
+}
+
+/**
+ * The Lightning node's platform side: the engine (LND linked in as a library), its files and the
+ * network, and the password its wallet file is encrypted with (iOS: a Keychain item readable
+ * after the first unlock, with no Face ID, so the node can start by itself; it protects the
+ * file at rest, the money is in keys that come from the recovery words).
+ */
+interface LightningPlatform {
+    val engine: LndEngine
+    val host: LndHost
+    fun loadPassword(): String?
+    /** Returns an error message, or null when stored. */
+    fun savePassword(hex: String): String?
+    fun deletePassword()
+    /**
+     * While a payment is on its way, leaving the app keeps the node running for the little time
+     * iOS allows (a background task); [end] gives it back.
+     */
+    fun beginBackgroundWork(name: String): Any? = null
+    fun endBackgroundWork(token: Any?) {}
 }
 
 interface AppPlatform {
@@ -47,4 +70,6 @@ interface AppPlatform {
      * null. On iOS: URLSession (iosApp/iosApp/Bridge.swift).
      */
     fun httpGet(url: String, done: (String?) -> Unit) = done(null)
+    /** The Lightning node, or null where it is not available (desktop, screenshot demos). */
+    val lightning: LightningPlatform? get() = null
 }

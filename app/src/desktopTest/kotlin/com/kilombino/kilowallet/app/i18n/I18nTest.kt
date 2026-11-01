@@ -181,6 +181,13 @@ class I18nTest {
         // The main screen's tabs and refresh choices (the same in every table), and its screenshot names.
         "BTC", "LIGHTNING", "ARK", "Ark", "LIGHTNING · BETA", "30 s", "1 min", "5 min", "↻ 12 345s", "Gap limit: 12 345",
         "lightning", "ark", "locked", "simple", "○ Taproot (bc1p)",
+        // Lightning: preference keys, protocol and JSON field names, screenshot names and demo values,
+        // pieces matched against LND's own messages, a regex, and dates (English month names, UTC).
+        "alias", "birthday", "enabled", "expected_pubkey", "fee_min", "fee_pct", "fund_addrs", "peers", "settle_index", "ln.12",
+        "GET", "txid", "vout", "value", "scriptpubkey_address", "expired", "starting", "desc = ", "lightning:", "LIGHTNING:",
+        "bitcoin:12", "pubkey@host:port", "Kilombino", "Kilowallet-", "Kilowallet-demo", "coffee", "7a", "ab", "s",
+        "ln-starting", "ln-running", "ln-failed", "ln-live", "(?i)\\\\blno1[0-9a-z]+", "31 Oct 23:15", "Sats", "– sats",
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates
         Regex("""m/.*"""), Regex("""pin\..*"""), Regex("""mempool\.kilombino\.com/tx/.*"""), Regex("""bc1q[a-z0-9]{30,}"""),

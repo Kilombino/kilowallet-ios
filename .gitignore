@@ -11,3 +11,6 @@ DerivedData/
 iosApp/build/
 screenshots/
 screenshots-logs/
+
+# The Lightning engine (Lndmobile.xcframework): fetched by scripts/fetch-lnd-engine.sh, never committed.
+iosApp/Frameworks/

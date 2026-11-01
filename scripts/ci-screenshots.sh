@@ -27,7 +27,7 @@ xcrun simctl install "$UDID" "$APP"
 
 n=0
 # "screen@lang" shows that screen in another language (the app's language picker, set by the demo).
-for screen in welcome create restore watch home simple lightning ark locked receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round home@es receive@es settings@es lightning@es pools@es pool-round@zh home@zh; do
+for screen in welcome create restore watch home simple lightning ln-starting ln-running ln-failed ark locked receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round home@es receive@es settings@es lightning@es ln-running@es pools@es pool-round@zh home@zh ln-live; do
   n=$((n + 1))
   base=${screen%@*}
   name=${screen/@/-}
@@ -38,6 +38,8 @@ for screen in welcome create restore watch home simple lightning ark locked rece
   LP=$!
   limit=20; { [ "$base" = home ] || [ "$base" = simple ]; } && limit=150
   case "$base" in pool*) limit=90 ;; esac
+  # The real Lightning engine: LND starts, makes a throwaway wallet and syncs with the chain's peers.
+  [ "$base" = ln-live ] && limit=900
   for i in $(seq 1 $limit); do
     [ -f "$DATA/Documents/kw-ready-$base" ] && break
     sleep 1
@@ -45,6 +47,11 @@ for screen in welcome create restore watch home simple lightning ark locked rece
   if [ -f "$DATA/Documents/kw-ready-$base" ]; then echo "$screen: ready after ${i}s"; else echo "$screen: NOT ready after ${limit}s (screenshot anyway)"; fi
   sleep 3
   xcrun simctl io "$UDID" screenshot "$OUT/$(printf %02d $n)-$name.png"
+  if [ "$base" = ln-live ]; then
+    LOG="$DATA/Library/Application Support/lnd/logs/bitcoin/mainnet/lnd.log"
+    [ -f "$LOG" ] && cp "$LOG" screenshots-logs/lnd-live.log && tail -25 screenshots-logs/lnd-live.log || echo "no LND log at $LOG"
+    ls -la "$DATA/Library/Application Support/lnd" || true
+  fi
   kill $LP 2>/dev/null || true
 done
 xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true

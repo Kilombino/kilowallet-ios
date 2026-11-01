@@ -113,6 +113,81 @@ final class Bridge: NSObject, IosBridge {
         #endif
     }
 
+    // MARK: Lightning (LND linked in: LndmobileEngine.swift)
+
+    func lndAvailable() -> Bool { true }
+
+    func lndStart(args: String, listener: IosLndListener) { LndmobileEngine.start(args, listener) }
+
+    func lndCall(method: String, request: Data?, listener: IosLndListener) { LndmobileEngine.call(method, request, listener) }
+
+    func lndStream(method: String, request: Data?, listener: IosLndListener) { LndmobileEngine.stream(method, request, listener) }
+
+    /// Application Support/lnd, kept out of iCloud and device backups (a restored copy of a node's
+    /// channel state would be dangerous: the channel backup and the words are the way back).
+    func lndDir() -> String {
+        let fm = FileManager.default
+        var url = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("lnd", isDirectory: true)
+        try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
+        return url.path
+    }
+
+    func lndPasswordLoad() -> String? { LndPassword.load() }
+
+    func lndPasswordSave(hex: String) -> String? { LndPassword.save(hex) }
+
+    func lndPasswordDelete() { LndPassword.delete() }
+
+    /// One HTTPS request (the LSP, the explorer), blocking the calling (background) thread: no
+    /// cookies, no cache, a 30 s timeout. Status 0 with the error when there was no answer.
+    func httpRequest(method: String, url: String, body: String?) -> IosHttpResult {
+        guard let u = URL(string: url), u.scheme == "https" else { return HttpResult(0, "not an https URL") }
+        var req = URLRequest(url: u, timeoutInterval: 30)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue("Kilowallet", forHTTPHeaderField: "User-Agent")
+        if let body = body {
+            req.httpBody = Data(body.utf8)
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        let done = DispatchSemaphore(value: 0)
+        var result = HttpResult(0, "no answer")
+        Self.session.dataTask(with: req) { data, response, error in
+            if let http = response as? HTTPURLResponse {
+                result = HttpResult(Int32(http.statusCode), data.flatMap { String(data: $0, encoding: .utf8) } ?? "")
+            } else {
+                result = HttpResult(0, error?.localizedDescription ?? "no answer")
+            }
+            done.signal()
+        }.resume()
+        done.wait()
+        return result
+    }
+
+    private final class HttpResult: NSObject, IosHttpResult {
+        private let code: Int32; private let text: String
+        init(_ code: Int32, _ text: String) { self.code = code; self.text = text }
+        func status() -> Int32 { code }
+        func body() -> String { text }
+    }
+
+    /// While a Lightning payment is on its way, leaving the app keeps the node going for the little
+    /// time iOS allows (about 30 s); the payment is followed again when the app comes back.
+    func beginBackgroundWork(name: String) -> Int64 {
+        var id: UIBackgroundTaskIdentifier = .invalid
+        id = UIApplication.shared.beginBackgroundTask(withName: name) {
+            UIApplication.shared.endBackgroundTask(id)
+        }
+        return id == .invalid ? 0 : Int64(id.rawValue)
+    }
+
+    func endBackgroundWork(id: Int64) {
+        if id != 0 { UIApplication.shared.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: Int(id))) }
+    }
+
     // MARK: Pools (Kilojoin): the nostr relay
 
     func openWebSocket(url: String, listener: IosSocketListener) -> IosSocket {
