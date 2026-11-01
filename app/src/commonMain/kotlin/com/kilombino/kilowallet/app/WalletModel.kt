@@ -632,6 +632,7 @@ class WalletModel(private val platform: AppPlatform) {
                         pinIfFirst(s.endpoint, ev.fingerprint)
                         if (!sameWallet(s)) return@collect
                         _state.update { it.copy(scan = ScanPhase.Done, rows = ev.rows, txs = ev.txs, height = ev.height) }
+                        s.kind?.let { BalanceWatch.remember(prefs, it.name, ev.rows) }
                         platform.demoScreen?.substringBefore('@')?.takeIf { it == "home" || it == "simple" || it == "immature" }?.let { platform.markReady(it) }
                     }
                     is ScanEvent.Failed -> _state.update { it.copy(scan = ScanPhase.Error(ev.message)) }
@@ -662,6 +663,7 @@ class WalletModel(private val platform: AppPlatform) {
                         // removed or replaced meanwhile must not get the other's figures.
                         if (!sameWallet(s)) { _state.update { it.copy(refreshing = false) }; return@collect }
                         _state.update { it.copy(rows = ev.rows, txs = ev.txs, height = ev.height, refreshing = false, scan = ScanPhase.Done) }
+                        s.kind?.let { BalanceWatch.remember(prefs, it.name, ev.rows) }
                     }
                     is ScanEvent.Failed -> _state.update { it.copy(refreshing = false, message = ev.message) }
                     is ScanEvent.CertificateChanged -> _state.update {
@@ -695,6 +697,18 @@ class WalletModel(private val platform: AppPlatform) {
         _state.update { it.copy(pinned = fp, certChanged = null) }
         scan()
     }
+
+    /**
+     * "Tell me when the balance changes" with the app closed: the addresses are kept after each
+     * scan, and iOS's background refresh checks them (BalanceWatch). Asks for permission to notify.
+     */
+    fun setWatchNotify(on: Boolean) {
+        prefs.put(BalanceWatch.KEY_ON, if (on) "1" else null)
+        if (on) _state.value.kind?.let { BalanceWatch.remember(prefs, it.name, _state.value.rows) }
+        else { BalanceWatch.forget(prefs, "HOT"); BalanceWatch.forget(prefs, "WATCH") }
+        platform.scheduleBalanceWatch(on)
+    }
+    fun watchNotify(): Boolean = BalanceWatch.enabled(prefs)
 
     /** "Only over Tor": what goes over Tor never goes without it (Lightning waits for Tor). */
     fun setTorOnly(on: Boolean) {

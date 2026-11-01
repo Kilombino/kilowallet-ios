@@ -221,6 +221,8 @@ class I18nTest {
         "no_amount",
         // Moving the node: its file name and preference keys.
         "kilowallet-lightning.move", "moved_away", "moving", "Error: 12 345",
+        // Balance alerts: the kept lists' key and the wallet kinds they are filed under.
+        "watch.list.", "HOT", "WATCH",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""(12 345 · )?12(/12 345)? conf"""), Regex(""" · 12/12 345 conf"""), Regex("""\d{4}-\d\d-\d\dT[0-9:]+"""),
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates

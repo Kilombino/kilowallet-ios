@@ -516,5 +516,11 @@
  "Close the app and open it again first: the old node has to let go of its files.": "请先关闭应用再重新打开：旧节点需要释放它的文件。",
  "Error: {0}": "错误：{0}",
  "Not unlocked: nothing was moved.": "未解锁：没有移动任何内容。",
- "could not open the file": "无法打开文件"
+ "could not open the file": "无法打开文件",
+ "Confirmed: {0} sats": "已确认：{0} sats",
+ "New incoming payment in the mempool: +{0} sats": "内存池中有新的入账：+{0} sats",
+ "Off. With it on, iOS checks now and then with the app closed and notifies what changed.": "已关闭。开启后，应用关闭时 iOS 会不时检查并通知变化。",
+ "Received: +{0} sats (confirmed)": "已收到：+{0} sats（已确认）",
+ "Sent: −{0} sats": "已发送：−{0} sats",
+ "With the app closed, iOS checks now and then (when it decides, not on a fixed schedule) and a notification says what came in, confirmed or went out. Not while the server is reached through Tor.": "应用关闭时，iOS 会不时检查（由系统决定，没有固定时间），并用通知告诉你收到、确认或发出了什么。通过 Tor 连接服务器时不会检查。"
 }

@@ -80,8 +80,10 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             SettingRow("Corecoin (SHA-256 chain)", "The same keys on the SHA-256 chain: balance and addresses. It comes in a later build on iPhone.") {
                 LinkText("OPEN", color = TextFaint) {}
             }
-            SettingRow("Tell me when the balance changes", "On iPhone the balance is checked while the app is open. Alerts with the app closed come in a later build.") {
-                Switch(checked = false, onCheckedChange = null, enabled = false)
+            var notify by remember { mutableStateOf(model.watchNotify()) }
+            SettingRow("Tell me when the balance changes", if (notify) "With the app closed, iOS checks now and then (when it decides, not on a fixed schedule) and a notification says what came in, confirmed or went out. Not while the server is reached through Tor."
+                else "Off. With it on, iOS checks now and then with the app closed and notifies what changed.") {
+                Switch(checked = notify, onCheckedChange = { notify = it; model.setWatchNotify(it) })
             }
 
             Text("Refresh", style = MaterialTheme.typography.bodyMedium, color = TextMain)

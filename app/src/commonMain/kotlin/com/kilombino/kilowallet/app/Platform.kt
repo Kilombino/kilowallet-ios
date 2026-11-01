@@ -112,6 +112,11 @@ interface AppPlatform {
     val lightning: LightningPlatform? get() = null
     /** Ark, or null where it is not available (desktop, screenshot demos). */
     val ark: ArkPlatform? get() = null
+    /**
+     * Turn the background balance check on or off (iOS: BGAppRefreshTask, when iOS decides; asks
+     * for permission to notify when turned on).
+     */
+    fun scheduleBalanceWatch(on: Boolean) {}
     /** Calls [action] each time the app comes back to the foreground (iOS: after being suspended). */
     fun onForeground(action: () -> Unit) {}
 }

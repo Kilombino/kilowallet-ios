@@ -13,6 +13,7 @@
 		C0FFEE000000000000000A01 /* LndmobileEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000A02 /* LndmobileEngine.swift */; };
 		C0FFEE000000000000000A03 /* ArkEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000A04 /* ArkEngine.swift */; };
 		C0FFEE000000000000000A05 /* ArtiEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000A06 /* ArtiEngine.swift */; };
+		C0FFEE000000000000000A07 /* BalanceWatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000A08 /* BalanceWatch.swift */; };
 		85B9D0D31C81531652DAEE96 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9267B55DABDD08D11B695885 /* Keychain.swift */; };
 		D9D6B73F416D057687211ACD /* ElectrumConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 233B7995D37BBB0F5CE870B3 /* ElectrumConnection.swift */; };
 		96D38FB4F22BF89419F4FD06 /* QrCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD495524FB540E452313EE93 /* QrCode.swift */; };
@@ -30,6 +31,7 @@
 		C0FFEE000000000000000A02 /* LndmobileEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LndmobileEngine.swift; sourceTree = "<group>"; };
 		C0FFEE000000000000000A04 /* ArkEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArkEngine.swift; sourceTree = "<group>"; };
 		C0FFEE000000000000000A06 /* ArtiEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtiEngine.swift; sourceTree = "<group>"; };
+		C0FFEE000000000000000A08 /* BalanceWatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceWatch.swift; sourceTree = "<group>"; };
 		9267B55DABDD08D11B695885 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		233B7995D37BBB0F5CE870B3 /* ElectrumConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElectrumConnection.swift; sourceTree = "<group>"; };
 		AD495524FB540E452313EE93 /* QrCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrCode.swift; sourceTree = "<group>"; };
@@ -87,6 +89,7 @@
 				C0FFEE000000000000000A02 /* LndmobileEngine.swift */,
 				C0FFEE000000000000000A04 /* ArkEngine.swift */,
 				C0FFEE000000000000000A06 /* ArtiEngine.swift */,
+				C0FFEE000000000000000A08 /* BalanceWatch.swift */,
 				9267B55DABDD08D11B695885 /* Keychain.swift */,
 				233B7995D37BBB0F5CE870B3 /* ElectrumConnection.swift */,
 				AD495524FB540E452313EE93 /* QrCode.swift */,
@@ -223,6 +226,7 @@
 				C0FFEE000000000000000A01 /* LndmobileEngine.swift in Sources */,
 				C0FFEE000000000000000A03 /* ArkEngine.swift in Sources */,
 				C0FFEE000000000000000A05 /* ArtiEngine.swift in Sources */,
+				C0FFEE000000000000000A07 /* BalanceWatch.swift in Sources */,
 				85B9D0D31C81531652DAEE96 /* Keychain.swift in Sources */,
 				D9D6B73F416D057687211ACD /* ElectrumConnection.swift in Sources */,
 				96D38FB4F22BF89419F4FD06 /* QrCode.swift in Sources */,

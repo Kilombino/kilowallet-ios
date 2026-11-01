@@ -2845,5 +2845,11 @@
 "Close the app and open it again first: the old node has to let go of its files.": "Schließe die App zuerst und öffne sie wieder: Der alte Knoten muss seine Dateien freigeben.",
 "Error: {0}": "Fehler: {0}",
 "Not unlocked: nothing was moved.": "Nicht entsperrt: Nichts wurde verschoben.",
-"could not open the file": "die Datei konnte nicht geöffnet werden"
+"could not open the file": "die Datei konnte nicht geöffnet werden",
+"Confirmed: {0} sats": "Bestätigt: {0} sats",
+"New incoming payment in the mempool: +{0} sats": "Neue eingehende Zahlung im Mempool: +{0} sats",
+"Off. With it on, iOS checks now and then with the app closed and notifies what changed.": "Aus. Eingeschaltet prüft iOS ab und zu bei geschlossener App und meldet, was sich geändert hat.",
+"Received: +{0} sats (confirmed)": "Empfangen: +{0} sats (bestätigt)",
+"Sent: −{0} sats": "Gesendet: −{0} sats",
+"With the app closed, iOS checks now and then (when it decides, not on a fixed schedule) and a notification says what came in, confirmed or went out. Not while the server is reached through Tor.": "Bei geschlossener App prüft iOS ab und zu (wann es will, ohne festen Zeitplan) und eine Mitteilung sagt, was eingegangen, bestätigt oder abgegangen ist. Nicht, solange der Server über Tor erreicht wird."
 }

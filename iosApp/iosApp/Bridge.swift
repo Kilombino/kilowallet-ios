@@ -16,6 +16,7 @@ final class Bridge: NSObject, IosBridge {
         super.init()
         let nc = NotificationCenter.default
         nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            BalanceWatch.schedule()
             guard let self = self, self.backgroundTask == .invalid else { return }
             self.backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Kilojoin rounds") { [weak self] in
                 self?.endBackgroundTask()
@@ -309,6 +310,11 @@ final class Bridge: NSObject, IosBridge {
     func openWebSocketVia(url: String, listener: IosSocketListener, socksPort: Int32, isolation: String?) -> IosSocket {
         RelaySocket(url: url, listener: listener, socksPort: socksPort, isolation: isolation)
     }
+
+    // MARK: Balance alerts with the app closed (BalanceWatch.swift)
+
+    func watchNotify(title: String, body: String) { BalanceWatch.notify(title: title, body: body) }
+    func watchSchedule(on: Bool) { BalanceWatch.setOn(on) }
 
     // MARK: Tor (ArtiEngine.swift: KilombinoTor.xcframework)
 

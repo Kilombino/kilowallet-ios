@@ -2845,5 +2845,11 @@
 "Close the app and open it again first: the old node has to let go of its files.": "Tanca l'app i torna-la a obrir primer: el node anterior ha de deixar anar els seus fitxers.",
 "Error: {0}": "Error: {0}",
 "Not unlocked: nothing was moved.": "No desbloquejat: no s'ha mogut res.",
-"could not open the file": "no s'ha pogut obrir el fitxer"
+"could not open the file": "no s'ha pogut obrir el fitxer",
+"Confirmed: {0} sats": "Confirmat: {0} sats",
+"New incoming payment in the mempool: +{0} sats": "Nou ingrés a la mempool: +{0} sats",
+"Off. With it on, iOS checks now and then with the app closed and notifies what changed.": "Desactivat. Si l'actives, iOS comprova de tant en tant amb l'app tancada i avisa del que ha canviat.",
+"Received: +{0} sats (confirmed)": "Rebut: +{0} sats (confirmat)",
+"Sent: −{0} sats": "Enviat: −{0} sats",
+"With the app closed, iOS checks now and then (when it decides, not on a fixed schedule) and a notification says what came in, confirmed or went out. Not while the server is reached through Tor.": "Amb l'app tancada, iOS comprova de tant en tant (quan ell decideix, sense horari fix) i una notificació diu què ha entrat, s'ha confirmat o ha sortit. No mentre s'arriba al servidor per Tor."
 }

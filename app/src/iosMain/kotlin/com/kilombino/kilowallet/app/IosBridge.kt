@@ -68,6 +68,13 @@ interface IosBridge {
     fun beginBackgroundWork(name: String): Long
     fun endBackgroundWork(id: Long)
 
+    // ---- Balance alerts with the app closed (iosApp/iosApp/BalanceWatch.swift)
+
+    /** A local notification now. */
+    fun watchNotify(title: String, body: String)
+    /** BGAppRefreshTask on (asks permission to notify) or off. */
+    fun watchSchedule(on: Boolean)
+
     // ---- Tor (iosApp/iosApp/ArtiEngine.swift): Arti linked in as KilombinoTor.xcframework
 
     /** False when the app was built without the engine. */

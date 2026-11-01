@@ -43,9 +43,11 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.kilombino.kilowallet.ark-renew</string>
+		<string>com.kilombino.kilowallet.watch</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>fetch</string>
 		<string>processing</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

@@ -97,6 +97,8 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
         }
     }
 
+    override fun scheduleBalanceWatch(on: Boolean) { if (demoScreen == null) bridge.watchSchedule(on) }
+
     /** Back in the foreground: Tor's port is checked and Tor started again if iOS took it back. */
     override fun onForeground(action: () -> Unit) {
         NSNotificationCenter.defaultCenter.addObserverForName(UIApplicationWillEnterForegroundNotification, null,
