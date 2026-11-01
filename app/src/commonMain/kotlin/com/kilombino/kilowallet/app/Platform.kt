@@ -58,8 +58,8 @@ interface ArkPlatform {
     val engine: ArkEngine
     val host: ArkHost
     /** While Ark works (a payment, a renewal), leaving the app keeps it going the little time iOS allows. */
-    fun beginBackgroundWork(name: String): Any? = null
-    fun endBackgroundWork(token: Any?) {}
+    fun beginArkWork(name: String): Any? = null
+    fun endArkWork(token: Any?) {}
     /**
      * A local notification at [atEpochSeconds] (null: cancel the one set before), to open the app
      * before an Ark coin expires: iOS does not let the wallet stay up to renew it by itself.

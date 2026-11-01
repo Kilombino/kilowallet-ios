@@ -2,13 +2,14 @@ name: Ark engine (iOS)
 
 # Builds KilombinoArk.xcframework (device arm64 + simulator arm64/x86_64) from ark-engine/ENGINE.
 # The binary is not kept in git: the app's workflow downloads this run's artifact and checks its
-# sha256 against ENGINE. Run it after changing ENGINE (it also runs when ark-engine/build-ios.sh
-# changes), then write run= and sha256= there.
+# sha256 against ENGINE. It runs when ark-engine/build-ios.sh changes (or by hand once this file
+# is on main): after changing commit= in ENGINE, touch build-ios.sh too, then write run= and
+# sha256= in ENGINE (that edit alone does not rebuild).
 
 on:
   workflow_dispatch:
   push:
-    paths: [ark-engine/build-ios.sh, ark-engine/ENGINE]
+    paths: [ark-engine/build-ios.sh]
 
 jobs:
   build:

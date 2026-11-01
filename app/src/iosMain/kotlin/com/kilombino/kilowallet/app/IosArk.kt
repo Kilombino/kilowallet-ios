@@ -48,8 +48,8 @@ class IosArk(private val bridge: IosBridge, private val prefs: Prefs, private va
         override fun deleteWords() { if (memoryWords) words = null else bridge.arkWordsDelete() }
     }
 
-    override fun beginBackgroundWork(name: String): Any? = bridge.beginBackgroundWork(name).takeIf { it != 0L }
-    override fun endBackgroundWork(token: Any?) { (token as? Long)?.let { bridge.endBackgroundWork(it) } }
+    override fun beginArkWork(name: String): Any? = bridge.beginBackgroundWork(name).takeIf { it != 0L }
+    override fun endArkWork(token: Any?) { (token as? Long)?.let { bridge.endBackgroundWork(it) } }
     override fun remind(atEpochSeconds: Long?, title: String, body: String) {
         if (memoryWords) return
         bridge.arkRemind(atEpochSeconds ?: 0L, com.kilombino.kilowallet.app.i18n.I18n.tr(title), com.kilombino.kilowallet.app.i18n.I18n.tr(body))

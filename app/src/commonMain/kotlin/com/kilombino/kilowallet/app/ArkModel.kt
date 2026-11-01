@@ -100,9 +100,9 @@ class ArkModel(private val platform: AppPlatform) {
     fun run(label: String, block: suspend () -> String?) {
         scope.launch {
             _busy.value = label; _message.value = null
-            val token = ark?.beginBackgroundWork(label)
+            val token = ark?.beginArkWork(label)
             _message.value = try { block() } catch (e: Exception) { "Error: " + (e.message ?: e.toString()) }
-            ark?.endBackgroundWork(token)
+            ark?.endArkWork(token)
             _busy.value = null
             runCatching { reload() }
         }
@@ -188,9 +188,9 @@ class ArkModel(private val platform: AppPlatform) {
                 if (!Ark.hasWallet()) return@launch
                 val left = Ark.blocksToNearestExpiry()
                 if (left != null && left < RENEW_WITHIN_BLOCKS) {
-                    val token = ark?.beginBackgroundWork("Ark renewal")
+                    val token = ark?.beginArkWork("Ark renewal")
                     runCatching { Ark.refreshAll() }
-                    ark?.endBackgroundWork(token)
+                    ark?.endArkWork(token)
                 }
                 remindBeforeExpiry(Ark.blocksToNearestExpiry())
                 ark?.scheduleBackgroundRenewal()
