@@ -57,6 +57,7 @@ for screen in welcome create restore watch home simple lightning ln-starting ln-
     [ -f "$LOG" ] && cp "$LOG" screenshots-logs/lnd-live.log && tail -25 screenshots-logs/lnd-live.log || echo "no LND log at $LOG"
     ls -la "$DATA/Library/Application Support/lnd" || true
   fi
+  grep "KW " "screenshots-logs/$name.log" 2>/dev/null || true
   case "$base" in tor-live|tor-log|ln-live)
     TLOG="$DATA/Library/Application Support/tor.log"
     [ -f "$TLOG" ] && cp "$TLOG" "screenshots-logs/tor-$name.log" && tail -15 "screenshots-logs/tor-$name.log" || echo "no Tor log at $TLOG"
