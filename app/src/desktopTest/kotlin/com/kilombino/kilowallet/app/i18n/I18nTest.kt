@@ -178,6 +178,9 @@ class I18nTest {
         "12 345:12 345 UTC", "Kilojoin", "KILOJOIN", "12 345 × 12 345 sats", "12 × 12 345 sats", "12 345 sats → 12 345",
         // Pieces of strings the code joins at run time; [iosTemplates] checks the whole ones.
         " · 12 345 of 12 345", "12 345 addresses · 12 345 used so far",
+        // The main screen's tabs and refresh choices (the same in every table), and its screenshot names.
+        "BTC", "LIGHTNING", "ARK", "Ark", "LIGHTNING · BETA", "30 s", "1 min", "5 min", "↻ 12 345s", "Gap limit: 12 345",
+        "lightning", "ark", "locked", "simple", "○ Taproot (bc1p)",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates
         Regex("""m/.*"""), Regex("""pin\..*"""), Regex("""mempool\.kilombino\.com/tx/.*"""), Regex("""bc1q[a-z0-9]{30,}"""),

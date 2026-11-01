@@ -27,7 +27,7 @@ xcrun simctl install "$UDID" "$APP"
 
 n=0
 # "screen@lang" shows that screen in another language (the app's language picker, set by the demo).
-for screen in welcome create restore watch home receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round receive@es settings@es pools@es pool-round@zh; do
+for screen in welcome create restore watch home simple lightning ark locked receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round home@es receive@es settings@es lightning@es pools@es pool-round@zh home@zh; do
   n=$((n + 1))
   base=${screen%@*}
   name=${screen/@/-}
@@ -36,7 +36,7 @@ for screen in welcome create restore watch home receive send review replace sett
   rm -f "$DATA/Documents/kw-ready-$base"
   xcrun simctl launch --console-pty "$UDID" "$BUNDLE" -kwDemo "$screen" > "screenshots-logs/$name.log" 2>&1 &
   LP=$!
-  limit=20; [ "$base" = home ] && limit=150
+  limit=20; { [ "$base" = home ] || [ "$base" = simple ]; } && limit=150
   case "$base" in pool*) limit=90 ;; esac
   for i in $(seq 1 $limit); do
     [ -f "$DATA/Documents/kw-ready-$base" ] && break

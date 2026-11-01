@@ -10,17 +10,25 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// The Android app's palette (ui/Theme.kt), unchanged.
+// The Android app's palette (ui/Theme.kt, 1.4.4): dark blue panels and text, and one colour per
+// part of the wallet — BTC orange, Lightning gold, Kilojoin blue, Ark red.
 val Ink = Color(0xFF000000)
-val PanelBg = Color(0xFF0A0510)
-val PanelSoft = Color(0xFF0D0716)
-val Line = Color(0x2EB96BFF)
-val TextMain = Color(0xFFDCD0EC)
-val TextSoft = Color(0xFFA99CC4)
-val TextFaint = Color(0xFF6C5C86)
-val Purple = Color(0xFFB96BFF)
+val PanelBg = Color(0xFF050A12)
+val PanelSoft = Color(0xFF08101C)
+val Line = Color(0x2E278BF5)
+val TextMain = Color(0xFFD0DCEC)
+val TextSoft = Color(0xFF9CB0C8)
+val TextFaint = Color(0xFF5C7090)
+/** The general accent, BTC's orange (named for the app's first colour, as on Android). */
+val Purple = Color(0xFFF7931A)
 val Orange = Color(0xFFF7931A)
 val Good = Color(0xFF34D399)
+/** Lightning (its tab). */
+val LnGold = Color(0xFFF5B83D)
+/** Kilojoin (its tab). */
+val PoolBlue = Color(0xFF278BF5)
+/** Ark (its tab): a crimson apart from the error red. */
+val ArkRed = Color(0xFFE5484D)
 val Warn = Color(0xFFFFC53D)
 val Bad = Color(0xFFFF5D5D)
 

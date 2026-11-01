@@ -8,7 +8,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.kilombino.kilowallet.app.AppPlatform
 import com.kilombino.kilowallet.app.ScanPhase
 import com.kilombino.kilowallet.app.Screen
+import com.kilombino.kilowallet.app.Tab
 import com.kilombino.kilowallet.app.UiState
 import com.kilombino.kilowallet.app.WalletKind
 import com.kilombino.kilowallet.app.WalletModel
@@ -51,88 +56,67 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
-    // While the wallet is on screen it re-checks every minute (Android does the same in the foreground).
-    LaunchedEffect(state.zpub) { while (true) { delay(60_000); model.refresh() } }
+    // While the wallet is on screen it refreshes on the interval chosen in settings (Android: 30 s / 1 / 5 min / by hand).
+    LaunchedEffect(state.zpub, state.refreshSeconds) {
+        if (state.refreshSeconds <= 0) return@LaunchedEffect
+        while (true) { model.scheduleRefresh(); delay(state.refreshSeconds * 1000L); model.refresh() }
+    }
+    if (state.locked) { LockedScreen(model, platform); return }
+    val hot = state.kind == WalletKind.HOT
+    // A watch-only wallet stays that: no Lightning, no Kilojoin, no Ark (it cannot sign), as on Android.
+    val tab = if (hot && !state.simple) state.tab else Tab.BTC
+
+    Column(Modifier.fillMaxSize()) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(Gap)) {
+            WalletHeader(model, state, platform)
+            if (!state.simple) MainTabs(tab, hot) { model.selectTab(it) }
+        }
+        Box(Modifier.weight(1f)) {
+            when {
+                state.simple -> SimpleHome(model, state)
+                tab == Tab.LIGHTNING -> TabColumn { LightningTab() }
+                tab == Tab.POOLS -> PoolsScreen(model, state, platform, embedded = true)
+                tab == Tab.ARK -> TabColumn { ArkTab() }
+                else -> BtcTab(model, state)
+            }
+        }
+    }
+}
+
+/** The BTC tab, as Android 1.4.4 lays it out: scan, balance, RECEIVE / SEND, movements, how coins are found. */
+@Composable
+private fun BtcTab(model: WalletModel, state: UiState) {
     var detail by remember { mutableStateOf<TxConf?>(null) }
     val hot = state.kind == WalletKind.HOT
-
-    ScreenColumn {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.clip(RoundedCornerShape(10.dp)).background(if (hot) Purple else Orange).padding(horizontal = 14.dp, vertical = 8.dp)) {
-                Text(if (hot) "HOT WALLET" else "WATCH-ONLY", style = MaterialTheme.typography.labelLarge, color = Ink)
-            }
-            Spacer(Modifier.weight(1f))
-            LinkText("settings", color = TextMain) { model.go(Screen.Settings) }
-            Spacer(Modifier.width(8.dp))
-            Logo(40)
-        }
-
-        Panel {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionLabel("Your ${Chain.COIN}")
-                Spacer(Modifier.weight(1f))
-                val live = state.scan is ScanPhase.Done
-                LinkText(if (state.refreshing) "refreshing…" else "↻ refresh", color = TextSoft) { model.refresh() }
-                PulseDot(if (live) Good else if (state.scan is ScanPhase.Error) Bad else Warn)
-            }
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(formatSats(state.total), fontSize = BigNumber, fontWeight = FontWeight.Bold, color = Purple,
-                    style = MaterialTheme.typography.displayLarge)
-                Text(" sats", style = MaterialTheme.typography.titleLarge, color = Purple.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(bottom = 8.dp))
-            }
-            Text("${formatBtc(state.total)} ${Chain.COIN} (${Chain.TICKER})", style = MaterialTheme.typography.bodyMedium, color = TextSoft)
-            if (state.fiat != Fiat.OFF) Text("≈ " + (state.perCoin?.let { Fiat.format(it * state.total / 1e8, state.fiat) } ?: Fiat.missing(state.fiat)),
-                style = MaterialTheme.typography.bodyMedium, color = TextSoft)
-            if (state.unconfirmed != 0L) Text("of which ${formatSats(state.unconfirmed)} sats unconfirmed",
-                style = MaterialTheme.typography.bodySmall, color = Warn)
-            when (val s = state.scan) {
-                is ScanPhase.Scanning -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    GapRing(s.gap, s.gapLimit, Purple)
-                    Column {
-                        Text(if (s.path.isEmpty()) "connecting to ${state.endpoint}…" else s.path,
-                            style = MaterialTheme.typography.bodyMedium, color = Purple)
-                        Text("${if (s.chainIndex == 0) "receive" else "change"} addresses · ${s.found} used so far",
-                            style = MaterialTheme.typography.bodySmall, color = TextFaint)
-                    }
-                }
-                is ScanPhase.Error -> Text(s.message, style = MaterialTheme.typography.bodySmall, color = Bad)
-                else -> Unit
-            }
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SecondaryButton("Receive", Modifier.weight(1f)) { model.go(Screen.Receive) }
-            if (hot) PrimaryButton("Send", Modifier.weight(1f), enabled = state.scan is ScanPhase.Done && state.total > 0) { model.go(Screen.Send) }
+    TabColumn {
+        ScanStatus(model, state)
+        BalanceCard(model, state)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SecondaryButton("RECEIVE", Modifier.weight(1f)) { model.go(Screen.Receive) }
+            if (hot) PrimaryButton("SEND", Modifier.weight(1f), enabled = state.scan is ScanPhase.Done && state.total > 0) { model.go(Screen.Send) }
         }
         if (!hot) Explain("Watch-only: this wallet can receive and show its coins, but not spend them.")
-        // Kilojoin: shared transactions (pools), in sight on the wallet's main screen.
-        Panel {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    SectionLabel("Kilojoin")
-                    Text(if (hot) "Shared transactions: pools with equal outputs, and payments through them."
-                        else "Shared transactions need a wallet that can sign.", style = MaterialTheme.typography.bodySmall, color = TextSoft)
-                }
-                LinkText("open ›", color = Purple) { model.go(Screen.Pools) }
-            }
-        }
 
-        Panel {
-            SectionLabel("Movements · confirmations")
+        if (state.txs.isNotEmpty() || state.scan is ScanPhase.Done) Panel {
+            SectionLabel("movements · confirmations")
             if (state.txs.isEmpty()) {
-                Explain(if (state.scan is ScanPhase.Done) "No movements yet. Receive to an address from RECEIVE." else "…")
+                Explain("No movements yet. Receive to an address from RECEIVE.")
             } else {
                 Explain("tap a movement for its details")
                 state.txs.take(200).forEach { tx ->
-                    MovementRow(tx, canReplace = hot && tx.pending && (tx.amount ?: 0) < 0,
+                    MovementRow(tx, state.hidden, canReplace = hot && tx.pending && (tx.amount ?: 0) < 0,
                         onReplace = { cancel -> model.go(Screen.Replace(tx.txid, cancel)) }) { detail = tx }
                 }
             }
         }
-        Explain("block ${formatSats(state.height.toLong())} · ${state.endpoint}" + (state.serverVersion?.let { " · $it" } ?: ""))
+        Panel {
+            SectionLabel("How your coins are found")
+            Explain("Your xpub does not store a list of addresses: it generates them. The app derives " +
+                "m/0/0, m/0/1, m/0/2… and asks the server about each. When it finds " +
+                "${state.gapLimit} empty in a row, it assumes there are no more and stops. That is " +
+                "the «gap limit», and it is what the ring above draws while it scans.")
+        }
     }
-
     detail?.let { tx ->
         // Only a send of ours can be replaced: a payment to us isn't ours to take back.
         val replace: ((Boolean) -> Unit)? = if (hot && tx.pending && (tx.amount ?: 0) < 0)
@@ -141,13 +125,120 @@ fun HomeScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
     }
 }
 
+/** How the look is going, right under the tabs and above the balance it explains (Android `ScanStatus`). */
 @Composable
-private fun MovementRow(tx: TxConf, canReplace: Boolean, onReplace: (cancel: Boolean) -> Unit, onClick: () -> Unit) {
+private fun ScanStatus(model: WalletModel, state: UiState) {
+    Panel {
+        when (val s = state.scan) {
+            ScanPhase.Idle -> Row(verticalAlignment = Alignment.CenterVertically) {
+                PulseDot(Purple); Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("connecting to ${state.endpoint}", style = MaterialTheme.typography.bodyMedium, color = Purple)
+                    Explain("The first connection can take a little while.")
+                }
+            }
+            is ScanPhase.Scanning -> Row(verticalAlignment = Alignment.CenterVertically) {
+                GapRing(s.gap, s.gapLimit, Purple)
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(if (s.path.isEmpty()) "connecting to ${state.endpoint}" else s.path,
+                        style = MaterialTheme.typography.bodyMedium, color = Purple)
+                    Text(if (s.chainIndex == 0) "receive chain" else "change chain", style = MaterialTheme.typography.bodySmall, color = TextFaint)
+                    Text("${s.gap}/${s.gapLimit} empty in a row", style = MaterialTheme.typography.bodySmall, color = TextSoft)
+                }
+            }
+            ScanPhase.Done -> Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PulseDot(Good); Spacer(Modifier.width(10.dp))
+                    Text("scan complete", style = MaterialTheme.typography.bodyMedium, color = Good)
+                }
+                if (state.refreshing) Text("refreshing…", style = MaterialTheme.typography.bodySmall, color = Purple)
+                Spacer(Modifier.height(6.dp))
+                Text("server: ${state.endpoint}" + (state.serverVersion?.let { " · $it" } ?: ""),
+                    style = MaterialTheme.typography.bodySmall, color = TextSoft)
+                state.pinned?.let { Text("pinned fingerprint: ${it.take(16)}…", style = MaterialTheme.typography.bodySmall, color = TextFaint) }
+            }
+            is ScanPhase.Error -> Column {
+                Text("could not complete", style = MaterialTheme.typography.bodyMedium, color = Bad)
+                Explain(s.message)
+                LinkText("retry", color = Purple) { model.scan() }
+            }
+        }
+    }
+}
+
+/** The balance in sats (an exact count), in ₿ and in the chosen currency, as Android's `BalanceCard`. */
+@Composable
+internal fun BalanceCard(model: WalletModel, state: UiState) {
+    var now by remember { mutableStateOf(0L) }
+    LaunchedEffect(state.nextRefreshAt) { while (true) { now = nowMillis(); delay(1_000) } }
+    Panel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SectionLabel("BTC balance")
+            Spacer(Modifier.weight(1f))
+            LinkText(if (state.hidden) "👁 show" else "🙈 hide", color = TextSoft) { model.toggleHidden() }
+            if (state.scan is ScanPhase.Done) {
+                Spacer(Modifier.width(8.dp))
+                val left = ((state.nextRefreshAt - now) / 1000).toInt().coerceAtLeast(0)
+                Text(if (state.nextRefreshAt <= 0L) "↻ by hand" else if (left >= 60) "↻ ${left / 60}:${(left % 60).toString().padStart(2, '0')}" else "↻ ${left}s",
+                    style = MaterialTheme.typography.bodySmall, color = TextFaint)
+                Spacer(Modifier.width(8.dp))
+                PulseDot(Good, 7)
+            }
+        }
+        if (state.hidden) Text(MASK, style = MaterialTheme.typography.headlineMedium, color = Purple)
+        else Row(verticalAlignment = Alignment.Bottom) {
+            Text(formatSats(state.total), fontSize = BigNumber, fontWeight = FontWeight.Bold, color = Purple,
+                style = MaterialTheme.typography.displayLarge)
+            Text(" sats", style = MaterialTheme.typography.titleLarge, color = Purple.copy(alpha = 0.7f),
+                modifier = Modifier.padding(bottom = 8.dp))
+        }
+        Text(if (state.hidden) MASK else formatBtc(state.total) + " ₿", style = MaterialTheme.typography.bodySmall, color = TextFaint)
+        if (state.fiat != Fiat.OFF) Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(if (state.hidden) "≈ $MASK" else "≈ " + (state.perCoin?.let { Fiat.format(it * state.total / 1e8, state.fiat) } ?: Fiat.missing(state.fiat)),
+                style = MaterialTheme.typography.titleLarge, color = TextMain, modifier = Modifier.weight(1f))
+            FiatChips(model, state)
+        }
+        if (state.unconfirmed != 0L && !state.hidden) Text("of which ${formatSats(state.unconfirmed)} sats unconfirmed",
+            style = MaterialTheme.typography.bodySmall, color = Warn)
+        Spacer(Modifier.height(4.dp))
+        Text("${state.rows.count { it.isUsed }} used addresses · height ${state.height}", style = MaterialTheme.typography.bodySmall, color = TextSoft)
+        Text(state.scriptType.label, style = MaterialTheme.typography.bodySmall, color = TextFaint)
+        Text(state.scriptType.explain, style = MaterialTheme.typography.bodySmall, color = TextFaint)
+        Explain("BTC: Bitcoin with BLAKE2b proof of work. 164-byte headers.")
+    }
+}
+
+/** USD · EUR · ▾ by the value, as Android's `FiatPicker` (▾ opens the full list in settings). */
+@Composable
+private fun FiatChips(model: WalletModel, state: UiState) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip("USD", state.fiat == "USD") { model.setFiat("USD") }
+        Chip("EUR", state.fiat == "EUR") { model.setFiat("EUR") }
+        val other = state.fiat != "USD" && state.fiat != "EUR"
+        Chip(if (other) "${state.fiat} ▾" else "▾", other) { model.go(Screen.Settings) }
+    }
+}
+
+/** What street mode shows in place of an amount. */
+internal const val MASK = "••••"
+
+/** The main screen's content: scrolls on its own under the fixed header and tabs. */
+@Composable
+internal fun TabColumn(content: @Composable () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(Gap),
+    ) { content(); Spacer(Modifier.height(30.dp)) }
+}
+
+@Composable
+private fun MovementRow(tx: TxConf, hidden: Boolean, canReplace: Boolean, onReplace: (cancel: Boolean) -> Unit, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             val a = tx.amount
-            Text(if (a == null) "? sats" else (if (a > 0) "+" else "") + formatSats(a) + " sats",
+            Text(if (hidden) MASK else if (a == null) "? sats" else (if (a > 0) "+" else "") + formatSats(a) + " sats",
                 style = MaterialTheme.typography.bodyLarge, color = if (a != null && a > 0) Good else TextMain)
             Text(shortTxid(tx.txid), style = MaterialTheme.typography.bodySmall, color = TextFaint)
         }

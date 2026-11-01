@@ -32,6 +32,9 @@ import kotlin.coroutines.resume
 
 enum class WalletKind { HOT, WATCH }
 
+/** The main screen's tabs, as on Android: BTC · LIGHTNING · KILOJOIN (Android: COINJOIN) · ARK. */
+enum class Tab { BTC, LIGHTNING, POOLS, ARK }
+
 sealed interface Screen {
     data object Welcome : Screen
     data class CreateShow(val words: List<String>) : Screen
@@ -92,6 +95,22 @@ data class UiState(
     /** The currency values are shown in ([Fiat.OFF]: none, and the price feed is never asked). */
     val fiat: String = "USD",
     val market: MarketData? = null,
+    /** Which tab the main screen shows. */
+    val tab: Tab = Tab.BTC,
+    /** Simple mode (Android's "simple"): the balance and RECEIVE / SEND, nothing else. */
+    val simple: Boolean = false,
+    /** Balances and amounts masked (Android's street mode eye). */
+    val hidden: Boolean = false,
+    /** Street mode: masked every time the app opens. */
+    val streetMode: Boolean = false,
+    /** Locked with ⏻: nothing is shown until Face ID / Touch ID / the passcode opens it again. */
+    val locked: Boolean = false,
+    /** Seconds between refreshes while the app is open; 0: by hand only. */
+    val refreshSeconds: Int = 300,
+    /** When the next refresh is due (epoch ms), for the countdown on the balance. */
+    val nextRefreshAt: Long = 0L,
+    /** Empty addresses in a row checked before a scan stops. */
+    val gapLimit: Int = 20,
 ) {
     /** One XBT in [fiat], or null (off, or no price yet). */
     val perCoin: Double? get() = if (fiat == Fiat.OFF) null else market?.xbtIn(fiat)
@@ -127,6 +146,10 @@ class WalletModel(private val platform: AppPlatform) {
         const val K_HOST = "server.host"
         const val K_PORT = "server.port"
         const val K_FIAT = "fiat"
+        const val K_SIMPLE = "ui.simple"
+        const val K_STREET = "ui.street"
+        const val K_REFRESH = "refresh.seconds"
+        const val K_GAP = "scan.gap"
         const val K_MARKET = "market.json"
         const val K_MARKET_AT = "market.fetched"
         /** Screenshot mode's price: no network, the same figures every run. */
@@ -144,6 +167,10 @@ class WalletModel(private val platform: AppPlatform) {
             screen = if (kind != null && zpub != null) Screen.Home else Screen.Welcome,
             kind = if (zpub != null) kind else null, zpub = zpub, endpoint = endpoint, pinned = prefs.get(pinKey(endpoint)),
             fiat = prefs.get(K_FIAT) ?: "USD",
+            simple = prefs.get(K_SIMPLE) == "1",
+            streetMode = prefs.get(K_STREET) == "1", hidden = prefs.get(K_STREET) == "1",
+            refreshSeconds = prefs.get(K_REFRESH)?.toIntOrNull() ?: 300,
+            gapLimit = prefs.get(K_GAP)?.toIntOrNull()?.coerceIn(5, 200) ?: 20,
             market = prefs.get(K_MARKET)?.let { j -> runCatching { MarketFeed.parse(j, prefs.get(K_MARKET_AT)?.toLongOrNull() ?: 0L) }.getOrNull() },
         )
         if (kind != null && zpub != null) scan()
@@ -192,6 +219,12 @@ class WalletModel(private val platform: AppPlatform) {
     }
 
     fun go(screen: Screen) {
+        // KILOJOIN is a tab of the main screen, as on Android.
+        if (screen == Screen.Pools) {
+            _state.update { it.copy(screen = Screen.Home, tab = Tab.POOLS, message = null) }
+            if (platform.demoScreen == null) pools.attach()
+            return
+        }
         _state.update { it.copy(screen = screen, message = null) }
         if (screen == Screen.Send) openSend()
         if (screen == Screen.Pools && platform.demoScreen == null) pools.attach()
@@ -213,6 +246,53 @@ class WalletModel(private val platform: AppPlatform) {
             s.screen == Screen.PoolPay -> Screen.Send
             else -> Screen.Home
         })
+    }
+
+    // ------------------------------------------------------------------ main screen (Android 1.4.4)
+
+    fun selectTab(tab: Tab) {
+        _state.update { it.copy(tab = tab, screen = Screen.Home) }
+        if (tab == Tab.POOLS && platform.demoScreen == null) pools.attach()
+    }
+
+    fun setSimple(on: Boolean) {
+        prefs.put(K_SIMPLE, if (on) "1" else null)
+        _state.update { it.copy(simple = on, tab = Tab.BTC, screen = Screen.Home) }
+    }
+
+    fun toggleHidden() = _state.update { it.copy(hidden = !it.hidden) }
+
+    fun setStreetMode(on: Boolean) {
+        prefs.put(K_STREET, if (on) "1" else null)
+        _state.update { it.copy(streetMode = on, hidden = on || it.hidden) }
+    }
+
+    fun setRefreshSeconds(seconds: Int) {
+        prefs.put(K_REFRESH, seconds.toString())
+        _state.update { it.copy(refreshSeconds = seconds, nextRefreshAt = if (seconds > 0) nowMs() + seconds * 1000L else 0L) }
+    }
+
+    /** The next refresh is due [seconds] from now (the main screen calls it after each one). */
+    fun scheduleRefresh() {
+        val sec = _state.value.refreshSeconds
+        _state.update { it.copy(nextRefreshAt = if (sec > 0) nowMs() + sec * 1000L else 0L) }
+    }
+
+    fun setGapLimit(gap: Int) {
+        val g = gap.coerceIn(5, 200)
+        prefs.put(K_GAP, g.toString())
+        _state.update { it.copy(gapLimit = g) }
+    }
+
+    /** ⏻: the wallet is locked on screen until it is unlocked again (iOS apps do not quit themselves). */
+    fun lock() = _state.update { it.copy(locked = true, hidden = it.streetMode || it.hidden) }
+
+    fun unlock() {
+        if (_state.value.kind != WalletKind.HOT || platform.demoScreen != null) { _state.update { it.copy(locked = false) }; return }
+        platform.seeds.load(I18n.tr("Unlock Kilowallet")) { secret, error ->
+            if (secret == null) { say(error ?: "Not unlocked."); return@load }
+            _state.update { it.copy(locked = false) }
+        }
     }
 
     /** Screenshot mode (a throwaway demo wallet, nothing sent anywhere). */
@@ -284,7 +364,8 @@ class WalletModel(private val platform: AppPlatform) {
         pools.detach()
         platform.seeds.delete()
         prefs.put(K_KIND, null); prefs.put(K_ZPUB, null)
-        _state.update { UiState(endpoint = it.endpoint, pinned = it.pinned) }
+        _state.update { UiState(endpoint = it.endpoint, pinned = it.pinned, fiat = it.fiat, market = it.market,
+            refreshSeconds = it.refreshSeconds, gapLimit = it.gapLimit, streetMode = it.streetMode) }
     }
 
     /** Show the recovery words after Face ID / Touch ID / passcode. */
@@ -302,15 +383,15 @@ class WalletModel(private val platform: AppPlatform) {
         val zpub = s.zpub ?: return
         scanJob?.cancel()
         scanJob = scope.launch {
-            _state.update { it.copy(scan = ScanPhase.Scanning("", 0, 0, 20, 0), certChanged = null) }
+            _state.update { it.copy(scan = ScanPhase.Scanning("", 0, 0, s.gapLimit, 0), certChanged = null) }
             var found = 0
-            scanner.scan(zpub, s.endpoint, s.pinned).collect { ev ->
+            scanner.scan(zpub, s.endpoint, s.pinned, s.gapLimit).collect { ev ->
                 when (ev) {
                     is ScanEvent.Connecting -> Unit
                     is ScanEvent.Connected -> _state.update { it.copy(height = ev.height, serverVersion = ev.server) }
                     is ScanEvent.Deriving -> _state.update {
                         val p = it.scan as? ScanPhase.Scanning
-                        it.copy(scan = ScanPhase.Scanning(ev.path, ev.chainIndex, p?.gap ?: 0, p?.gapLimit ?: 20, found))
+                        it.copy(scan = ScanPhase.Scanning(ev.path, ev.chainIndex, p?.gap ?: 0, p?.gapLimit ?: s.gapLimit, found))
                     }
                     is ScanEvent.Found -> { found++; _state.update { st -> st.copy(scan = (st.scan as? ScanPhase.Scanning)?.copy(gap = 0, found = found) ?: st.scan) } }
                     is ScanEvent.GapProgress -> _state.update { st ->
@@ -320,13 +401,13 @@ class WalletModel(private val platform: AppPlatform) {
                         pinIfFirst(s.endpoint, ev.fingerprint)
                         if (!sameWallet(s)) return@collect
                         _state.update { it.copy(scan = ScanPhase.Done, rows = ev.rows, txs = ev.txs, height = ev.height) }
-                        if (platform.demoScreen?.substringBefore('@') == "home") platform.markReady("home")
+                        platform.demoScreen?.substringBefore('@')?.takeIf { it == "home" || it == "simple" }?.let { platform.markReady(it) }
                     }
                     is ScanEvent.Failed -> _state.update { it.copy(scan = ScanPhase.Error(ev.message)) }
                     is ScanEvent.CertificateChanged -> _state.update { it.copy(scan = ScanPhase.Error(ev.message), certChanged = ev.fingerprint) }
                 }
             }
-            if (platform.demoScreen?.substringBefore('@') == "home" && _state.value.scan is ScanPhase.Error) platform.markReady("home")
+            if (_state.value.scan is ScanPhase.Error) platform.demoScreen?.substringBefore('@')?.takeIf { it == "home" || it == "simple" }?.let { platform.markReady(it) }
         }
     }
 
@@ -342,7 +423,7 @@ class WalletModel(private val platform: AppPlatform) {
         val zpub = s.zpub ?: return
         scanJob = scope.launch {
             _state.update { it.copy(refreshing = true) }
-            scanner.scan(zpub, s.endpoint, s.pinned).collect { ev ->
+            scanner.scan(zpub, s.endpoint, s.pinned, s.gapLimit).collect { ev ->
                 when (ev) {
                     is ScanEvent.Done -> {
                         pinIfFirst(s.endpoint, ev.fingerprint)
@@ -561,6 +642,10 @@ class WalletModel(private val platform: AppPlatform) {
                     "home" -> scan()
                     "receive" -> { go(Screen.Receive); platform.markReady(screen) }
                     "settings" -> { go(Screen.Settings); platform.markReady(screen) }
+                    "lightning" -> { selectTab(Tab.LIGHTNING); platform.markReady(screen) }
+                    "ark" -> { selectTab(Tab.ARK); platform.markReady(screen) }
+                    "simple" -> { _state.update { it.copy(simple = true) }; scan() }
+                    "locked" -> { _state.update { it.copy(locked = true) }; platform.markReady(screen) }
                     "replace" -> {
                         // A made-up pending send, only so the cancel screen has something to show.
                         go(Screen.Replace("4f".repeat(32), cancel = true)); platform.markReady(screen)
