@@ -113,11 +113,14 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             if (state.fiat != Fiat.OFF) KeyValue("price of 1 ${Chain.TICKER}", state.perCoin?.let { Fiat.format(it, state.fiat) } ?: "no price yet")
 
             Text(if (hot) "Address type for new addresses" else "Address type (derivation)", style = MaterialTheme.typography.bodyMedium, color = TextMain)
-            Text("● ${state.scriptType.label}", style = MaterialTheme.typography.bodySmall, color = Purple)
             if (hot) {
-                Text("○ Taproot (bc1p)", style = MaterialTheme.typography.bodySmall, color = TextFaint)
-                Explain("Taproot addresses come in a later build on iPhone.")
-            }
+                // Android 1.2.4: both accounts are scanned and spent once Taproot exists; this picks what new addresses are.
+                val tr = state.receiveTaproot
+                LinkText((if (!tr) "● " else "○ ") + "Native SegWit (bc1q)", color = if (!tr) Purple else TextMain) { model.setReceiveTaproot(false) }
+                LinkText((if (tr) "● " else "○ ") + "Taproot (bc1p)", color = if (tr) Purple else TextMain) { model.setReceiveTaproot(true) }
+                Explain("New receive and change addresses. Coins on either kind stay in the wallet and are spent together: " +
+                    "switching never hides one. Kilojoin pools are native SegWit only.")
+            } else Text("● ${state.scriptType.label}", style = MaterialTheme.typography.bodySmall, color = Purple)
 
             SettingRow("Gap limit: ${state.gapLimit}", "How many empty addresses in a row are checked before stopping. " +
                 "Raise it if you use many addresses; lower it to scan faster.") {
@@ -171,11 +174,17 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
             }
 
             Text("Backup file", style = MaterialTheme.typography.bodyMedium, color = TextMain)
-            Explain("The backup file (the same one as Kilowallet for Android, to restore on either) comes in a later build on iPhone. " +
-                "Until then your written recovery words are the backup.")
-            SecondaryButton("SAVE A BACKUP FILE", Modifier.fillMaxWidth(), enabled = false) {}
-            SecondaryButton("SWITCH / NEW WALLET", Modifier.fillMaxWidth()) { confirmDelete = true }
-            LinkText("forget this wallet", color = Bad) { confirmDelete = true }
+            Explain(if (hot) "One encrypted file with your words and settings, the same format as Kilowallet for Android: it restores on either."
+                else "The backup file holds a spending wallet's words: switch to the hot wallet to save one.")
+            SecondaryButton("SAVE A BACKUP FILE", Modifier.fillMaxWidth(), enabled = hot) { model.go(com.kilombino.kilowallet.app.Screen.Backup) }
+            // Both wallets live side by side (Android 1.4.4): add the one that is missing, or remove the one on screen.
+            if (state.watchKey == null) SecondaryButton("ADD A WATCH-ONLY WALLET", Modifier.fillMaxWidth(), color = Orange) {
+                model.go(com.kilombino.kilowallet.app.Screen.Watch)
+            }
+            if (state.hotZpub == null) SecondaryButton("ADD A SPENDING WALLET", Modifier.fillMaxWidth()) {
+                model.go(com.kilombino.kilowallet.app.Screen.Welcome)
+            }
+            LinkText(if (hot) "remove this hot wallet" else "forget this watch-only wallet", color = Bad) { confirmDelete = true }
         }
 
         if (hot) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
@@ -218,7 +227,7 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
 
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
-        title = { Text(if (hot) "Switch to another wallet?" else "Forget this wallet?", style = MaterialTheme.typography.titleMedium) },
+        title = { Text(if (hot) "Remove the hot wallet?" else "Forget this wallet?", style = MaterialTheme.typography.titleMedium) },
         text = {
             Text(if (hot) "The recovery words are deleted from this iPhone. Your coins stay on the chain, but only your " +
                 "written words can bring them back. Make sure you have them." else "The public key is forgotten. Nothing can be lost: it was watch-only.",

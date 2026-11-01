@@ -1,5 +1,11 @@
 package com.kilombino.kilowallet.app.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,7 +52,7 @@ fun SendScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
  * unlock and broadcast as a normal send.
  */
 @Composable
-fun ReplaceScreen(model: WalletModel, state: UiState, platform: AppPlatform, txid: String, cancel: Boolean) {
+fun ReplaceScreen(model: WalletModel, state: UiState, platform: AppPlatform, txid: String, cancel: Boolean, cpfp: Boolean = false) {
     if (state.send != SendPhase.Editing) { SendSteps(model, state, platform); return }
     var rate by remember { mutableStateOf("") }
     val rateValue = rate.replace(',', '.').toDoubleOrNull() ?: state.suggestedRate?.coerceAtLeast(3.0) ?: 3.0
@@ -54,22 +60,29 @@ fun ReplaceScreen(model: WalletModel, state: UiState, platform: AppPlatform, txi
         BackLink { model.back() }
         Text(if (cancel) "Cancel ${txid.take(8)}…" else "Speed up ${txid.take(8)}…", style = MaterialTheme.typography.titleLarge, color = TextMain)
         Panel(accent = if (cancel) Warn else Purple) {
-            Text(if (cancel) "Replaces the payment with one that sends everything back to a fresh address of yours. " +
-                "The recipients get nothing, unless the original confirms first: then this one is refused."
-                else "Replaces the stuck send with the same payment and a higher fee, taken from your change.",
-                style = MaterialTheme.typography.bodyMedium, color = TextMain)
+            Text(when {
+                cancel -> "Replaces the payment with one that sends everything back to a fresh address of yours. " +
+                    "The recipients get nothing, unless the original confirms first: then this one is refused."
+                cpfp -> "Child pays for parent: your part of this incoming payment is sent back to a fresh address of yours " +
+                    "with a fee high enough for both transactions together. Miners take the pair as one package, so the " +
+                    "payment confirms sooner. Works even when you did not send it."
+                else -> "Replaces the stuck send with the same payment and a higher fee, taken from your change."
+            }, style = MaterialTheme.typography.bodyMedium, color = TextMain)
         }
         Panel {
             SectionLabel("Fee rate")
             Field(rate, { rate = it.filter { c -> c.isDigit() || c == '.' || c == ',' } },
                 "sat/vB (default ${fmtRate(rateValue)})", keyboard = KeyboardType.Decimal)
-            Explain(if (cancel) "Fee rate for the cancellation. It must beat the old fee by at least 1 sat/vB of its size, " +
-                "and the higher it is, the likelier it gets mined before the original." else
-                "New fee rate. It must beat the old fee by at least 1 sat/vB of the transaction's size; " +
-                "most pools only mine from 1 sat/vB.")
+            Explain(when {
+                cancel -> "Fee rate for the cancellation. It must beat the old fee by at least 1 sat/vB of its size, " +
+                    "and the higher it is, the likelier it gets mined before the original."
+                cpfp -> "The fee rate the two transactions together will pay. It must be higher than what the stuck one pays now."
+                else -> "New fee rate. It must beat the old fee by at least 1 sat/vB of the transaction's size; " +
+                    "most pools only mine from 1 sat/vB."
+            })
         }
         PrimaryButton("Review", Modifier.fillMaxWidth(), color = if (cancel) Warn else Purple) {
-            model.prepareReplace(txid, cancel, rateValue)
+            if (cpfp) model.prepareCpfp(txid, rateValue) else model.prepareReplace(txid, cancel, rateValue)
         }
     }
 }
@@ -82,12 +95,13 @@ private fun SendSteps(model: WalletModel, state: UiState, platform: AppPlatform)
         SendPhase.Preparing -> Busy(model, "Choosing coins and checking each one against its transaction…")
         is SendPhase.Review -> Review(model, p, platform, state)
         SendPhase.Signing -> Busy(model, "Signing (unified sighash) and broadcasting…", allowBack = false)
+        is SendPhase.Psbt -> PsbtStep(model, p, platform)
         is SendPhase.Sent -> Sent(model, p)
         is SendPhase.Failed -> ScreenColumn {
             BackLink { model.back() }
             Text("Not sent", style = MaterialTheme.typography.titleLarge, color = Bad)
             Panel(accent = Bad) { Text(p.message, style = MaterialTheme.typography.bodyMedium, color = TextMain) }
-            PrimaryButton(if (state.screen is Screen.Replace) "Back" else "Edit the send", Modifier.fillMaxWidth()) { model.editSend() }
+            PrimaryButton(if (state.screen is Screen.Replace || state.screen is Screen.Cpfp) "Back" else "Edit the send", Modifier.fillMaxWidth()) { model.editSend() }
         }
     }
 }
@@ -183,22 +197,25 @@ private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatfor
         BackLink("← edit") { model.editSend() }
         Text(when {
             d.cancels -> "Review the cancellation"
-            d.replaces != null -> "Review the speed-up"
+            d.replaces != null || d.cpfpParent != null -> "Review the speed-up"
             else -> "Review the send"
         }, style = MaterialTheme.typography.titleLarge, color = TextMain)
         Panel {
-            SectionLabel(if (d.cancels) "Back to you" else "To")
+            SectionLabel(if (d.cancels || d.cpfpParent != null) "Back to you" else "To")
             Text(chunked(d.to), style = MaterialTheme.typography.titleMedium, color = TextMain)
             if (d.cancels) Explain("A fresh address of this wallet. The recipients get nothing.")
+            if (d.cpfpParent != null) Explain("A fresh address of this wallet: only the fee leaves it.")
         }
         Panel {
             KeyValue("amount", "${formatSats(d.amount)} sats")
             state.perCoin?.let { KeyValue("≈", Fiat.format(it * d.amount / 1e8, state.fiat), TextSoft) }
             d.replaces?.let { KeyValue("replaces", shortTxid(it)) }
+            d.cpfpParent?.let { KeyValue("pulls along", shortTxid(it)) }
+            if (d.cpfpParent != null) KeyValue("both together", "${fmtRate(d.packageRate)} sat/vB", Purple)
             if (d.replaces != null) KeyValue("old fee", "${formatSats(d.replacedFee)} sats")
             KeyValue("fee", "${formatSats(d.fee)} sats · ${fmtRate(d.effectiveRate)} sat/vB")
-            if (!d.cancels) KeyValue("total", "${formatSats(d.totalSent)} sats", Purple)
-            if (!d.cancels) KeyValue("change back to you", if (d.change > 0) "${formatSats(d.change)} sats" else "none")
+            if (!d.cancels && d.cpfpParent == null) KeyValue("total", "${formatSats(d.totalSent)} sats", Purple)
+            if (!d.cancels && d.cpfpParent == null) KeyValue("change back to you", if (d.change > 0) "${formatSats(d.change)} sats" else "none")
             KeyValue("coins spent", "${d.inputs.size}")
         }
         p.concern?.let { c ->
@@ -212,8 +229,50 @@ private fun Review(model: WalletModel, p: SendPhase.Review, platform: AppPlatfor
         }
         Explain("Signed with the unified sighash (0x21): this transaction is valid on the ${Chain.DISPLAY} chain only and " +
             "cannot be replayed on the SHA-256 chain. It signals replace-by-fee.")
-        PrimaryButton("Send with ${platform.unlockName}", Modifier.fillMaxWidth(), enabled = p.concern == null || ack) {
+        if (state.kind == com.kilombino.kilowallet.app.WalletKind.WATCH) {
+            // Watch-only: no keys here; the signer (SeedSigner, Sparrow…) gets a PSBT.
+            PrimaryButton("Sign elsewhere (PSBT)", Modifier.fillMaxWidth(), enabled = p.concern == null || ack, color = Orange) {
+                model.exportPsbt()
+            }
+        } else PrimaryButton("Send with ${platform.unlockName}", Modifier.fillMaxWidth(), enabled = p.concern == null || ack) {
             model.confirmSend()
+        }
+    }
+}
+
+/**
+ * Watch-only: the PSBT for a signer as an animated QR (ur:crypto-psbt, what SeedSigner reads) or
+ * as text, then the signed one back by camera or paste (Android 1.1 `PsbtQr`).
+ */
+@Composable
+private fun PsbtStep(model: WalletModel, p: SendPhase.Psbt, platform: AppPlatform) {
+    val clipboard = LocalClipboardManager.current
+    val encoder = remember(p) { com.kilombino.kilowallet.core.crypto.Ur.psbtEncoder(p.exported) }
+    var part by remember(p) { mutableStateOf(encoder.nextPart()) }
+    // One frame every 300 ms: a signer that missed some still finishes (fountain parts).
+    androidx.compose.runtime.LaunchedEffect(p) { while (true) { kotlinx.coroutines.delay(300); part = encoder.nextPart() } }
+    ScreenColumn {
+        BackLink("← edit") { model.editSend() }
+        Text("Sign elsewhere", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Explain("1. Scan this animated QR with your signer (SeedSigner, Sparrow, Keystone…). It shows the very " +
+            "payment you reviewed and asks for the BLAKE2b unified signature (0x21), which can't be replayed on the " +
+            "SHA-256 chain.", color = TextSoft)
+        platform.qrImage(part.uppercase())?.let { qr ->
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Box(Modifier.clip(RoundedCornerShape(12.dp)).background(androidx.compose.ui.graphics.Color.White).padding(12.dp)) {
+                    androidx.compose.foundation.Image(qr, contentDescription = "Animated QR of the PSBT", modifier = Modifier.size(280.dp),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit, filterQuality = androidx.compose.ui.graphics.FilterQuality.None)
+                }
+            }
+        }
+        LinkText("copy the PSBT (base64)", color = Orange) {
+            clipboard.setText(AnnotatedString(com.kilombino.kilowallet.core.crypto.Psbt.base64(p.exported)))
+        }
+        Explain("2. Bring the signed PSBT back. Every signature is checked here against your own copy of the coins " +
+            "before anything is sent; one made the old way (valid on the SHA-256 chain too) is refused.", color = TextSoft)
+        if (platform.canScanQr) PrimaryButton("Scan the signed PSBT", Modifier.fillMaxWidth(), color = Orange) { model.scanSignedPsbt() }
+        SecondaryButton("Paste the signed PSBT", Modifier.fillMaxWidth(), color = Orange) {
+            clipboard.getText()?.text?.let { model.finishPsbtText(it) }
         }
     }
 }

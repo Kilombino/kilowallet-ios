@@ -74,6 +74,13 @@ final class Bridge: NSObject, IosBridge {
         }
     }
 
+    func scanQrParts(listener: IosQrPartListener) {
+        DispatchQueue.main.async {
+            guard let top = Self.topViewController() else { listener.onEnd(); return }
+            QrScannerViewController.presentParts(from: top, onPart: { listener.onPart(text: $0) }, onEnd: { listener.onEnd() })
+        }
+    }
+
     // MARK: Price feed
 
     /// One HTTPS GET (the price feed): no cookies, no cache, a 10 s timeout; the body of a 200 answer or nil.
@@ -111,6 +118,16 @@ final class Bridge: NSObject, IosBridge {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try? "ready".write(to: dir.appendingPathComponent("kw-ready-\(name)"), atomically: true, encoding: .utf8)
         #endif
+    }
+
+    // MARK: Backup file (FileBridge.swift)
+
+    func saveFile(name: String, data: Data, completion: @escaping (String?) -> Void) {
+        FileBridge.save(name: name, data: data, completion: completion)
+    }
+
+    func openFile(completion: @escaping (Data?) -> Void) {
+        FileBridge.open(completion: completion)
     }
 
     // MARK: Lightning (LND linked in: LndmobileEngine.swift)

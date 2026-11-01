@@ -48,7 +48,12 @@ fun WalletHeader(model: WalletModel, state: UiState, platform: AppPlatform) {
     var askLock by remember { mutableStateOf(false) }
     var askSwitch by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f)) { WalletSwitch(state) { askSwitch = true } }
+        Box(Modifier.weight(1f)) {
+            WalletSwitch(state) {
+                val other = if (state.kind == WalletKind.HOT) WalletKind.WATCH else WalletKind.HOT
+                if (state.hasBoth) model.switchWallet(other) else askSwitch = true
+            }
+        }
         LinkText(if (state.simple) "advanced" else "simple", color = TextSoft) { model.setSimple(!state.simple) }
         LinkText("⚙", color = TextSoft) { model.go(Screen.Settings) }
         Box(Modifier.size(30.dp).clip(CircleShape).clickable { askLock = true }, contentAlignment = Alignment.Center) {
@@ -70,12 +75,15 @@ fun WalletHeader(model: WalletModel, state: UiState, platform: AppPlatform) {
     )
     if (askSwitch) AlertDialog(
         onDismissRequest = { askSwitch = false },
-        title = { Text(if (state.kind == WalletKind.HOT) "Watch another wallet" else "Back to the hot wallet", style = MaterialTheme.typography.titleMedium) },
+        title = { Text(if (state.kind == WalletKind.HOT) "Add a watch-only wallet" else "Add a spending wallet", style = MaterialTheme.typography.titleMedium) },
         text = {
-            Text("On iPhone this version keeps one wallet at a time: a spending wallet or a watch-only one. " +
-                "To change it, use SWITCH / NEW WALLET in settings.", style = MaterialTheme.typography.bodySmall)
+            Text(if (state.kind == WalletKind.HOT) "Watch another wallet next to this one with its public key (zpub / xpub): " +
+                "it can receive and show its coins, never spend. The switch then moves between the two."
+                else "Create or restore a wallet you can spend from, next to this watch-only one. The switch then moves between the two.",
+                style = MaterialTheme.typography.bodySmall)
         },
-        confirmButton = { TextButton(onClick = { askSwitch = false; model.go(Screen.Settings) }) { Text("SETTINGS", color = Purple) } },
+        confirmButton = { TextButton(onClick = { askSwitch = false; model.go(if (state.kind == WalletKind.HOT) Screen.Watch else Screen.Welcome) }) {
+            Text("ADD", color = Purple) } },
         dismissButton = { TextButton(onClick = { askSwitch = false }) { Text("CANCEL", color = TextSoft) } },
         containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft,
     )

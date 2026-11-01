@@ -59,8 +59,10 @@ fun Logo(size: Int) {
 fun BackLink(text: String = "← back", onClick: () -> Unit) = LinkText(text, onClick = onClick)
 
 @Composable
-fun WelcomeScreen(model: WalletModel) {
+fun WelcomeScreen(model: WalletModel, state: com.kilombino.kilowallet.app.UiState) {
     ScreenColumn {
+        // Adding the other wallet next to one that exists (Android: both side by side): a way back.
+        if (state.kind != null) BackLink { model.go(com.kilombino.kilowallet.app.Screen.Home) }
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) { Logo(150) }
         Text("Kilowallet", style = MaterialTheme.typography.displayLarge, color = Purple)
@@ -73,7 +75,9 @@ fun WelcomeScreen(model: WalletModel) {
                 "in the iOS Keychain, unlocked only by Face ID, Touch ID or your passcode. Native SegWit (bc1q).", color = TextSoft)
             PrimaryButton("New wallet · 12 words", Modifier.fillMaxWidth()) { model.startCreate(12) }
             SecondaryButton("New wallet · 24 words", Modifier.fillMaxWidth()) { model.startCreate(24) }
+            SecondaryButton("New wallet · from dice", Modifier.fillMaxWidth()) { model.startDice() }
             SecondaryButton("Restore from words", Modifier.fillMaxWidth(), color = TextMain) { model.go(com.kilombino.kilowallet.app.Screen.Restore) }
+            SecondaryButton("Restore from a backup file (.kab)", Modifier.fillMaxWidth(), color = TextMain) { model.pickBackupFile() }
         }
         Panel(accent = Orange) {
             SectionLabel("Watch-only wallet", Orange)
@@ -197,6 +201,7 @@ fun WatchScreen(model: WalletModel, platform: AppPlatform) {
             Explain("A plain xpub doesn't say which addresses it makes: pick the type your wallet uses.", color = TextSoft)
             listOf(
                 ScriptType.P2WPKH to "Native SegWit · bc1q… (BIP84)",
+                ScriptType.P2TR to "Taproot · bc1p… (BIP86)",
                 ScriptType.P2SH_P2WPKH to "Nested SegWit · 3… (BIP49)",
                 ScriptType.P2PKH to "Legacy · 1… (BIP44)",
             ).forEach { (t, name) ->
@@ -222,3 +227,90 @@ fun ShowWordsScreen(model: WalletModel, words: List<String>) {
 }
 
 internal val BigNumber = 52.sp
+
+/**
+ * New wallet from physical dice, SeedSigner's way (Android 1.2, `DiceScreen`): every roll is a digit
+ * 1–6, 50 make 12 words and 99 make 24; the same rolls in a SeedSigner make the same seed. Rolls
+ * that look made up are flagged before the words are shown ([com.kilombino.kilowallet.core.crypto.DiceCheck]).
+ */
+@Composable
+fun DiceScreen(model: WalletModel) {
+    var rolls by remember { mutableStateOf("") }
+    var target by remember { mutableStateOf(50) }
+    var warned by remember { mutableStateOf<List<String>?>(null) }
+    ScreenColumn {
+        BackLink { model.back() }
+        Text("Roll dice for your seed", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Explain("Roll a real die and tap the number that comes up, $target times. Nothing from this phone's random " +
+            "generator goes into the seed: the words come from your rolls only (SHA-256 of them, as SeedSigner does), " +
+            "so a SeedSigner given the same rolls shows the same words.", color = TextSoft)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            listOf(50 to "12 words · 50 rolls", 99 to "24 words · 99 rolls").forEach { (n, label) ->
+                LinkText((if (n == target) "● " else "○ ") + label, color = if (n == target) Purple else TextMain) {
+                    target = n; if (rolls.length > n) rolls = rolls.take(n)
+                }
+            }
+        }
+        Text("${rolls.length} / $target", style = MaterialTheme.typography.titleMedium, color = if (rolls.length == target) Good else TextMain)
+        Text(rolls.chunked(5).joinToString(" "), style = MaterialTheme.typography.bodyMedium, color = TextSoft)
+        for (row in listOf(listOf(1, 2, 3), listOf(4, 5, 6))) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            row.forEach { d ->
+                PrimaryButton("$d", Modifier.weight(1f), enabled = rolls.length < target) { rolls += d.toString() }
+            }
+        }
+        // Well below the dice, so a slip off a die never undoes or clears anything.
+        Spacer(Modifier.height(18.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SecondaryButton("Undo last", Modifier.weight(1f), color = TextSoft, enabled = rolls.isNotEmpty()) { rolls = rolls.dropLast(1) }
+            SecondaryButton("Clear", Modifier.weight(1f), color = TextSoft, enabled = rolls.isNotEmpty()) { rolls = "" }
+        }
+        PrimaryButton("Make the words", Modifier.fillMaxWidth(), enabled = rolls.length == target) {
+            val why = com.kilombino.kilowallet.core.crypto.DiceCheck.problems(rolls)
+            if (why.isEmpty()) model.diceWords(rolls) else warned = why
+        }
+    }
+    warned?.let { why ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { warned = null },
+            title = { Text("These don't look like real dice", style = MaterialTheme.typography.titleMedium) },
+            text = { Text(why.joinToString("\n\n") + "\n\nRoll a real die: made-up numbers are far easier to guess than they look.",
+                style = MaterialTheme.typography.bodySmall) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { warned = null; rolls = "" }) { Text("ROLL AGAIN", color = Purple) } },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { warned = null; model.diceWords(rolls) }) { Text("USE THEM ANYWAY", color = TextSoft) } },
+            containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft,
+        )
+    }
+}
+
+/** The password of a backup file picked to restore from (Android `RestoreFromFileButton`). */
+@Composable
+fun RestoreFileScreen(model: WalletModel, bytes: ByteArray) {
+    var password by remember { mutableStateOf("") }
+    ScreenColumn {
+        BackLink { model.back() }
+        Text("Restore from a backup file", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Explain("Enter the password the file was saved with. Its recovery words become this phone's spending wallet " +
+            "and its settings come back; servers are never taken from a file. A file from Kilowallet for Android works too.", color = TextSoft)
+        Field(password, { password = it }, "the file's password", password = true)
+        PrimaryButton("Restore", Modifier.fillMaxWidth(), enabled = password.isNotEmpty()) { model.restoreBackup(bytes, password) }
+    }
+}
+
+/** Write a backup file (.kab): words, passphrase and settings, sealed with a password (Android `FullBackupPanel`). */
+@Composable
+fun BackupScreen(model: WalletModel) {
+    var p1 by remember { mutableStateOf("") }
+    var p2 by remember { mutableStateOf("") }
+    ScreenColumn {
+        BackLink { model.go(com.kilombino.kilowallet.app.Screen.Settings) }
+        Text("Backup file", style = MaterialTheme.typography.titleLarge, color = TextMain)
+        Explain("One encrypted file with your recovery words, their passphrase if you set one, and the app's settings. " +
+            "It restores on another iPhone or on Kilowallet for Android. Keep the file and its password apart: " +
+            "together they open the wallet. Your words on paper still work without it.", color = TextSoft)
+        Field(p1, { p1 = it }, "password (${com.kilombino.kilowallet.core.backup.Kab.MIN_PASSWORD}+ characters)", password = true)
+        Field(p2, { p2 = it }, "the same password again", password = true)
+        if (p2.isNotEmpty() && p1 != p2) Text("The two passwords differ.", style = MaterialTheme.typography.bodySmall, color = Bad)
+        PrimaryButton("Save the backup file", Modifier.fillMaxWidth(),
+            enabled = p1.length >= com.kilombino.kilowallet.core.backup.Kab.MIN_PASSWORD && p1 == p2) { model.exportBackup(p1) }
+    }
+}

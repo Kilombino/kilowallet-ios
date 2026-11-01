@@ -24,10 +24,16 @@ interface IosBridge {
     fun qrPng(text: String): NSData?
     fun canScanQr(): Boolean
     fun scanQr(completion: (String?) -> Unit)
+    /** Keep the camera open for an animated QR: every new code goes to [listener] until it says it is complete. */
+    fun scanQrParts(listener: IosQrPartListener)
 
     fun appVersion(): String
     /** HTTPS GET: the body of a 200 answer, or null. Called back on any thread. */
     fun httpGet(url: String, completion: (String?) -> Unit)
+    /** Ask where to save [data] as [name] (the document picker); calls back with null when saved, else an error or "cancelled". */
+    fun saveFile(name: String, data: NSData, completion: (String?) -> Unit)
+    /** Let the user pick a file; its bytes, or null when cancelled. Called back on the main thread. */
+    fun openFile(completion: (NSData?) -> Unit)
     /** CI screenshot mode only: write a marker file so the workflow knows the screen settled. */
     fun markReady(name: String)
 
@@ -55,6 +61,14 @@ interface IosBridge {
     /** A background task while a payment is on its way; returns its id (0 when none was given). */
     fun beginBackgroundWork(name: String): Long
     fun endBackgroundWork(id: Long)
+}
+
+/** An animated QR being read part by part. */
+interface IosQrPartListener {
+    /** A new code; true when the message is complete (the camera then closes). */
+    fun onPart(text: String): Boolean
+    /** The camera closed (complete or cancelled). */
+    fun onEnd()
 }
 
 /** What LND answers (one call, or each message of a stream). Called on any thread. */

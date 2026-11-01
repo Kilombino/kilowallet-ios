@@ -511,7 +511,7 @@ class PoolsModel(
         val open = listOf(terms(100_000, 1, 2, 2.0), terms(50_000, 2, 3, 1.0), terms(25_000, 2, 1, 3.0, listOf(20_000, 30_000)),
             terms(1_000_000, 1, 1, 1.0, private = true))
         _state.update { it.copy(open = open) }
-        if (screen == "pool-round" || screen == "pools") {
+        if (screen == "pool-round" || screen == "pools" || screen == "pool-history") {
             val seed = Bip39.toSeed(words, "")
             val master = Bip32Priv.fromSeed(seed)
             fun k(c: Int, i: Int) = Bip32Priv.derivePath(master, "m/84'/0'/0'/$c/$i").keyBytes()
@@ -534,6 +534,10 @@ class PoolsModel(
                 st.outputs.add(Address.scriptPubKey(com.kilombino.kilowallet.core.crypto.Ec.publicKey(Hashes.sha256("demo-o1".encodeToByteArray())), ScriptType.P2WPKH).toHex())
                 st.outputs.add(Address.scriptPubKey(com.kilombino.kilowallet.core.crypto.Ec.publicKey(Hashes.sha256("demo-o2".encodeToByteArray())), ScriptType.P2WPKH).toHex())
                 st.phase = PoolSession.Phase.SIGNING; st.phaseDeadline = now + 17 * 60
+            } else if (screen == "pool-history") {
+                // A round that went out and confirmed, as HISTORY shows it.
+                st.phase = PoolSession.Phase.CONFIRMED; st.txid = "ab".repeat(32)
+                st.sentAt = now - 5400; st.endedAt = now - 4800
             } else st.phase = PoolSession.Phase.OPEN
             master.wipe()
             sessions = mapOf(st.poolId to PoolSession(env(st), st, platform.sockets))

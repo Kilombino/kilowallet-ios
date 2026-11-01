@@ -69,9 +69,15 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
 
     override val canScanQr: Boolean get() = bridge.canScanQr()
     override fun scanQr(done: (String?) -> Unit) = bridge.scanQr { done(it) }
+    override fun scanQrParts(onPart: (String) -> Boolean, onEnd: () -> Unit) = bridge.scanQrParts(object : IosQrPartListener {
+        override fun onPart(text: String): Boolean = onPart(text)
+        override fun onEnd() = onEnd()
+    })
     override fun markReady(name: String) = bridge.markReady(name)
     override val appVersion: String get() = bridge.appVersion()
     override fun httpGet(url: String, done: (String?) -> Unit) = bridge.httpGet(url) { done(it) }
+    override fun saveFile(name: String, data: ByteArray, done: (String?) -> Unit) = bridge.saveFile(name, data.toNSData()) { done(it) }
+    override fun openFile(done: (ByteArray?) -> Unit) = bridge.openFile { done(it?.toBytes()) }
 
     /**
      * The node when the app was built with the engine. Screenshot demos use it only for the live

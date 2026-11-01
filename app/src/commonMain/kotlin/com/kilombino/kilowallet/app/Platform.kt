@@ -60,6 +60,13 @@ interface AppPlatform {
     val canScanQr: Boolean
     /** Open the camera and call back with what the QR code said (null if cancelled). */
     fun scanQr(done: (String?) -> Unit)
+    /**
+     * Read an animated QR: the camera stays open and every new code goes to [onPart] until it
+     * returns true (complete); [onEnd] when the camera closes. Without it, one code per scan.
+     */
+    fun scanQrParts(onPart: (String) -> Boolean, onEnd: () -> Unit) {
+        scanQr { t -> if (t != null) onPart(t); onEnd() }
+    }
     /** Screenshot mode for CI: which screen to set up with a throwaway demo wallet, or null. */
     val demoScreen: String?
     /** Screenshot mode: tell the CI script the screen has settled. */
@@ -70,6 +77,10 @@ interface AppPlatform {
      * null. On iOS: URLSession (iosApp/iosApp/Bridge.swift).
      */
     fun httpGet(url: String, done: (String?) -> Unit) = done(null)
+    /** Save [data] as [name] where the user chooses; calls back with null when saved, else why not ("cancelled"). */
+    fun saveFile(name: String, data: ByteArray, done: (String?) -> Unit) = done("Saving files is not available here.")
+    /** Let the user pick a file; calls back with its bytes, or null when cancelled. */
+    fun openFile(done: (ByteArray?) -> Unit) = done(null)
     /** The Lightning node, or null where it is not available (desktop, screenshot demos). */
     val lightning: LightningPlatform? get() = null
 }

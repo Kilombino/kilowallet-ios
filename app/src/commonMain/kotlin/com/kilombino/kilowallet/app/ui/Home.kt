@@ -93,9 +93,11 @@ private fun BtcTab(model: WalletModel, state: UiState) {
         BalanceCard(model, state)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SecondaryButton("RECEIVE", Modifier.weight(1f)) { model.go(Screen.Receive) }
-            if (hot) PrimaryButton("SEND", Modifier.weight(1f), enabled = state.scan is ScanPhase.Done && state.total > 0) { model.go(Screen.Send) }
+            // Watch-only sends are signed elsewhere (a PSBT); legacy (1…) wallets only watch.
+            if (hot || state.scriptType != com.kilombino.kilowallet.core.crypto.ScriptType.P2PKH)
+                PrimaryButton("SEND", Modifier.weight(1f), enabled = state.scan is ScanPhase.Done && state.total > 0) { model.go(Screen.Send) }
         }
-        if (!hot) Explain("Watch-only: this wallet can receive and show its coins, but not spend them.")
+        if (!hot) Explain("Watch-only: this wallet has no keys. A send is signed elsewhere (SeedSigner, Sparrow…) from a PSBT.")
 
         if (state.txs.isNotEmpty() || state.scan is ScanPhase.Done) Panel {
             SectionLabel("movements · confirmations")
@@ -105,6 +107,8 @@ private fun BtcTab(model: WalletModel, state: UiState) {
                 Explain("tap a movement for its details")
                 state.txs.take(200).forEach { tx ->
                     MovementRow(tx, state.hidden, canReplace = hot && tx.pending && (tx.amount ?: 0) < 0,
+                        canCpfp = hot && tx.pending && (tx.amount ?: 0) > 0,
+                        onCpfp = { model.go(Screen.Cpfp(tx.txid)) },
                         onReplace = { cancel -> model.go(Screen.Replace(tx.txid, cancel)) }) { detail = tx }
                 }
             }
@@ -121,7 +125,9 @@ private fun BtcTab(model: WalletModel, state: UiState) {
         // Only a send of ours can be replaced: a payment to us isn't ours to take back.
         val replace: ((Boolean) -> Unit)? = if (hot && tx.pending && (tx.amount ?: 0) < 0)
             ({ cancel -> detail = null; model.go(Screen.Replace(tx.txid, cancel)) }) else null
-        MovementDialog(tx, replace) { detail = null }
+        // A payment to us that is stuck can be pulled along by spending our part of it (CPFP).
+        val cpfp: (() -> Unit)? = if (hot && tx.pending && (tx.amount ?: 0) > 0) ({ detail = null; model.go(Screen.Cpfp(tx.txid)) }) else null
+        MovementDialog(tx, replace, cpfp) { detail = null }
     }
 }
 
@@ -233,7 +239,8 @@ internal fun TabColumn(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun MovementRow(tx: TxConf, hidden: Boolean, canReplace: Boolean, onReplace: (cancel: Boolean) -> Unit, onClick: () -> Unit) {
+private fun MovementRow(tx: TxConf, hidden: Boolean, canReplace: Boolean, onReplace: (cancel: Boolean) -> Unit,
+                        canCpfp: Boolean = false, onCpfp: () -> Unit = {}, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
@@ -250,6 +257,11 @@ private fun MovementRow(tx: TxConf, hidden: Boolean, canReplace: Boolean, onRepl
                     LinkText("⚡ speed up", color = Purple) { onReplace(false) }
                     LinkText("✕ cancel", color = Warn) { onReplace(true) }
                 }
+            }
+        } else if (canCpfp) {
+            Column(horizontalAlignment = Alignment.End) {
+                ConfBadge(tx)
+                LinkText("⚡ speed up", color = Purple) { onCpfp() }
             }
         } else ConfBadge(tx)
     }
@@ -269,7 +281,7 @@ private fun ConfBadge(tx: TxConf) {
 }
 
 @Composable
-private fun MovementDialog(tx: TxConf, onReplace: ((cancel: Boolean) -> Unit)?, onClose: () -> Unit) {
+private fun MovementDialog(tx: TxConf, onReplace: ((cancel: Boolean) -> Unit)?, onCpfp: (() -> Unit)? = null, onClose: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     val uri = LocalUriHandler.current
     AlertDialog(
@@ -292,6 +304,7 @@ private fun MovementDialog(tx: TxConf, onReplace: ((cancel: Boolean) -> Unit)?, 
                     LinkText("⚡ SPEED UP (RBF)", color = Purple) { r(false) }
                     LinkText("✕ CANCEL (RBF)", color = Warn) { r(true) }
                 }
+                onCpfp?.let { c -> LinkText("⚡ SPEED UP (CPFP)", color = Purple) { c() } }
             }
         },
         confirmButton = { TextButton(onClick = onClose) { Text("CLOSE", color = TextSoft) } },

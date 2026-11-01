@@ -14,6 +14,7 @@
 		85B9D0D31C81531652DAEE96 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9267B55DABDD08D11B695885 /* Keychain.swift */; };
 		D9D6B73F416D057687211ACD /* ElectrumConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 233B7995D37BBB0F5CE870B3 /* ElectrumConnection.swift */; };
 		96D38FB4F22BF89419F4FD06 /* QrCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD495524FB540E452313EE93 /* QrCode.swift */; };
+		F11EB12D6E0F4A1B8C3D2E01 /* FileBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11EB12D6E0F4A1B8C3D2E02 /* FileBridge.swift */; };
 		6A5040B4BF67937CD3DB3E8E /* QrScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C184BD235BFACA45E94544A9 /* QrScannerViewController.swift */; };
 		1DC5A061C2BA87CC0BA85165 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 35AB8EA49CA1DDDC892AA20C /* Assets.xcassets */; };
 		A3CB78E00DB693EED1C8796F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4661C30C2AA05FAA94C0FFDF /* PrivacyInfo.xcprivacy */; };
@@ -28,6 +29,7 @@
 		9267B55DABDD08D11B695885 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		233B7995D37BBB0F5CE870B3 /* ElectrumConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElectrumConnection.swift; sourceTree = "<group>"; };
 		AD495524FB540E452313EE93 /* QrCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrCode.swift; sourceTree = "<group>"; };
+		F11EB12D6E0F4A1B8C3D2E02 /* FileBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBridge.swift; sourceTree = "<group>"; };
 		C184BD235BFACA45E94544A9 /* QrScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrScannerViewController.swift; sourceTree = "<group>"; };
 		35AB8EA49CA1DDDC892AA20C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		4661C30C2AA05FAA94C0FFDF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -82,6 +84,7 @@
 				9267B55DABDD08D11B695885 /* Keychain.swift */,
 				233B7995D37BBB0F5CE870B3 /* ElectrumConnection.swift */,
 				AD495524FB540E452313EE93 /* QrCode.swift */,
+				F11EB12D6E0F4A1B8C3D2E02 /* FileBridge.swift */,
 				C184BD235BFACA45E94544A9 /* QrScannerViewController.swift */,
 				35AB8EA49CA1DDDC892AA20C /* Assets.xcassets */,
 				4661C30C2AA05FAA94C0FFDF /* PrivacyInfo.xcprivacy */,
@@ -215,6 +218,7 @@
 				85B9D0D31C81531652DAEE96 /* Keychain.swift in Sources */,
 				D9D6B73F416D057687211ACD /* ElectrumConnection.swift in Sources */,
 				96D38FB4F22BF89419F4FD06 /* QrCode.swift in Sources */,
+				F11EB12D6E0F4A1B8C3D2E01 /* FileBridge.swift in Sources */,
 				6A5040B4BF67937CD3DB3E8E /* QrScannerViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

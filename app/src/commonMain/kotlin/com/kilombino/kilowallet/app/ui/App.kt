@@ -47,7 +47,11 @@ fun App(platform: AppPlatform) {
         Surface(Modifier.fillMaxSize(), color = Ink) {
             Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 when (val s = state.screen) {
-                    Screen.Welcome -> WelcomeScreen(model)
+                    Screen.Welcome -> WelcomeScreen(model, state)
+                    Screen.Dice -> DiceScreen(model)
+                    is Screen.RestoreFile -> RestoreFileScreen(model, s.bytes)
+                    Screen.Backup -> BackupScreen(model)
+                    is Screen.Cpfp -> ReplaceScreen(model, state, platform, s.txid, cancel = false, cpfp = true)
                     is Screen.CreateShow -> CreateShowScreen(model, s.words)
                     is Screen.CreateConfirm -> CreateConfirmScreen(model, s.words, s.positions)
                     Screen.Restore -> RestoreScreen(model)

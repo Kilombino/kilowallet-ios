@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -129,10 +130,26 @@ fun PoolsScreen(model: WalletModel, state: UiState, platform: AppPlatform, embed
 
         val mine = ui.rounds
         val going = mine.filter { it.phase in active }
-        val finished = mine.filter { it.phase !in active }
-        if (going.isNotEmpty()) {
-            SectionLabel("Your rounds")
+        val finished = mine.filter { it.phase !in active }.sortedByDescending { maxOf(it.endedAt, it.sentAt) }
+        // POOLS · IN PROGRESS (n) · HISTORY, as Android 1.4.0; a round waiting on you opens IN PROGRESS.
+        var tab by remember { mutableStateOf(when {
+            platform.demoScreen?.startsWith("pool-history") == true -> 2
+            going.any { it.phase == PoolSession.Phase.SIGNING || it.phase == PoolSession.Phase.VOTING } -> 1
+            else -> 0
+        }) }
+        PoolTabs(tab, going.size) { tab = it }
+        if (tab == 1) {
+            if (going.isEmpty()) Explain("No rounds going. Join a pool, or open your own, in POOLS.")
             going.forEach { RoundCard(model, pools, it, ui.rev, platform) }
+            return@column
+        }
+        if (tab == 2) {
+            if (finished.isEmpty()) Explain("Confirmed and cancelled rounds show here until you remove them.")
+            else {
+                finished.forEach { RoundCard(model, pools, it, ui.rev, platform) }
+                LinkText("remove all", color = TextFaint) { pools.removeFinished() }
+            }
+            return@column
         }
         PrimaryButton("＋  Open a pool", Modifier.fillMaxWidth(), color = PoolBlue) { pools.startPayment(null); model.go(Screen.PoolCreate) }
 
@@ -149,11 +166,6 @@ fun PoolsScreen(model: WalletModel, state: UiState, platform: AppPlatform, embed
         if (ui.open == null && ui.loading) Explain("asking the relay…")
         shown.forEach { t -> OpenPoolCard(t) { model.go(Screen.PoolJoin(t.id)) } }
 
-        if (finished.isNotEmpty()) {
-            SectionLabel("Finished")
-            finished.forEach { RoundCard(model, pools, it, ui.rev, platform) }
-            LinkText("remove all finished", color = TextFaint) { pools.removeFinished() }
-        }
         WatchKeyPanel(pools, ui)
         HowItGoes()
         WhatItIs()
@@ -319,6 +331,15 @@ private fun RoundCard(model: WalletModel, pools: PoolsModel, st: PoolSession.Sta
         val ch = formatSats(st.seat.changeValue)
         Text(if (st.seat.changeValue > 0) "$coins: $inV → $out + $ch change · fee $fee" else "$coins: $inV → $out · fee $fee",
             style = MaterialTheme.typography.bodySmall, color = TextFaint)
+        timesOf(st)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = TextSoft) }
+        // Where the equal outputs went (Android 1.4.0 HISTORY): the wallet and the address.
+        if (st.phase == PoolSession.Phase.BROADCAST || st.phase == PoolSession.Phase.CONFIRMED) {
+            val where = if (dest == PoolDest.WATCH) "👁 watch-only wallet" else if (dest == PoolDest.PAY) "the recipients" else "🔥 hot wallet"
+            Text("to $where", style = MaterialTheme.typography.bodySmall, color = PoolBlue)
+            if (dest != PoolDest.PAY) pools.outputAddresses(st).forEach { a ->
+                Text(shortAddress(a), style = MaterialTheme.typography.bodySmall, color = TextFaint)
+            }
+        }
         if (dest == PoolDest.WATCH) Text("your equal outputs go to the watch-only wallet", style = MaterialTheme.typography.bodySmall, color = PoolBlue)
         if (dest == PoolDest.PAY) Text("a payment: it goes out only when the pool closes; if it does not fill, nothing is paid",
             style = MaterialTheme.typography.bodySmall, color = PoolBlue)
@@ -374,6 +395,60 @@ private fun RoundCard(model: WalletModel, pools: PoolsModel, st: PoolSession.Sta
             PoolSession.Phase.ABORTED, PoolSession.Phase.REJECTED -> LinkText("remove", color = TextFaint) { pools.remove(st.poolId) }
         }
     }
+}
+
+/** POOLS · IN PROGRESS (n) · HISTORY (Android `CoinjoinTabs`). */
+@Composable
+private fun PoolTabs(tab: Int, inProgress: Int, onTab: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(PanelBg).padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf("POOLS", "IN PROGRESS", "HISTORY").forEachIndexed { i, label ->
+            val on = i == tab
+            Row(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (on) PoolBlue else Color.Transparent)
+                .clickable { onTab(i) }.padding(vertical = 10.dp),
+                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = if (on) Ink else TextSoft, maxLines = 1)
+                if (i == 1 && inProgress > 0) Text(" $inProgress", style = MaterialTheme.typography.labelSmall, color = if (on) Ink else PoolBlue)
+            }
+        }
+    }
+}
+
+/**
+ * When a round went out and ended, as HISTORY shows it (Android `timesOf`): "📅 Sent 28 Oct 2026, 10:42 ·
+ * confirmed 10:51", the day again only when it changed. Times in UTC. Null while it goes on.
+ */
+private fun timesOf(st: PoolSession.State): String? {
+    val months = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    fun hhmm(at: Long) = "${((at % 86400) / 3600).toString().padStart(2, '0')}:${((at % 3600) / 60).toString().padStart(2, '0')} UTC"
+    fun day(at: Long) = civilDay(at / 86400).let { (y, m, d) -> "$d ${months[m - 1]} $y, " } + hhmm(at)
+    fun sameDay(a: Long, b: Long) = a / 86400 == b / 86400
+    val sent = st.sentAt; val ended = st.endedAt
+    return when (st.phase) {
+        PoolSession.Phase.BROADCAST -> if (sent > 0) "📅 Sent ${day(sent)}" else null
+        PoolSession.Phase.CONFIRMED -> when {
+            sent > 0 && ended > 0 -> "📅 Sent ${day(sent)} · confirmed ${if (sameDay(sent, ended)) hhmm(ended) else day(ended)}"
+            sent > 0 -> "📅 Sent ${day(sent)}"
+            ended > 0 -> "📅 Confirmed ${day(ended)}"
+            else -> null
+        }
+        PoolSession.Phase.ABORTED -> if (ended > 0) "📅 Cancelled ${day(ended)}" else null
+        PoolSession.Phase.REJECTED -> if (ended > 0) "📅 Refused ${day(ended)}" else null
+        else -> null
+    }
+}
+
+/** Year, month (1–12) and day of the UTC day [days] after 1970-01-01 (H. Hinnant's civil_from_days). */
+private fun civilDay(days: Long): Triple<Long, Int, Int> {
+    val z = days + 719468
+    val era = (if (z >= 0) z else z - 146096) / 146097
+    val doe = z - era * 146097
+    val yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    val mp = (5 * doy + 2) / 153
+    val d = (doy - (153 * mp + 2) / 5 + 1).toInt()
+    val m = (if (mp < 10) mp + 3 else mp - 9).toInt()
+    return Triple(yoe + era * 400 + if (m <= 2) 1 else 0, m, d)
 }
 
 private fun clock(at: Long): String {

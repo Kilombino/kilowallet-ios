@@ -2,16 +2,26 @@ import UIKit
 import AVFoundation
 
 /// Camera QR scanner (AVFoundation). Shows the camera full screen with a cancel button and returns
-/// the first QR code's text.
+/// the first QR code's text, or, for an animated QR (a signed PSBT as ur:crypto-psbt parts), hands
+/// every new code to [onPart] until it says the message is complete.
 final class QrScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     private let session = AVCaptureSession()
     private var completion: ((String?) -> Void)?
     private var finished = false
+    private var onPart: ((String) -> Bool)?
+    private var lastPart: String?
+    private let progress = UILabel()
 
-    static func present(from parent: UIViewController, completion: @escaping (String?) -> Void) {
+    /// Keep scanning: each new code goes to [onPart] (true = complete, close); [onEnd] when closed.
+    static func presentParts(from parent: UIViewController, onPart: @escaping (String) -> Bool, onEnd: @escaping () -> Void) {
+        present(from: parent, onPart: onPart) { _ in onEnd() }
+    }
+
+    static func present(from parent: UIViewController, onPart: ((String) -> Bool)? = nil, completion: @escaping (String?) -> Void) {
         func show() {
             let vc = QrScannerViewController()
             vc.completion = completion
+            vc.onPart = onPart
             vc.modalPresentationStyle = .fullScreen
             parent.present(vc, animated: true)
         }
@@ -57,6 +67,15 @@ final class QrScannerViewController: UIViewController, AVCaptureMetadataOutputOb
         cancel.translatesAutoresizingMaskIntoConstraints = false
         cancel.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
         view.addSubview(cancel)
+        progress.textColor = .white
+        progress.font = .monospacedSystemFont(ofSize: 15, weight: .regular)
+        progress.textAlignment = .center
+        progress.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(progress)
+        NSLayoutConstraint.activate([
+            progress.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            progress.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
+        ])
         NSLayoutConstraint.activate([
             cancel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             cancel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
@@ -76,6 +95,15 @@ final class QrScannerViewController: UIViewController, AVCaptureMetadataOutputOb
     func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject],
                         from connection: AVCaptureConnection) {
         guard let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject, let text = obj.stringValue else { return }
+        if let onPart = onPart {
+            // An animated QR shows each part many times: only a new one counts.
+            guard text != lastPart, !finished else { return }
+            lastPart = text
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            progress.text = text.lowercased().hasPrefix("ur:") ? "reading the animated QR…" : ""
+            if onPart(text) { UINotificationFeedbackGenerator().notificationOccurred(.success); finish(text) }
+            return
+        }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         finish(text)
     }

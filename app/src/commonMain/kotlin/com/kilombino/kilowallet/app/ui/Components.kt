@@ -103,13 +103,16 @@ fun LinkText(text: String, color: Color = TextSoft, modifier: Modifier = Modifie
 fun Field(
     value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier,
     keyboard: KeyboardType = KeyboardType.Text, singleLine: Boolean = true, minLines: Int = 1, enabled: Boolean = true,
+    /** Dotted out, as a password (the backup file's). */
+    password: Boolean = false,
 ) {
     OutlinedTextField(
         value = value, onValueChange = onChange, modifier = modifier.fillMaxWidth(), enabled = enabled,
         label = { Text(label, style = MaterialTheme.typography.bodySmall) },
-        singleLine = singleLine, minLines = minLines,
+        singleLine = singleLine || password, minLines = minLines,
         textStyle = MaterialTheme.typography.bodyLarge,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboard, autoCorrectEnabled = false,
+        visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard, autoCorrectEnabled = false,
             capitalization = KeyboardCapitalization.None),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Purple, unfocusedBorderColor = TextFaint,

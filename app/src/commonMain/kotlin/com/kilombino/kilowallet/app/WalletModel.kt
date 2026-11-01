@@ -40,6 +40,12 @@ sealed interface Screen {
     data class CreateShow(val words: List<String>) : Screen
     data class CreateConfirm(val words: List<String>, val positions: List<Int>) : Screen
     data object Restore : Screen
+    /** Make the words from physical dice (SeedSigner's way): 50 rolls for 12 words, 99 for 24. */
+    data object Dice : Screen
+    /** A backup file (.kab) picked to restore from: ask its password. */
+    data class RestoreFile(val bytes: ByteArray) : Screen
+    /** Write a backup file (.kab) of this wallet: a password, then where to save it. */
+    data object Backup : Screen
     data object Watch : Screen
     data object Home : Screen
     data object Receive : Screen
@@ -47,6 +53,8 @@ sealed interface Screen {
     data object Settings : Screen
     /** Speed up ([cancel] false) or cancel an unconfirmed send of this wallet by replacing it (RBF). */
     data class Replace(val txid: String, val cancel: Boolean) : Screen
+    /** Speed up an incoming transaction that is stuck by spending our output of it (child pays for parent). */
+    data class Cpfp(val txid: String) : Screen
     data class ShowWords(val words: List<String>) : Screen
     /** KILOJOIN: open pools, your rounds, and how it works. */
     data object Pools : Screen
@@ -69,6 +77,11 @@ sealed interface SendPhase {
     data object Preparing : SendPhase
     data class Review(val draft: SendDraft, val concern: String?) : SendPhase
     data object Signing : SendPhase
+    /**
+     * Watch-only: the transaction waits for a signer elsewhere (SeedSigner, Sparrow…). [exported] is
+     * the PSBT handed out, kept to check that what comes back is the very same transaction.
+     */
+    class Psbt(val draft: SendDraft, val exported: ByteArray, val coins: List<com.kilombino.kilowallet.core.crypto.Psbt.Coin>) : SendPhase
     /** [replaced]/[cancelled]: it was a speed-up or a cancellation of an earlier send. */
     data class Sent(val txid: String, val replaced: Boolean = false, val cancelled: Boolean = false) : SendPhase
     data class Failed(val message: String) : SendPhase
@@ -111,6 +124,15 @@ data class UiState(
     val nextRefreshAt: Long = 0L,
     /** Empty addresses in a row checked before a scan stops. */
     val gapLimit: Int = 20,
+    /** The hot wallet's account (its zpub), when there is one (Android: both wallets side by side). */
+    val hotZpub: String? = null,
+    /** The watch-only key, when there is one, and its type when the key's prefix does not say it (Taproot). */
+    val watchKey: String? = null,
+    val watchType: ScriptType? = null,
+    /** Hot wallet: its Taproot account (BIP-86), derived with the words; scanned and spent once set. */
+    val taprootXpub: String? = null,
+    /** Hot wallet: new receive and change addresses are Taproot (bc1p) instead of native SegWit. */
+    val receiveTaproot: Boolean = false,
 ) {
     /** One XBT in [fiat], or null (off, or no price yet). */
     val perCoin: Double? get() = if (fiat == Fiat.OFF) null else market?.xbtIn(fiat)
@@ -118,7 +140,14 @@ data class UiState(
     val confirmed: Long get() = rows.sumOf { it.confirmed }
     val unconfirmed: Long get() = rows.sumOf { it.unconfirmed }
     val total: Long get() = confirmed + unconfirmed
-    val scriptType: ScriptType get() = zpub?.let { runCatching { Bip32.parseExtendedPubKey(it).scriptType }.getOrNull() } ?: ScriptType.P2WPKH
+    val scriptType: ScriptType get() = (if (kind == WalletKind.WATCH) watchType else null)
+        ?: zpub?.let { runCatching { Bip32.parseExtendedPubKey(it).scriptType }.getOrNull() } ?: ScriptType.P2WPKH
+    /** The type a scan reads the active key as (only a Taproot watch-only key needs it said). */
+    val keyType: ScriptType? get() = if (kind == WalletKind.WATCH) watchType else null
+    /** The Taproot account scanned and spent with the hot wallet's (null for the watch-only one). */
+    val activeTaproot: String? get() = if (kind == WalletKind.HOT) taprootXpub else null
+    /** Both wallets exist, so the switch moves between them. */
+    val hasBoth: Boolean get() = hotZpub != null && watchKey != null
 }
 
 /**
@@ -136,7 +165,8 @@ class WalletModel(private val platform: AppPlatform) {
 
     /** Kilojoin: the pools and this wallet's rounds in them. */
     val pools = PoolsModel(platform, { _state.value },
-        gatherCoins = { val s = _state.value; scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned) },
+        // Pools are native SegWit (this build's Kilojoin has no Taproot pools): Taproot coins stay out.
+        gatherCoins = { val s = _state.value; scanner.gatherUtxos(s.rows.filter { it.isUsed && it.type == null }, s.endpoint, s.pinned) },
         verifyCoins = { coins -> val s = _state.value; scanner.verifyCoins(s.zpub ?: error("No wallet."), coins, s.endpoint, s.pinned) },
         onRoundDone = { refresh() })
 
@@ -144,8 +174,15 @@ class WalletModel(private val platform: AppPlatform) {
     val lightning = LightningModel(platform)
 
     private companion object {
+        // Before 1.0 one wallet at a time (kind + key); read once and moved to the keys below.
         const val K_KIND = "wallet.kind"
         const val K_ZPUB = "wallet.zpub"
+        const val K_HOT = "wallet.hot.zpub"
+        const val K_WATCH = "wallet.watch.key"
+        const val K_WATCH_TYPE = "wallet.watch.type"
+        const val K_TPUB = "wallet.hot.tpub"
+        const val K_RECV_TR = "wallet.hot.taproot"
+        const val K_ACTIVE = "wallet.active"
         const val K_HOST = "server.host"
         const val K_PORT = "server.port"
         const val K_FIAT = "fiat"
@@ -164,11 +201,26 @@ class WalletModel(private val platform: AppPlatform) {
         val host = prefs.get(K_HOST)
         val port = prefs.get(K_PORT)?.toIntOrNull()
         val endpoint = if (host != null && port != null) NodeEndpoint(host, port, true) else NodeEndpoint.DEFAULT
-        val kind = prefs.get(K_KIND)?.let { k -> WalletKind.entries.firstOrNull { it.name == k } }
-        val zpub = prefs.get(K_ZPUB)
+        // The one wallet of an older version becomes the hot or the watch-only one.
+        prefs.get(K_ZPUB)?.let { old ->
+            if (prefs.get(K_KIND) == WalletKind.WATCH.name) prefs.put(K_WATCH, old) else prefs.put(K_HOT, old)
+            prefs.put(K_ACTIVE, prefs.get(K_KIND)); prefs.put(K_KIND, null); prefs.put(K_ZPUB, null)
+        }
+        val hot = prefs.get(K_HOT)
+        val watchKey = prefs.get(K_WATCH)
+        val watchType = prefs.get(K_WATCH_TYPE)?.let { t -> ScriptType.entries.firstOrNull { it.name == t } }
+        val kind = when {
+            prefs.get(K_ACTIVE) == WalletKind.WATCH.name && watchKey != null -> WalletKind.WATCH
+            hot != null -> WalletKind.HOT
+            watchKey != null -> WalletKind.WATCH
+            else -> null
+        }
+        val zpub = if (kind == WalletKind.HOT) hot else if (kind == WalletKind.WATCH) watchKey else null
         _state.value = UiState(
             screen = if (kind != null && zpub != null) Screen.Home else Screen.Welcome,
-            kind = if (zpub != null) kind else null, zpub = zpub, endpoint = endpoint, pinned = prefs.get(pinKey(endpoint)),
+            kind = kind, zpub = zpub, endpoint = endpoint, pinned = prefs.get(pinKey(endpoint)),
+            hotZpub = hot, watchKey = watchKey, watchType = watchType,
+            taprootXpub = prefs.get(K_TPUB), receiveTaproot = prefs.get(K_RECV_TR) == "1",
             fiat = prefs.get(K_FIAT) ?: "USD",
             simple = prefs.get(K_SIMPLE) == "1",
             streetMode = prefs.get(K_STREET) == "1", hidden = prefs.get(K_STREET) == "1",
@@ -253,7 +305,7 @@ class WalletModel(private val platform: AppPlatform) {
         _state.update { it.copy(screen = screen, message = null) }
         if (screen == Screen.Send) openSend()
         if (screen == Screen.Pools && platform.demoScreen == null) pools.attach()
-        if (screen is Screen.Replace) {
+        if (screen is Screen.Replace || screen is Screen.Cpfp) {
             _state.update { it.copy(send = SendPhase.Editing) }
             val s = _state.value
             if (platform.demoScreen == null) scope.launch {
@@ -352,12 +404,16 @@ class WalletModel(private val platform: AppPlatform) {
         storeHot(clean, passphrase)
     }
 
-    private fun storeHot(words: List<String>, passphrase: String) {
+    private fun storeHot(words: List<String>, passphrase: String, then: () -> Unit = {}) {
         scope.launch {
-            val zpub = withContext(Dispatchers.Default) { Signer.accountZpub(words, passphrase) }
+            // The BIP-84 account, and the BIP-86 (Taproot) one so Taproot can be turned on without the words.
+            val (zpub, tpub) = withContext(Dispatchers.Default) { Signer.accountZpub(words, passphrase) to Signer.accountTpub(words, passphrase) }
             val err = suspendCancellableCoroutine { c -> platform.seeds.save(encodeSecret(words, passphrase)) { c.resume(it) } }
             if (err != null) { say("Could not store the words: $err"); return@launch }
+            prefs.put(K_TPUB, tpub)
+            _state.update { it.copy(taprootXpub = tpub) }
             openWallet(WalletKind.HOT, zpub)
+            then()
         }
     }
 
@@ -369,28 +425,98 @@ class WalletModel(private val platform: AppPlatform) {
     fun watch(xpub: String, type: ScriptType? = null) {
         val raw = xpub.filterNot { it.isWhitespace() }
         val parsed = runCatching { Bip32.parseExtendedPubKey(raw) }.getOrElse { say(it.message ?: "Not a valid key."); return }
-        val key = if (parsed.scriptType == ScriptType.P2PKH && type != null && type != ScriptType.P2PKH)
+        // A Taproot account is a plain xpub: its type is kept next to it (Android Store, 1.2.4).
+        val taproot = parsed.scriptType == ScriptType.P2PKH && type == ScriptType.P2TR
+        val key = if (parsed.scriptType == ScriptType.P2PKH && type != null && type != ScriptType.P2PKH && !taproot)
             Bip32.withScriptType(raw, type) else raw
+        prefs.put(K_WATCH_TYPE, if (taproot) ScriptType.P2TR.name else null)
+        _state.update { it.copy(watchType = if (taproot) ScriptType.P2TR else null) }
         openWallet(WalletKind.WATCH, key)
     }
 
     private fun openWallet(kind: WalletKind, zpub: String) {
-        prefs.put(K_KIND, kind.name)
-        prefs.put(K_ZPUB, zpub)
+        prefs.put(if (kind == WalletKind.HOT) K_HOT else K_WATCH, zpub)
+        prefs.put(K_ACTIVE, kind.name)
         _state.update {
-            it.copy(kind = kind, zpub = zpub, rows = emptyList(), txs = emptyList(), screen = Screen.Home, send = SendPhase.Editing)
+            it.copy(kind = kind, zpub = zpub, rows = emptyList(), txs = emptyList(), screen = Screen.Home, send = SendPhase.Editing,
+                hotZpub = if (kind == WalletKind.HOT) zpub else it.hotZpub, watchKey = if (kind == WalletKind.WATCH) zpub else it.watchKey)
         }
         scan()
         pools.attach()
     }
 
+    /**
+     * 🔥 HOT | 👁 WATCH: show the other wallet. Both live side by side (Android 1.4.4): switching
+     * changes what is on screen, nothing is deleted.
+     */
+    fun switchWallet(kind: WalletKind) {
+        val s = _state.value
+        val key = (if (kind == WalletKind.HOT) s.hotZpub else s.watchKey) ?: return
+        if (s.kind == kind) return
+        scanJob?.cancel()
+        prefs.put(K_ACTIVE, kind.name)
+        _state.update { it.copy(kind = kind, zpub = key, rows = emptyList(), txs = emptyList(), scan = ScanPhase.Idle,
+            screen = Screen.Home, tab = if (kind == WalletKind.WATCH && it.tab != Tab.BTC) Tab.BTC else it.tab, send = SendPhase.Editing) }
+        scan()
+        pools.attach()
+        if (kind == WalletKind.HOT && platform.demoScreen == null) lightning.resume()
+    }
+
+    /** Remove the wallet on screen (its words too, for the hot one); the other one, if any, stays and is shown. */
     fun deleteWallet() {
+        val s = _state.value
         scanJob?.cancel()
         pools.detach()
-        platform.seeds.delete()
-        prefs.put(K_KIND, null); prefs.put(K_ZPUB, null)
+        if (s.kind == WalletKind.HOT) {
+            platform.seeds.delete()
+            prefs.put(K_HOT, null); prefs.put(K_TPUB, null); prefs.put(K_RECV_TR, null)
+        } else {
+            prefs.put(K_WATCH, null); prefs.put(K_WATCH_TYPE, null)
+        }
+        val left = if (s.kind == WalletKind.HOT) s.watchKey?.let { WalletKind.WATCH } else s.hotZpub?.let { WalletKind.HOT }
+        prefs.put(K_ACTIVE, left?.name)
         _state.update { UiState(endpoint = it.endpoint, pinned = it.pinned, fiat = it.fiat, market = it.market,
-            refreshSeconds = it.refreshSeconds, gapLimit = it.gapLimit, streetMode = it.streetMode) }
+            refreshSeconds = it.refreshSeconds, gapLimit = it.gapLimit, streetMode = it.streetMode,
+            hotZpub = if (s.kind == WalletKind.HOT) null else it.hotZpub,
+            watchKey = if (s.kind == WalletKind.WATCH) null else it.watchKey,
+            watchType = if (s.kind == WalletKind.WATCH) null else it.watchType,
+            taprootXpub = if (s.kind == WalletKind.HOT) null else it.taprootXpub,
+            receiveTaproot = if (s.kind == WalletKind.HOT) false else it.receiveTaproot) }
+        if (left != null) {
+            val key = if (left == WalletKind.HOT) _state.value.hotZpub else _state.value.watchKey
+            _state.update { it.copy(kind = left, zpub = key, screen = Screen.Home) }
+            scan(); pools.attach()
+        }
+    }
+
+    // ------------------------------------------------------------------ Taproot (Android 1.2.4)
+
+    /**
+     * Hot wallet: hand out Taproot (bc1p, BIP-86) or native SegWit (bc1q, BIP-84) addresses for new
+     * payments and change. Both accounts are scanned and spent from once Taproot exists, so switching
+     * back and forth never hides a coin. A wallet made before 1.0 has no BIP-86 account yet: turning
+     * Taproot on then needs the words once.
+     */
+    fun setReceiveTaproot(on: Boolean) {
+        val s = _state.value
+        if (s.kind != WalletKind.HOT) return
+        fun apply() {
+            prefs.put(K_RECV_TR, if (on) "1" else null)
+            _state.update { it.copy(receiveTaproot = on) }
+            refresh()
+        }
+        if (!on || s.taprootXpub != null || platform.demoScreen != null) { apply(); return }
+        platform.seeds.load(I18n.tr("Turn on Taproot addresses")) { secret, error ->
+            if (secret == null) { say(error ?: "Not unlocked: Taproot stays off."); return@load }
+            scope.launch {
+                val (words, pass) = decodeSecret(secret)
+                val tpub = withContext(Dispatchers.Default) { Signer.accountTpub(words, pass) }
+                prefs.put(K_TPUB, tpub)
+                _state.update { it.copy(taprootXpub = tpub, rows = emptyList()) }
+                apply()
+                scan()
+            }
+        }
     }
 
     /** Show the recovery words after Face ID / Touch ID / passcode. */
@@ -410,7 +536,7 @@ class WalletModel(private val platform: AppPlatform) {
         scanJob = scope.launch {
             _state.update { it.copy(scan = ScanPhase.Scanning("", 0, 0, s.gapLimit, 0), certChanged = null) }
             var found = 0
-            scanner.scan(zpub, s.endpoint, s.pinned, s.gapLimit).collect { ev ->
+            scanner.scan(zpub, s.endpoint, s.pinned, s.gapLimit, s.keyType, s.activeTaproot).collect { ev ->
                 when (ev) {
                     is ScanEvent.Connecting -> Unit
                     is ScanEvent.Connected -> { lightning.chainTip = ev.height; _state.update { it.copy(height = ev.height, serverVersion = ev.server) } }
@@ -448,7 +574,7 @@ class WalletModel(private val platform: AppPlatform) {
         val zpub = s.zpub ?: return
         scanJob = scope.launch {
             _state.update { it.copy(refreshing = true) }
-            scanner.scan(zpub, s.endpoint, s.pinned, s.gapLimit).collect { ev ->
+            scanner.scan(zpub, s.endpoint, s.pinned, s.gapLimit, s.keyType, s.activeTaproot).collect { ev ->
                 when (ev) {
                     is ScanEvent.Done -> {
                         pinIfFirst(s.endpoint, ev.fingerprint)
@@ -470,7 +596,7 @@ class WalletModel(private val platform: AppPlatform) {
 
     /** Whether the wallet and server on screen are still those of [started]. */
     private fun sameWallet(started: UiState): Boolean =
-        _state.value.zpub == started.zpub && _state.value.endpoint == started.endpoint
+        _state.value.zpub == started.zpub && _state.value.endpoint == started.endpoint && _state.value.activeTaproot == started.activeTaproot
 
     private fun pinIfFirst(endpoint: NodeEndpoint, fp: String?) {
         if (fp == null || prefs.get(pinKey(endpoint)) != null) return
@@ -501,8 +627,19 @@ class WalletModel(private val platform: AppPlatform) {
 
     // ------------------------------------------------------------------ receive
 
+    /** The account new addresses come from: the Taproot one when the hot wallet hands out bc1p. */
+    private fun receivesTaproot(s: UiState = _state.value) = s.kind == WalletKind.HOT && s.receiveTaproot && s.taprootXpub != null
+
+    /** Rows of the receiving account (the BIP-86 one when Taproot is on, else the wallet's own). */
+    private fun receiveRows(s: UiState = _state.value) = s.rows.filter { (it.type == ScriptType.P2TR) == receivesTaproot(s) }
+
+    /** The receiving account's key, read as its type. */
+    private fun receiveAccount(s: UiState = _state.value): Bip32.ExtendedPubKey? = if (receivesTaproot(s))
+        Bip32.parseExtendedPubKey(s.taprootXpub!!).withType(ScriptType.P2TR)
+        else s.zpub?.let { z -> Bip32.parseExtendedPubKey(z).let { p -> s.keyType?.let { p.withType(it) } ?: p } }
+
     /** The next unused receive index: one past the highest used (Android: `nextReceiveIndex`). */
-    fun nextReceiveIndex(): Int = _state.value.rows.filter { it.chainIndex == 0 && it.isUsed }.maxOfOrNull { it.index }?.plus(1) ?: 0
+    fun nextReceiveIndex(): Int = receiveRows().filter { it.chainIndex == 0 && it.isUsed }.maxOfOrNull { it.index }?.plus(1) ?: 0
 
     /**
      * Receive indexes that hold nothing and never did (Android: `unusedReceiveIndexes`): the ones
@@ -510,23 +647,21 @@ class WalletModel(private val platform: AppPlatform) {
      * unused one, in order. iOS has one wallet and no coinjoin, so no seat is left out.
      */
     fun unusedReceiveIndexes(ahead: Int = 20): List<Int> {
-        val used = _state.value.rows.filter { it.chainIndex == 0 && it.isUsed }.map { it.index }.toSet()
+        val used = receiveRows().filter { it.chainIndex == 0 && it.isUsed }.map { it.index }.toSet()
         // An address a pool's round counts on (its equal output) is not handed out here.
         val seats = pools.reservedScripts()
-        val zpub = _state.value.zpub
+        val acct = receiveAccount()
         return (0 until nextReceiveIndex() + ahead).filter { i ->
-            i !in used && (seats.isEmpty() || zpub == null || runCatching {
-                val p = Bip32.parseExtendedPubKey(zpub)
-                Address.scriptPubKey(Bip32.derivePath(p, 0, i).pubkey(), p.scriptType).toList() !in seats
+            i !in used && (seats.isEmpty() || acct == null || runCatching {
+                Address.scriptPubKey(Bip32.derivePath(acct, 0, i).pubkey(), acct.scriptType).toList() !in seats
             }.getOrDefault(true))
         }
     }
 
     /** The receive address at [index] (default: the next unused) and its derivation path. */
     fun receiveAddress(index: Int = unusedReceiveIndexes().firstOrNull { it >= nextReceiveIndex() } ?: nextReceiveIndex()): Pair<String, String>? {
-        val zpub = _state.value.zpub ?: return null
         return runCatching {
-            val parsed = Bip32.parseExtendedPubKey(zpub)
+            val parsed = receiveAccount() ?: return null
             val pub = Bip32.derivePath(parsed, 0, index).pubkey()
             Address.encode(pub, parsed.scriptType) to "m/${Scanner.purposeFor(parsed.scriptType)}'/0'/0'/0/$index"
         }.getOrNull()
@@ -558,16 +693,102 @@ class WalletModel(private val platform: AppPlatform) {
         scope.launch {
             runCatching {
                 val locked = pools.lockedOutpoints()
+                // A watch-only wallet's coins are of its own type, sized as such (Taproot 57.75 vB, nested 91).
+                val watchType = if (s.kind == WalletKind.WATCH && s.scriptType != ScriptType.P2WPKH) s.scriptType else null
                 val utxos = (s.spendable ?: scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned))
                     .filter { "${it.txid}:${it.vout}" !in locked }
+                    .map { if (watchType != null && it.type == null) it.copy(type = watchType) else it }
                 val draft = withContext(Dispatchers.Default) {
                     SendPlanner.plan(to, amountSats, rate, utxos, freshChange(s), sendAll)
                 }
-                scanner.verifyCoins(zpub, draft.inputs, s.endpoint, s.pinned)
+                scanner.verifyCoins(zpub, draft.inputs, s.endpoint, s.pinned, s.keyType, s.activeTaproot)
                 draft
             }.onSuccess { d -> _state.update { it.copy(send = SendPhase.Review(d, SendPlanner.feeConcern(d))) } }
              .onFailure { e -> _state.update { it.copy(send = SendPhase.Failed(e.message ?: "Could not prepare the send.")) } }
         }
+    }
+
+    // ------------------------------------------------------------------ watch-only: sign elsewhere (PSBT)
+
+    /** The account key's child number (bytes 9–12 of the serialised key), for the origin a signer looks for. */
+    private fun childNumber(key: String): Long {
+        val raw = com.kilombino.kilowallet.core.crypto.Base58.decodeChecked(key.trim())
+        return (9..12).fold(0L) { a, i -> (a shl 8) or (raw[i].toLong() and 0xff) }
+    }
+
+    /**
+     * Hand the reviewed send to a signer as a PSBT (Android 1.1, watch-only): every input asks for the
+     * unified sighash 0x21; the change output is marked as ours so the signer can tell it apart.
+     */
+    fun exportPsbt() {
+        val s = _state.value
+        val draft = (s.send as? SendPhase.Review)?.draft ?: return
+        val key = s.zpub ?: return
+        runCatching {
+            val acct = Bip32.parseExtendedPubKey(key).let { p -> s.keyType?.let { p.withType(it) } ?: p }
+            val type = acct.scriptType
+            require(type != ScriptType.P2PKH) { "Signing elsewhere works for bc1q, nested SegWit (3…) and Taproot (bc1p) wallets." }
+            val origin = com.kilombino.kilowallet.core.crypto.Psbt.Origin.guess(type, acct.depth, childNumber(key))
+            val coins = draft.inputs.map { u ->
+                com.kilombino.kilowallet.core.crypto.Psbt.Coin(u.txid, u.vout, u.value, type,
+                    Bip32.derivePath(acct, u.chainIndex, u.index).pubkey(), origin?.child(u.chainIndex, u.index))
+            }
+            // Our change: the output paying one of this wallet's change addresses, found by deriving them.
+            val firstChange = s.rows.filter { it.chainIndex == 1 }.maxOfOrNull { it.index }?.plus(1) ?: 0
+            val change = draft.outputs.withIndex().mapNotNull { (n, o) ->
+                (maxOf(0, firstChange - 5) until firstChange + 25).firstOrNull { i ->
+                    Address.scriptPubKey(Bip32.derivePath(acct, 1, i).pubkey(), type).contentEquals(o.scriptPubKey)
+                }?.let { i -> n to com.kilombino.kilowallet.core.crypto.Psbt.Change(Bip32.derivePath(acct, 1, i).pubkey(), type, origin?.child(1, i)) }
+            }.toMap()
+            SendPhase.Psbt(draft, com.kilombino.kilowallet.core.crypto.Psbt.create(coins, draft.outputs, change), coins)
+        }.onSuccess { p -> _state.update { it.copy(send = p) } }
+         .onFailure { e -> _state.update { it.copy(send = SendPhase.Failed(e.message ?: "Could not make the PSBT.")) } }
+    }
+
+    /**
+     * What the signer returned (a PSBT as base64, hex or bytes): checked to be the very transaction
+     * handed out, every signature verified against our own copy of the coins and required to be a
+     * unified (0x21) one, then broadcast.
+     */
+    fun finishPsbt(returned: ByteArray) {
+        val s = _state.value
+        val p = s.send as? SendPhase.Psbt ?: return
+        _state.update { it.copy(send = SendPhase.Signing) }
+        scope.launch {
+            runCatching {
+                val tx = withContext(Dispatchers.Default) { com.kilombino.kilowallet.core.crypto.Psbt.finish(p.exported, returned, p.coins, p.draft.outputs) }
+                scanner.broadcast(tx.rawHex, s.endpoint, s.pinned)
+            }.onSuccess { txid ->
+                _state.update { it.copy(send = SendPhase.Sent(txid)) }
+                refresh()
+            }.onFailure { e -> _state.update { it.copy(send = SendPhase.Failed(e.message ?: "The signed PSBT could not be used.")) } }
+        }
+    }
+
+    /** [finishPsbt] from text: base64, hex, or a single-part ur:crypto-psbt. */
+    fun finishPsbtText(text: String) {
+        runCatching {
+            val t = text.trim()
+            if (t.lowercase().startsWith("ur:")) com.kilombino.kilowallet.core.crypto.Ur.Decoder().also { d ->
+                require(d.receive(t)) { "That is one part of an animated QR: scan it with the camera." }
+            }.psbt() else com.kilombino.kilowallet.core.crypto.Psbt.decodeText(t)
+        }.onSuccess { finishPsbt(it) }.onFailure { say(it.message ?: "That is not a PSBT.") }
+    }
+
+    /** Read the signer's animated QR with the camera, part by part, then [finishPsbt]. */
+    fun scanSignedPsbt() {
+        val decoder = com.kilombino.kilowallet.core.crypto.Ur.Decoder()
+        var single: String? = null
+        platform.scanQrParts(onPart = { text ->
+            if (!text.lowercase().startsWith("ur:")) { single = text; true }
+            else runCatching { decoder.receive(text) }.getOrDefault(false)
+        }, onEnd = {
+            val one = single
+            when {
+                one != null -> finishPsbtText(one)
+                runCatching { decoder.psbt() }.isSuccess -> finishPsbt(decoder.psbt())
+            }
+        })
     }
 
     /** Unlock the words, sign with the unified sighash (0x21) and broadcast. */
@@ -577,6 +798,7 @@ class WalletModel(private val platform: AppPlatform) {
         val zpub = s.zpub ?: return
         val reason = when {
             draft.cancels -> I18n.tr("Unlock to sign the cancellation")
+            draft.cpfpParent != null -> I18n.tr("Unlock to sign the speed-up")
             draft.replaces != null -> I18n.tr("Unlock to sign the speed-up")
             else -> I18n.tr("Sign and send ${com.kilombino.kilowallet.core.wallet.formatSats(draft.amount)} sats")
         }
@@ -586,7 +808,7 @@ class WalletModel(private val platform: AppPlatform) {
             scope.launch {
                 runCatching {
                     val (words, pass) = decodeSecret(secret)
-                    val signed = withContext(Dispatchers.Default) { Signer.sign(draft, words, pass, zpub) }
+                    val signed = withContext(Dispatchers.Default) { Signer.sign(draft, words, pass, zpub, s.activeTaproot) }
                     scanner.broadcast(signed.rawHex, s.endpoint, s.pinned)
                 }.onSuccess { txid ->
                     // A coin seated in a pool still waiting for people was spent: that seat is given up.
@@ -606,11 +828,13 @@ class WalletModel(private val platform: AppPlatform) {
 
     /** The next unused change address's script (one past the highest change address seen, none a pool's seat holds). */
     private fun freshChange(s: UiState): ByteArray {
-        val zpub = s.zpub ?: error("No wallet.")
+        val tr = receivesTaproot(s)
+        val key = (if (tr) s.taprootXpub else s.zpub) ?: error("No wallet.")
+        val type = if (tr) ScriptType.P2TR else s.keyType
         val held = pools.reservedScripts()
-        var index = s.rows.filter { it.chainIndex == 1 }.maxOfOrNull { it.index }?.plus(1) ?: 0
-        while (SendPlanner.changeScript(zpub, index).toList() in held) index++
-        return SendPlanner.changeScript(zpub, index)
+        var index = receiveRows(s).filter { it.chainIndex == 1 }.maxOfOrNull { it.index }?.plus(1) ?: 0
+        while (SendPlanner.changeScript(key, index, type).toList() in held) index++
+        return SendPlanner.changeScript(key, index, type)
     }
 
     /** Open a pool for the payment typed in SEND (1 to 5 recipients). */
@@ -641,12 +865,127 @@ class WalletModel(private val platform: AppPlatform) {
                             com.kilombino.kilowallet.core.crypto.Address.electrumScriptHash(spk) in changeHashes
                         }, rate)
                     }
-                }.also { scanner.verifyCoins(zpub, it.inputs, s.endpoint, s.pinned) }
+                }.also { scanner.verifyCoins(zpub, it.inputs, s.endpoint, s.pinned, s.keyType, s.activeTaproot) }
             }.onSuccess { d -> _state.update { it.copy(send = SendPhase.Review(d, SendPlanner.feeConcern(d))) } }
              .onFailure { e ->
                  val fallback = if (cancel) "Could not prepare the cancellation." else "Could not prepare the replacement."
                  _state.update { it.copy(send = SendPhase.Failed(e.message ?: fallback)) }
              }
+        }
+    }
+
+    // ------------------------------------------------------------------ speed up an incoming payment (CPFP)
+
+    /**
+     * Pull a stuck unconfirmed transaction that paid this wallet along (child pays for parent,
+     * Android `prepareCpfp`): our outputs of it go back to a fresh address of ours with a fee big
+     * enough that parent and child together pay [rate]. The review and the signing are a send's.
+     */
+    fun prepareCpfp(txid: String, rate: Double) {
+        val s = _state.value
+        val zpub = s.zpub ?: return
+        if (s.kind != WalletKind.HOT) return
+        _state.update { it.copy(send = SendPhase.Preparing) }
+        scope.launch {
+            runCatching {
+                val (fee, vsize, ours) = scanner.cpfpParent(txid, s.rows, s.endpoint, s.pinned)
+                val d = withContext(Dispatchers.Default) { com.kilombino.kilowallet.core.wallet.CpfpPlanner.plan(txid, fee, vsize, ours, freshChange(s), rate) }
+                scanner.verifyCoins(zpub, d.inputs, s.endpoint, s.pinned, s.keyType, s.activeTaproot)
+                d
+            }.onSuccess { d -> _state.update { it.copy(send = SendPhase.Review(d, SendPlanner.feeConcern(d))) } }
+             .onFailure { e -> _state.update { it.copy(send = SendPhase.Failed(e.message ?: "Could not prepare the speed-up.")) } }
+        }
+    }
+
+    // ------------------------------------------------------------------ dice (Android 1.2: SeedSigner's way)
+
+    fun startDice() = go(Screen.Dice)
+
+    /** The words for [rolls] (50 → 12 words, 99 → 24), shown to be written down like any new wallet's. */
+    fun diceWords(rolls: String) {
+        runCatching {
+            val bits = if (rolls.length == 50) 128 else 256
+            Bip39.fromEntropy(Bip39.entropyFromDiceRolls(rolls, bits))
+        }.onSuccess { go(Screen.CreateShow(it)) }.onFailure { say(it.message ?: "Those rolls can't make a seed.") }
+    }
+
+    // ------------------------------------------------------------------ backup file (.kab, Android 0.20)
+
+    /**
+     * The settings that travel in the backup file, in the Android app's typed format and under its
+     * key names, so a file restores the same way on either phone. Never a server: a file one did not
+     * make must not point the wallet at someone else's (Android `AppBackup.isServerKey`).
+     */
+    private fun settingsJson(): kotlinx.serialization.json.JsonObject {
+        val s = _state.value
+        fun typed(t: String, v: kotlinx.serialization.json.JsonPrimitive) = kotlinx.serialization.json.buildJsonObject { put("t", kotlinx.serialization.json.JsonPrimitive(t)); put("v", v) }
+        return kotlinx.serialization.json.buildJsonObject {
+            put("store", kotlinx.serialization.json.buildJsonObject {
+                put("fiat", typed("s", kotlinx.serialization.json.JsonPrimitive(s.fiat)))
+                put("refresh_open_s", typed("i", kotlinx.serialization.json.JsonPrimitive(s.refreshSeconds)))
+                put("coinjoin_enabled", typed("b", kotlinx.serialization.json.JsonPrimitive(pools.state.value.enabled)))
+                put("ios_gap_limit", typed("i", kotlinx.serialization.json.JsonPrimitive(s.gapLimit)))
+                put("ios_street_mode", typed("b", kotlinx.serialization.json.JsonPrimitive(s.streetMode)))
+            })
+        }
+    }
+
+    private fun applySettings(app: kotlinx.serialization.json.JsonObject?) {
+        val store = app?.get("store") as? kotlinx.serialization.json.JsonObject ?: return
+        fun v(k: String) = ((store[k] as? kotlinx.serialization.json.JsonObject)?.get("v") as? kotlinx.serialization.json.JsonPrimitive)
+        v("fiat")?.content?.let { if (it == Fiat.OFF || Fiat.ALL.any { f -> f.code == it }) setFiat(it) }
+        v("refresh_open_s")?.content?.toIntOrNull()?.let { if (it in listOf(0, 30, 60, 300)) setRefreshSeconds(it) }
+        v("ios_gap_limit")?.content?.toIntOrNull()?.let { setGapLimit(it) }
+        v("ios_street_mode")?.content?.toBooleanStrictOrNull()?.let { setStreetMode(it) }
+        v("coinjoin_enabled")?.content?.toBooleanStrictOrNull()?.let { pools.setEnabled(it) }
+    }
+
+    /** Make the backup file (words, passphrase and settings, sealed with [password]) and ask where to save it. */
+    fun exportBackup(password: String) {
+        if (password.length < com.kilombino.kilowallet.core.backup.Kab.MIN_PASSWORD) { say("Use a password of at least ${com.kilombino.kilowallet.core.backup.Kab.MIN_PASSWORD} characters."); return }
+        platform.seeds.load(I18n.tr("Unlock to write the backup file")) { secret, error ->
+            if (secret == null) { say(error ?: "Not unlocked: no file was written."); return@load }
+            scope.launch {
+                val (words, pass) = decodeSecret(secret)
+                val file = withContext(Dispatchers.Default) {
+                    com.kilombino.kilowallet.core.backup.Kab.encode(
+                        com.kilombino.kilowallet.core.backup.Kab.Snapshot(words, pass, nowMs(), _state.value.txs.size, settingsJson()), password)
+                }
+                val day = kotlin.time.Clock.System.now().toString().take(10).replace("-", "")
+                platform.saveFile("kilowallet-$day.kab", file) { err ->
+                    when (err) {
+                        null -> { say("Backup file saved. Keep it and its password apart: together they open the wallet."); go(Screen.Settings) }
+                        "cancelled" -> Unit
+                        else -> say("Could not save the file: $err")
+                    }
+                }
+            }
+        }
+    }
+
+    /** Pick a backup file to restore a wallet from. */
+    fun pickBackupFile() {
+        platform.openFile { bytes ->
+            if (bytes == null) return@openFile
+            if (!com.kilombino.kilowallet.core.backup.Kab.isBackup(bytes)) { say("That is not a Kilowallet backup file (.kab)."); return@openFile }
+            go(Screen.RestoreFile(bytes))
+        }
+    }
+
+    /** Open [bytes] with [password]: the words become the hot wallet, and the settings come back. */
+    fun restoreBackup(bytes: ByteArray, password: String) {
+        scope.launch {
+            runCatching { withContext(Dispatchers.Default) { com.kilombino.kilowallet.core.backup.Kab.decode(bytes, password) } }
+                .onSuccess { snap ->
+                    if (!Bip39.isValid(snap.words)) { say("The words in this file are not a valid backup."); return@onSuccess }
+                    storeHot(snap.words, snap.passphrase) {
+                        applySettings(snap.app)
+                        if (snap.hasArk) say("Wallet restored. The file also holds an Ark wallet, which this version can't open yet: keep the file.")
+                    }
+                }
+                .onFailure { e ->
+                    say(if (e is com.kilombino.kilowallet.core.backup.Kab.WrongPassword) "Wrong password." else e.message ?: "Could not read the file.")
+                }
         }
     }
 
@@ -696,7 +1035,27 @@ class WalletModel(private val platform: AppPlatform) {
                         go(Screen.Replace("4f".repeat(32), cancel = true)); platform.markReady(screen)
                     }
                     "send" -> { go(Screen.Send); platform.markReady(screen) }
-                    "pools", "pool-round", "pool-intro" -> {
+                    "dice" -> { go(Screen.Dice); platform.markReady(screen) }
+                    "psbt" -> {
+                        // The same made-up coin as "review", from the demo wallet watched: the PSBT to sign elsewhere.
+                        val coin = SpendableUtxo("4f".repeat(32), 0, 250_000, 0, 0, 970_000)
+                        val draft = SendPlanner.plan("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", 120_000, 2.0,
+                            listOf(coin), SendPlanner.changeScript(zpub, 0))
+                        _state.update { it.copy(kind = WalletKind.WATCH, watchKey = zpub, screen = Screen.Send,
+                            send = SendPhase.Review(draft, null)) }
+                        exportPsbt(); platform.markReady(screen)
+                    }
+                    "backup" -> { go(Screen.Backup); platform.markReady(screen) }
+                    "cpfp" -> {
+                        // A made-up incoming payment, only so the speed-up screen has something to show.
+                        go(Screen.Cpfp("6b".repeat(32))); platform.markReady(screen)
+                    }
+                    "receive-taproot", "settings-taproot" -> {
+                        val tpub = withContext(Dispatchers.Default) { Signer.accountTpub(words, "") }
+                        _state.update { it.copy(taprootXpub = tpub, receiveTaproot = true) }
+                        go(if (screen == "receive-taproot") Screen.Receive else Screen.Settings); platform.markReady(screen)
+                    }
+                    "pools", "pool-round", "pool-intro", "pool-history" -> {
                         withContext(Dispatchers.Default) { pools.setUpDemo(screen, words) }
                         if (screen == "pool-intro") pools.setEnabled(false)
                         go(Screen.Pools); platform.markReady(screen)

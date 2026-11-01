@@ -30,7 +30,8 @@ data class SendDraft(
     val totalSent: Long get() = amount + fee
     /** The fee rate actually paid, from the estimated size. */
     val effectiveRate: Double get() = fee.toDouble() /
-        SendPlanner.estimateVbytes(inputs.size, outputs.map { it.scriptPubKey }, inputs.count { it.type == ScriptType.P2TR })
+        SendPlanner.estimateVbytes(inputs.size, outputs.map { it.scriptPubKey }, inputs.count { it.type == ScriptType.P2TR },
+            inputs.count { it.type == ScriptType.P2SH_P2WPKH })
 }
 
 /**
@@ -50,20 +51,23 @@ object SendPlanner {
      * the rest P2WPKH, 68) and these exact outputs (8 + 1 + script bytes each). Android app:
      * `estimateFee` with `taprootIn`.
      */
-    fun estimateVbytes(nIn: Int, outputScripts: List<ByteArray>, taprootIn: Int = 0): Double {
+    fun estimateVbytes(nIn: Int, outputScripts: List<ByteArray>, taprootIn: Int = 0, nestedIn: Int = 0): Double {
         val tr = taprootIn.coerceIn(0, nIn)
-        return 10.5 + 68.0 * (nIn - tr) + 57.75 * tr + outputScripts.sumOf { 9.0 + it.size }
+        val ne = nestedIn.coerceIn(0, nIn - tr)
+        // A watch-only wallet's nested SegWit coins weigh 91 vB each (Android `estimateFee`).
+        return 10.5 + 68.0 * (nIn - tr - ne) + 57.75 * tr + 91.0 * ne + outputScripts.sumOf { 9.0 + it.size }
     }
 
-    fun estimateFee(nIn: Int, outputScripts: List<ByteArray>, ratePerVb: Double, taprootIn: Int = 0): Long =
-        ceil(estimateVbytes(nIn, outputScripts, taprootIn) * ratePerVb).toLong()
+    fun estimateFee(nIn: Int, outputScripts: List<ByteArray>, ratePerVb: Double, taprootIn: Int = 0, nestedIn: Int = 0): Long =
+        ceil(estimateVbytes(nIn, outputScripts, taprootIn, nestedIn) * ratePerVb).toLong()
 
     private fun trIn(coins: List<SpendableUtxo>) = coins.count { it.type == ScriptType.P2TR }
+    private fun neIn(coins: List<SpendableUtxo>) = coins.count { it.type == ScriptType.P2SH_P2WPKH }
 
     /** The most a send can move from [utxos] at [ratePerVb]: everything minus a one-output fee (sized as Taproot). */
     fun maxSendable(ratePerVb: Double, utxos: List<SpendableUtxo>): Long {
         if (utxos.isEmpty()) return 0
-        val fee = estimateFee(utxos.size, listOf(ByteArray(34)), ratePerVb.coerceIn(MIN_RATE, MAX_RATE), trIn(utxos))
+        val fee = estimateFee(utxos.size, listOf(ByteArray(34)), ratePerVb.coerceIn(MIN_RATE, MAX_RATE), trIn(utxos), neIn(utxos))
         return (utxos.sumOf { it.value } - fee).coerceAtLeast(0)
     }
 
@@ -88,7 +92,7 @@ object SendPlanner {
 
         if (sendAll) {
             val sum = utxos.sumOf { it.value }
-            val fee = estimateFee(utxos.size, noChange, rate, trIn(utxos))
+            val fee = estimateFee(utxos.size, noChange, rate, trIn(utxos), neIn(utxos))
             val amount = sum - fee
             require(amount >= dustFor(toScript)) { "The coins ($sum sats) do not cover the fee ($fee sats)." }
             return SendDraft(to, amount, fee, 0, utxos, listOf(TxBuilder.Output(toScript, amount)), rate)
@@ -101,11 +105,11 @@ object SendPlanner {
         var sum = 0L
         for (u in utxos.sortedByDescending { it.value }) {
             chosen += u; sum += u.value
-            if (sum >= amountSats + estimateFee(chosen.size, withChange, rate, trIn(chosen))) break
+            if (sum >= amountSats + estimateFee(chosen.size, withChange, rate, trIn(chosen), neIn(chosen))) break
         }
-        var fee = estimateFee(chosen.size, withChange, rate, trIn(chosen))
+        var fee = estimateFee(chosen.size, withChange, rate, trIn(chosen), neIn(chosen))
         var noChangeOutput = false
-        if (sum < amountSats + fee) { fee = estimateFee(chosen.size, noChange, rate, trIn(chosen)); noChangeOutput = true }
+        if (sum < amountSats + fee) { fee = estimateFee(chosen.size, noChange, rate, trIn(chosen), neIn(chosen)); noChangeOutput = true }
         require(sum >= amountSats + fee) { "Not enough funds for the amount plus fee." }
         var change = sum - amountSats - fee
         val outputs = mutableListOf(TxBuilder.Output(toScript, amountSats))

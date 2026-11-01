@@ -188,6 +188,12 @@ class I18nTest {
         "bitcoin:12", "pubkey@host:port", "Kilombino", "Kilowallet-", "Kilowallet-demo", "coffee", "7a", "ab", "s",
         "ln-starting", "ln-running", "ln-failed", "ln-live", "(?i)\\\\blno1[0-9a-z]+", "31 Oct 23:15", "Sats", "– sats",
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        // The backup file: the settings' JSON keys and type tags (the Android app's), and its file name;
+        // the Taproot address type, the same name in every table.
+        "store", "t", "v", "b", "i", "s", "refresh_open_s", "coinjoin_enabled", "ios_gap_limit", "ios_street_mode", "kilowallet-12.kab",
+        "Taproot (bc1p)", "Taproot · bc1p… (BIP86)", "POOLS",
+        // Screenshot names and a made-up txid of the new demos.
+        "dice", "backup", "cpfp", "receive-taproot", "settings-taproot", "pool-history", "6b", "psbt", "ur:",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates
         Regex("""m/.*"""), Regex("""pin\..*"""), Regex("""mempool\.kilombino\.com/tx/.*"""), Regex("""bc1q[a-z0-9]{30,}"""),
