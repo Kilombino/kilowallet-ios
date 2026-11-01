@@ -825,7 +825,7 @@ private fun ArkWordsPanel(model: WalletModel) {
     )
     Panel(accent = ArkRed) {
         SectionLabel("Backup", ArkRed)
-        Explain(if (Ark.wordsDerived()) "Ark's words are made from your BTC wallet's: the words you wrote down bring Ark back too " +
+        Explain(if (model.ark.wordsDerived()) "Ark's words are made from your BTC wallet's: the words you wrote down bring Ark back too " +
                 "(restore from words, 1.1.4 OR LATER). The Ark server hands your coins back on a new phone."
             else "Write down Ark's words: the Ark server hands your coins back on a new phone.")
         SecondaryButton(if (shown == null) "RECOVERY WORDS" else "HIDE WORDS", Modifier.fillMaxWidth(), color = ArkRed) {

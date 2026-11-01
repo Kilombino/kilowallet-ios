@@ -67,6 +67,9 @@ class ArkModel(private val platform: AppPlatform) {
 
     fun enabled(): Boolean = available && Ark.enabled() && Ark.hasWords()
 
+    /** Ark's words are made from the wallet's (true in the screenshot demos, which have no engine). */
+    fun wordsDerived(): Boolean = !available || Ark.wordsDerived()
+
     /** The tab was opened: start the engine if Ark is on. */
     fun open() {
         if (demo) return
