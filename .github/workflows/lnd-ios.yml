@@ -1,0 +1,38 @@
+name: LND engine (iOS)
+
+# Builds Lndmobile.xcframework (device arm64 + simulator arm64/x86_64) from lnd-engine/ENGINE.
+# The binary is not kept in git: the app's workflow downloads this run's artifact and checks its
+# sha256 against ENGINE. Run it by hand after changing ENGINE, then write run= and sha256= there.
+
+on:
+  workflow_dispatch:
+  push:
+    paths: [lnd-engine/build-ios.sh]
+
+jobs:
+  bind:
+    name: gomobile bind -target=ios,iossimulator
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Engine pins
+        id: pin
+        run: |
+          for k in repo commit go gomobile tags iosversion; do
+            echo "$k=$(grep "^$k=" lnd-engine/ENGINE | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
+          done
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.pin.outputs.go }}
+          cache: false
+      - name: Build
+        run: ./lnd-engine/build-ios.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lndmobile-xcframework
+          path: |
+            build/lnd/Lndmobile.xcframework.zip
+            build/lnd/Lndmobile.xcframework.zip.sha256
+          retention-days: 90
+          compression-level: 0
