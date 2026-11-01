@@ -12,7 +12,7 @@ val pkg = "$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/crypto"
 val files = listOf(
     "Hashes", "Ripemd160", "Secp256k1", "NativeSecp", "Ecdsa", "Bip32", "Bip32Priv", "Bip39",
     "Bip39Wordlist", "Base58", "Bech32", "Address", "TxBuilder", "Schnorr", "TxParse", "Blake2b", "BlockHeader",
-    "XChaCha20Poly1305", "DiceCheck", "Psbt", "Ur",
+    "XChaCha20Poly1305", "DiceCheck", "Psbt", "Ur", "Aezeed", "Aez", "Scrypt",
 )
 // The pool (Kilojoin) code: the protocol, the transaction, blind signatures, nostr, and the session
 // itself (the interop tool runs it against this port's).
@@ -23,6 +23,9 @@ val copyAndroid = tasks.register<Sync>("copyAndroidSources") {
     from("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/coinjoin") { include(coinjoin.map { "$it.kt" }); into("coinjoin") }
     // The backup file (.kab) writer/reader, for the on-chain vectors (android.util.Base64 is shimmed).
     from("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/ark") { include("ArkBackup.kt", "ArkDerive.kt"); into("ark") }
+    // LND's channel.backup reader, and the backup LND's own code made that the Android tests pin.
+    from("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/data") { include("Scb.kt"); into("data") }
+    from("$androidRepo/app/src/test/resources") { include("scb_vector*"); into("res") }
     into(layout.buildDirectory.dir("androidSrc"))
 }
 sourceSets["main"].kotlin.srcDir(copyAndroid)

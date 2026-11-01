@@ -31,6 +31,12 @@ object LnSeed {
         return Base58.encodeChecked(out)
     }
 
+    /** The node's BIP-32 root (the key [masterXprv] encodes): what its channel.backup is encrypted under. */
+    fun root(bip39Seed: ByteArray): Bip32Priv.ExtendedPrivKey {
+        val i = Hashes.hmacSha512(TAG.encodeToByteArray(), bip39Seed)
+        return Bip32Priv.ExtendedPrivKey(i.copyOfRange(0, 32), i.copyOfRange(32, 64), 0).also { i.fill(0) }
+    }
+
     /**
      * The node's identity key, hex: LND's m/1017'/0'/6'/0/0 under [masterXprv]'s root, the pubkey
      * peers see. Compared with the running node's, it tells whether that node comes from these words.
