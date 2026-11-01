@@ -2,7 +2,8 @@
 # Binds LND for iOS as lnd-engine/ENGINE says. Needs macOS with Xcode and the pinned Go.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-pin() { grep "^$1=" lnd-engine/ENGINE | cut -d= -f2-; }
+ENGINE=$PWD/lnd-engine/ENGINE
+pin() { grep "^$1=" "$ENGINE" | cut -d= -f2-; }
 out=$PWD/build/lnd; rm -rf "$out"; mkdir -p "$out"
 src=$out/src
 git clone --quiet --filter=blob:none "$(pin repo)" "$src"
@@ -14,8 +15,10 @@ go version
 go install "golang.org/x/mobile/cmd/gomobile@$(pin gomobile)"
 go install "golang.org/x/mobile/cmd/gobind@$(pin gomobile)"
 gomobile init
+tags=$(pin tags); iosversion=$(pin iosversion)
+test -n "$tags" && test -n "$iosversion"
 cd "$src"
-time gomobile bind -target=ios,iossimulator -iosversion "$(pin iosversion)" -tags="$(pin tags)" \
+time gomobile bind -target=ios,iossimulator -iosversion "$iosversion" -tags="$tags" \
   -ldflags "-s -w" -v -o "$out/Lndmobile.xcframework" ./mobile
 cd "$out"
 find Lndmobile.xcframework -maxdepth 2 | sort
