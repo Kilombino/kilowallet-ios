@@ -1171,6 +1171,17 @@ class WalletModel(private val platform: AppPlatform) {
                     "receive" -> { go(Screen.Receive); platform.markReady(screen) }
                     "settings" -> { go(Screen.Settings); platform.markReady(screen) }
                     "lightning" -> { selectTab(Tab.LIGHTNING); platform.markReady(screen) }
+                    "ln-bridge" -> {
+                        // A made-up SHA-256 invoice of 1,000 sats and a price, only so the bridge's dialog shows.
+                        lightning.chainTip = 979_937
+                        lightning.demoBridge = com.kilombino.kilowallet.core.ln.Lnd.PayReq("02cd566293ad8c8fd55bf5c5be38df5fc0af2b445333b10cbbd8b8a7d4c7ed7fe3",
+                            "a0".repeat(32), 1000, "coffee", 86400, 1_791_978_000L, blake2b = false) to
+                            com.kilombino.kilowallet.core.ln.Bridge.Estimate(1000, 118_493, 0.008622, 0.0216, 0)
+                        lightning.setDemo(demoLightning("ln-running"))
+                        selectTab(Tab.LIGHTNING); platform.markReady(screen)
+                    }
+                    "ln-move" -> { selectTab(Tab.LIGHTNING); platform.markReady(screen) }
+                    "settings-notify" -> { prefs.put(BalanceWatch.KEY_ON, "1"); go(Screen.Settings); platform.markReady(screen) }
                     "ln-starting", "ln-running", "ln-failed" -> {
                         lightning.chainTip = 979_937
                         lightning.setDemo(demoLightning(screen))

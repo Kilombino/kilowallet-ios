@@ -67,7 +67,7 @@ fun LightningTab(model: WalletModel, state: UiState, platform: AppPlatform) {
     val status by ln.status.collectAsState()
     DisposableEffect(Unit) { ln.watch(true); onDispose { ln.watch(false) } }
     when (val s = status) {
-        LightningModel.Status.Off -> { LnIntro(ln) { model.enableLightning() }; if (ln.available) MoveInPanel(ln, platform) }
+        LightningModel.Status.Off -> { LnIntro(ln) { model.enableLightning() }; if (ln.available || platform.demoScreen == "ln-move") MoveInPanel(ln, platform) }
         is LightningModel.Status.Starting -> LnStarting(s, ln)
         is LightningModel.Status.Failed -> LnFailed(s, ln)
         is LightningModel.Status.Running -> LnNode(s, ln, state, platform, model)
@@ -157,7 +157,7 @@ private enum class LnSheet { None, Fund, Open, Receive, Pay }
 
 @Composable
 private fun LnNode(s: LightningModel.Status.Running, ln: LightningModel, state: UiState, platform: AppPlatform, model: WalletModel) {
-    var sheet by remember { mutableStateOf(LnSheet.None) }
+    var sheet by remember { mutableStateOf(if (ln.demoBridge != null) LnSheet.Pay else LnSheet.None) }
     var closing by remember { mutableStateOf<Lnd.Channel?>(null) }
     var resizing by remember { mutableStateOf<Lnd.Channel?>(null) }
     var speeding by remember { mutableStateOf<Lnd.Closing?>(null) }
@@ -465,7 +465,7 @@ private fun PayLn(ln: LightningModel, platform: AppPlatform, channels: List<Lnd.
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var paidSats by remember { mutableStateOf<Long?>(null) }
-    var viaBridge by remember { mutableStateOf<Pair<Lnd.PayReq, com.kilombino.kilowallet.core.ln.Bridge.Estimate>?>(null) }
+    var viaBridge by remember { mutableStateOf(ln.demoBridge) }
     LaunchedEffect(paidSats) { if (paidSats != null) { delay(4_000); paidSats = null } }
     val paying by ln.paying.collectAsState()
     val payResult by ln.payResult.collectAsState()

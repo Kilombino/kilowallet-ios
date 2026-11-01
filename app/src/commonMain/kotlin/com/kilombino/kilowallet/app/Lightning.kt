@@ -511,6 +511,9 @@ class LightningModel(private val platform: AppPlatform) {
     /** The end of LND's log, to share when something fails (it names peers and channels, never keys). */
     fun logTail(): String? = if (ln == null) null else Lnd.logTail()
 
+    /** Screenshot demos: a SHA-256 invoice already priced by the bridge, to show its dialog. */
+    var demoBridge: Pair<Lnd.PayReq, com.kilombino.kilowallet.core.ln.Bridge.Estimate>? = null
+
     /** Screenshot demos: a made-up status, to show each state of the screen. */
     fun setDemo(s: Status) { _status.value = s }
 
