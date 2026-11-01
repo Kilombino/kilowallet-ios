@@ -32,6 +32,11 @@ export RUSTFLAGS="--remap-path-prefix=$PWD=/src --remap-path-prefix=$arti=/arti 
 export CARGO_TARGET_DIR=$out/target
 targets="aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios"
 rustup target add $targets
+# Rust's prebuilt compiler_builtins carry bitcode of rustc's LLVM, newer than Xcode's: Xcode's nm
+# stops on it (its linker only takes the machine code). The checks below use rustc's own llvm-nm.
+rustup component add llvm-tools
+NM=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/bin/llvm-nm
+"$NM" --version | head -2
 for t in $targets; do
   time cargo rustc --locked --profile release-small --lib --target "$t" --crate-type staticlib
 done
@@ -40,13 +45,10 @@ hide() { # target arch platform out
   local a=$CARGO_TARGET_DIR/$1/release-small/libkilombino_tor.a
   local sdk; sdk=$( [ "$3" = ios ] && echo iphoneos || echo iphonesimulator )
   xcrun --sdk "$sdk" ld -r -arch "$2" -platform_version "$3" "$IPHONEOS_DEPLOYMENT_TARGET" "$(xcrun --sdk "$sdk" --show-sdk-version)" \
-    -S -exported_symbols_list "$crate/exported_symbols.txt" -force_load "$a" -o "$out/$1-bc.o"
-  # Rust's own prebuilt pieces (compiler_builtins) carry bitcode of rustc's LLVM, newer than
-  # Xcode's: its tools stop on it. The machine code is all the app links, so the bitcode goes.
-  xcrun bitcode_strip -r "$out/$1-bc.o" -o "$out/$1.o"
+    -S -exported_symbols_list "$crate/exported_symbols.txt" -force_load "$a" -o "$out/$1.o"
   echo "== $1: the C functions before and after hiding the rest"
-  { nm -gU "$a" 2>&1 || true; } | grep -i 'kilombino_tor_\|error' | grep -v '_R' | sort -u | head -20 || true
-  { nm -m "$out/$1.o" 2>&1 || true; } | grep -i 'kilombino_tor_\|error' | grep -v '_R' | head -20 || true
+  { "$NM" -gU "$a" 2>&1 || true; } | grep -i 'kilombino_tor_\|error' | grep -v '_R' | sort -u | head -20 || true
+  { "$NM" -m "$out/$1.o" 2>&1 || true; } | grep -i 'kilombino_tor_\|error' | grep -v '_R' | head -20 || true
   ar -t "$a" | head -5 || true
   ls -la "$a" "$out/$1.o"
   xcrun libtool -static -o "$4" "$out/$1.o" 2>&1 | grep -v "has no symbols" || true
@@ -65,7 +67,7 @@ xcodebuild -create-xcframework \
 find KilombinoTor.xcframework | sort
 du -sh KilombinoTor.xcframework KilombinoTor.xcframework/*
 # Only the four C functions are left global (nm exits non-zero on odd members: its output counts).
-{ nm -gU KilombinoTor.xcframework/ios-arm64/libkilombino_tor.a 2>&1 || true; } > exported.txt
+{ "$NM" -gU KilombinoTor.xcframework/ios-arm64/libkilombino_tor.a 2>&1 || true; } > exported.txt
 grep -v '^$' exported.txt | head -40 || true
 test "$(grep -c ' _kilombino_tor_' exported.txt || true)" = 4
 if grep -E '^[0-9a-f]+ [A-Z] ' exported.txt | grep -v ' _kilombino_tor_'; then echo "warning: more global symbols than the four" >&2; fi
