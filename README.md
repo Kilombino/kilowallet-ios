@@ -260,10 +260,13 @@ scripts/sync-i18n.py /path/to/kilowallet <commit>
 - builds the Xcode app for the simulator (Debug, unsigned) and, in a second job, for devices
   (Release, unsigned);
 - boots a simulator, installs and launches the app and uploads screenshots of the main screens as
-  the `screenshots` artifact. For that, Debug builds accept a `-kwDemo <screen>` launch argument
-  that opens a screen with the public "abandon … about" test wallet held only in memory (the
-  Keychain is not touched; the review screen uses a made-up coin). `-kwDemo receive@es` shows a
-  screen in another language. Release builds ignore it.
+  the `screenshots` artifact. For that, Debug builds read a `KW_DEMO=<screen>` environment
+  variable that opens a screen with the public "abandon … about" test wallet held only in memory
+  (the Keychain is not touched; the review screen uses a made-up coin). `KW_DEMO=receive@es` shows
+  a screen in another language; `KW_DEMO=ln-live` starts the real Lightning engine with that
+  throwaway wallet. Release builds ignore it. It is an environment variable, not a launch
+  argument: LND, linked into the app, reads the process's arguments as its own flags and refuses
+  to start on any it doesn't know, so don't add launch arguments to the Xcode scheme.
 
 Local development without a Mac: `./gradlew :core:jvmTest` runs all tests on the JVM,
 `./gradlew :app:compileKotlinIosSimulatorArm64` compiles the iOS Kotlin code (not the Swift), and

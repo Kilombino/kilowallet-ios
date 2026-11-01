@@ -1,6 +1,6 @@
 #!/bin/bash
 # Boots an iPhone simulator, installs the app and screenshots its main screens.
-# Each screen is set up by the app itself in Debug builds with `-kwDemo <screen>` (a throwaway,
+# Each screen is set up by the app itself in Debug builds with KW_DEMO=<screen> (a throwaway,
 # in-memory "abandon … about" test wallet; the Keychain is never touched), and the app writes a
 # marker file into its Documents folder when the screen has settled.
 set -euo pipefail
@@ -34,7 +34,7 @@ for screen in welcome create restore watch home simple lightning ln-starting ln-
   xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
   DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE" data)
   rm -f "$DATA/Documents/kw-ready-$base"
-  xcrun simctl launch --console-pty "$UDID" "$BUNDLE" -kwDemo "$screen" > "screenshots-logs/$name.log" 2>&1 &
+  SIMCTL_CHILD_KW_DEMO="$screen" xcrun simctl launch --console-pty "$UDID" "$BUNDLE" > "screenshots-logs/$name.log" 2>&1 &
   LP=$!
   limit=20; { [ "$base" = home ] || [ "$base" = simple ]; } && limit=150
   case "$base" in pool*) limit=90 ;; esac

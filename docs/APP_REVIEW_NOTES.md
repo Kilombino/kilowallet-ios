@@ -90,11 +90,12 @@ reviewer will not have. For that reason, attach screenshots (or a short screen r
 screens above. They come from the project's own CI: every push builds the app for the simulator and
 saves screenshots of each screen in the **screenshots** artifact of the GitHub Actions run
 (`11-pool-intro`, `12-pools`, `13-pool-join`, `14-pool-create`, `15-pool-pay`, `16-pool-round`, plus
-Spanish and Chinese ones). They are taken by a Debug-only launch argument (`-kwDemo <screen>`) that
+Spanish and Chinese ones). They are taken by a Debug-only environment variable (`KW_DEMO=<screen>`) that
 fills the screens with made-up pools and coins held in memory; Release builds ignore it. To make
 them yourself: run `scripts/ci-screenshots.sh` with a Debug simulator build, or launch the Debug app
-from Xcode with the argument `-kwDemo pools` (or `pool-round`, `pool-create`, `pool-join`,
-`pool-pay`, `pool-intro`).
+from Xcode with the environment variable `KW_DEMO=pools` in the scheme (or `pool-round`,
+`pool-create`, `pool-join`, `pool-pay`, `pool-intro`). Not a launch argument: LND, linked into the
+app, reads the process's arguments as its own flags and refuses to start on any it doesn't know.
 
 ## Guidelines this touches
 
