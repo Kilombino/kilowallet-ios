@@ -509,5 +509,8 @@
  "Wallet and Ark restored from the backup file.": "Moneder i Ark restaurats des del fitxer de còpia.",
  "Wallet restored. The file also holds an Ark wallet, which this build can't open: keep the file.": "Moneder restaurat. El fitxer també té un moneder Ark, que aquesta compilació no pot obrir: guarda el fitxer.",
  "Wallet restored. The file has a channel backup: turning Lightning on hands it to the node, which asks each peer to close.": "Moneder restaurat. El fitxer té una còpia de canals: en activar Lightning es dona al node, que demana a cada peer que tanqui.",
- "Wallet restored; Ark did not: {0}": "Moneder restaurat; Ark no: {0}"
+ "Wallet restored; Ark did not: {0}": "Moneder restaurat; Ark no: {0}",
+ "Bridge fee {0} %, at the market price. If the price moves before paying, at most {1} sats; above that nothing is paid. Plus the routing fee to the bridge, at most {2} sats.": "Comissió del pont {0} %, al preu de mercat. Si el preu es mou abans de pagar, com a màxim {1} sats; per sobre no es paga res. Més la comissió d'enrutament fins al pont, com a màxim {2} sats.",
+ "PAY {0} SATS": "PAGA {0} SATS",
+ "Getting the final price (after a small proof of work, a few seconds)…": "Obtenint el preu final (després d'una petita prova de treball, uns segons)…"
 }

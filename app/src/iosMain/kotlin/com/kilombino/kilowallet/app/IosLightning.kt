@@ -63,6 +63,12 @@ class IosLightning(private val bridge: IosBridge, private val memoryPassword: Bo
         override fun nowSeconds(): Long = time(null)
     }
 
+    override fun request(method: String, url: String, body: String?, socks: Int?): Pair<Int, String> {
+        val r = bridge.httpRequestVia(method, url, body, socks ?: 0)
+        if (r.status() == 0) throw IllegalStateException(r.body().ifBlank { "no connection" })
+        return r.status() to r.body()
+    }
+
     private var memory: String? = null
     override fun loadPassword(): String? = if (memoryPassword) memory else bridge.lndPasswordLoad()
     override fun savePassword(hex: String): String? = if (memoryPassword) { memory = hex; null } else bridge.lndPasswordSave(hex)

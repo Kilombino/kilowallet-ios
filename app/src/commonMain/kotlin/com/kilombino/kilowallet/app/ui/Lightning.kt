@@ -464,6 +464,7 @@ private fun PayLn(ln: LightningModel, platform: AppPlatform, channels: List<Lnd.
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
     var paidSats by remember { mutableStateOf<Long?>(null) }
+    var viaBridge by remember { mutableStateOf<Pair<Lnd.PayReq, com.kilombino.kilowallet.core.ln.Bridge.Estimate>?>(null) }
     LaunchedEffect(paidSats) { if (paidSats != null) { delay(4_000); paidSats = null } }
     val paying by ln.paying.collectAsState()
     val payResult by ln.payResult.collectAsState()
@@ -495,12 +496,27 @@ private fun PayLn(ln: LightningModel, platform: AppPlatform, channels: List<Lnd.
                 val inv = text.removePrefix("lightning:").removePrefix("LIGHTNING:")
                 val offer = Regex("(?i)\\blno1[0-9a-z]+").find(inv)?.value
                 runCatching { withContext(ioDispatcher) { if (offer != null) Lnd.decodeOffer(offer.lowercase()) else Lnd.decode(inv) } }
-                    .onSuccess { r -> if (offer == null && !r.blake2b) msg = Lnd.SHA256_INVOICE to false else { req = r; msg = null } }
+                    .onSuccess { r ->
+                        if (offer != null || r.blake2b) { req = r; msg = null; return@onSuccess }
+                        // A SHA-256 invoice: Kilombino's bridge can pay it, with its price first (Android 1.1.3).
+                        val B = com.kilombino.kilowallet.core.ln.Bridge
+                        if (r.sats <= 0L) { msg = B.text("no_amount") to false; return@onSuccess }
+                        msg = "Asking Kilombino's bridge for the price…" to true
+                        runCatching { withContext(ioDispatcher) { B.check(inv) } }
+                            .onSuccess { e -> msg = null; viaBridge = r to e }
+                            .onFailure { e -> msg = (e.message ?: "the bridge did not answer") to false }
+                    }
                     .onFailure { msg = (it.message ?: "not a valid invoice") to false }
                 busy = false
             }
         }
         msg?.let { (t, ok) -> Text(t, color = if (ok) Good else Bad, style = MaterialTheme.typography.bodySmall) }
+    }
+    viaBridge?.let { (sha, est) ->
+        BridgePay(ln, text.removePrefix("lightning:").removePrefix("LIGHTNING:"), sha, est,
+            onPaid = { s -> viaBridge = null; paidSats = s; text = ""; scope.launch { runCatching { ln.refresh() } } },
+            onFailed = { m -> viaBridge = null; msg = m to false },
+            onCancel = { viaBridge = null })
     }
     req?.let { r ->
         var askedText by remember(r) { mutableStateOf("") }
@@ -542,6 +558,71 @@ private fun PayLn(ln: LightningModel, platform: AppPlatform, channels: List<Lnd.
             dismissButton = { TextButton(onClick = { req = null }) { Text(if (inFlight) "HIDE" else "CANCEL", color = TextSoft) } },
             containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft)
     }
+}
+
+/**
+ * Pays a SHA-256 invoice with BTC through Kilombino's bridge once its price is accepted (Android's
+ * BridgePay): the hold invoice is checked on this phone's own node before a sat leaves, and the
+ * preimage that comes back is checked against the invoice's hash.
+ */
+@Composable
+private fun BridgePay(ln: LightningModel, invoice: String, sha: Lnd.PayReq, est: com.kilombino.kilowallet.core.ln.Bridge.Estimate,
+                      onPaid: (Long) -> Unit, onFailed: (String) -> Unit, onCancel: () -> Unit) {
+    val B = com.kilombino.kilowallet.core.ln.Bridge
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var step by remember { mutableStateOf("") }
+    var wait by remember { mutableStateOf(est.waitSeconds) }
+    LaunchedEffect(Unit) { while (wait > 0) { delay(1_000); wait-- } }
+    val feeLimit = ln.feeLimit(est.maxPaySat)
+    val pct = ((est.spread * 10_000).toLong() / 100.0).toString()
+    AlertDialog(onDismissRequest = { if (!busy) onCancel() },
+        title = { Text("Pay this SHA-256 invoice with BTC?", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("This invoice is for Lightning on the SHA-256 chain. Kilombino's bridge can pay it for you: " +
+                    "you pay in BTC, and it pays the invoice.", style = MaterialTheme.typography.bodySmall)
+                if (sha.description.isNotBlank()) Text("“${sha.description}”", style = MaterialTheme.typography.bodySmall, color = TextSoft)
+                Text("Invoice: ${formatSats(sha.sats)} sats SHA-256", style = MaterialTheme.typography.bodyMedium, color = TextMain)
+                Text("You pay about ${formatSats(est.paySat)} sats BTC", style = MaterialTheme.typography.titleMedium, color = LnGold)
+                Text("Bridge fee $pct %, at the market price. If the price moves before paying, at most " +
+                    "${formatSats(est.maxPaySat)} sats; above that nothing is paid. Plus the routing fee to the bridge, at most ${formatSats(feeLimit)} sats.",
+                    style = MaterialTheme.typography.bodySmall, color = TextSoft)
+                Text("Nobody holds your money: your payment is held and the bridge can only collect it by paying this invoice. " +
+                    "If it can't, your BTC comes back by itself.", style = MaterialTheme.typography.bodySmall, color = TextSoft)
+                if (wait > 0) Text("Wait $wait s before asking the bridge for a new price for this invoice.", color = Bad, style = MaterialTheme.typography.bodySmall)
+                if (step.isNotBlank()) Text(step, style = MaterialTheme.typography.bodySmall, color = LnGold)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy && wait == 0, onClick = {
+                busy = true
+                scope.launch {
+                    val result = runCatching {
+                        withContext(ioDispatcher) {
+                            step = "Getting the final price (after a small proof of work, a few seconds)…"
+                            val q = B.quote(invoice, sha.hash)
+                            val hold = Lnd.decode(q.holdInvoice)
+                            B.mismatch(hold, hold.msat, sha, q, est.maxPaySat, Lnd.host.nowSeconds())
+                                ?.let { throw IllegalStateException("Not paid: $it.") }
+                            step = "Paying ${formatSats(B.ceilSat(hold.msat))} sats BTC… the bridge pays the invoice and then collects."
+                            val preimage = try {
+                                Lnd.pay(q.holdInvoice, ln.feeLimit(B.ceilSat(hold.msat)), timeoutSeconds = 60)
+                            } catch (e: Exception) {
+                                throw IllegalStateException(B.afterFailure(B.state(q.hash), Lnd.payError(e)))
+                            }
+                            if (!B.proves(preimage, sha.hash)) throw IllegalStateException(
+                                "Paid, but the proof does not match the invoice: tell Kilombino, with the payment hash ${sha.hash}.")
+                            B.ceilSat(hold.msat)
+                        }
+                    }
+                    busy = false
+                    result.onSuccess { onPaid(it) }.onFailure { onFailed(it.message ?: "Not paid.") }
+                }
+            }) { Text(if (busy) "PAYING…" else "PAY ${formatSats(est.paySat)} SATS", color = LnGold) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onCancel) { Text("CANCEL", color = TextSoft) } },
+        containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft)
 }
 
 /** [delta] is what the channels lost or gained, routing fee included; [fee] is that fee, shown apart. */

@@ -47,6 +47,11 @@ interface LightningPlatform {
      */
     fun beginBackgroundWork(name: String): Any? = null
     fun endBackgroundWork(token: Any?) {}
+    /**
+     * An HTTP request (blocking) through Tor's SOCKS port [socks] when given (then plain http to a
+     * .onion is allowed: the address is the server's key), else https directly: status and body.
+     */
+    fun request(method: String, url: String, body: String?, socks: Int?): Pair<Int, String> = host.http(method, url, body)
 }
 
 /**

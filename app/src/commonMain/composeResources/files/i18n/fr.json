@@ -2838,5 +2838,8 @@
 "Wallet and Ark restored from the backup file.": "Portefeuille et Ark restaurés depuis le fichier de sauvegarde.",
 "Wallet restored. The file also holds an Ark wallet, which this build can't open: keep the file.": "Portefeuille restauré. Le fichier contient aussi un portefeuille Ark, que cette version ne peut pas ouvrir : garde le fichier.",
 "Wallet restored. The file has a channel backup: turning Lightning on hands it to the node, which asks each peer to close.": "Portefeuille restauré. Le fichier contient une sauvegarde de canaux : en activant Lightning, elle est donnée au nœud, qui demande à chaque pair de fermer.",
-"Wallet restored; Ark did not: {0}": "Portefeuille restauré ; Ark non : {0}"
+"Wallet restored; Ark did not: {0}": "Portefeuille restauré ; Ark non : {0}",
+"Bridge fee {0} %, at the market price. If the price moves before paying, at most {1} sats; above that nothing is paid. Plus the routing fee to the bridge, at most {2} sats.": "Frais du pont {0} %, au prix du marché. Si le prix bouge avant le paiement, au plus {1} sats ; au-delà rien n'est payé. Plus les frais de routage jusqu'au pont, au plus {2} sats.",
+"PAY {0} SATS": "PAYER {0} SATS",
+"Getting the final price (after a small proof of work, a few seconds)…": "Obtention du prix final (après une petite preuve de travail, quelques secondes)…"
 }

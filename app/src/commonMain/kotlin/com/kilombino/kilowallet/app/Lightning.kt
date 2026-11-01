@@ -52,7 +52,16 @@ class LightningModel(private val platform: AppPlatform) {
     val available: Boolean get() = ln != null
 
     init {
-        ln?.let { Lnd.engine = it.engine; Lnd.host = it.host }
+        ln?.let {
+            Lnd.engine = it.engine; Lnd.host = it.host
+            // Kilombino's bridge over https, as its web page. Android tries the onion first while Tor
+            // runs; on iPhone that is plain http, which App Transport Security refuses without an
+            // exception App Review asks about: https it is (Android falls back to it too).
+            com.kilombino.kilowallet.core.ln.Bridge.http = { m, u, b, socks -> it.request(m, u, b, socks) }
+            com.kilombino.kilowallet.core.ln.Bridge.torPort = { null }
+            com.kilombino.kilowallet.core.ln.Bridge.nowMs = { it.host.nowSeconds() * 1000 }
+            com.kilombino.kilowallet.core.ln.Bridge.sleepMs = { ms -> delay(ms) }
+        }
     }
 
     sealed class Status {

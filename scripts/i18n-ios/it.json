@@ -509,5 +509,8 @@
  "Wallet and Ark restored from the backup file.": "Wallet e Ark ripristinati dal file di backup.",
  "Wallet restored. The file also holds an Ark wallet, which this build can't open: keep the file.": "Wallet ripristinato. Il file contiene anche un wallet Ark, che questa build non può aprire: conserva il file.",
  "Wallet restored. The file has a channel backup: turning Lightning on hands it to the node, which asks each peer to close.": "Wallet ripristinato. Il file contiene un backup dei canali: attivando Lightning viene dato al nodo, che chiede a ogni peer di chiudere.",
- "Wallet restored; Ark did not: {0}": "Wallet ripristinato; Ark no: {0}"
+ "Wallet restored; Ark did not: {0}": "Wallet ripristinato; Ark no: {0}",
+ "Bridge fee {0} %, at the market price. If the price moves before paying, at most {1} sats; above that nothing is paid. Plus the routing fee to the bridge, at most {2} sats.": "Commissione del ponte {0} %, al prezzo di mercato. Se il prezzo si muove prima di pagare, al massimo {1} sats; oltre non si paga nulla. Più la commissione di instradamento fino al ponte, al massimo {2} sats.",
+ "PAY {0} SATS": "PAGA {0} SATS",
+ "Getting the final price (after a small proof of work, a few seconds)…": "Ottengo il prezzo finale (dopo una piccola prova di lavoro, qualche secondo)…"
 }
