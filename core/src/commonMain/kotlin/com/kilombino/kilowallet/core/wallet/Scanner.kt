@@ -216,11 +216,11 @@ class Scanner(
             }
             val tip = runCatching { client.blockHeight() }.getOrNull() ?: return@withContext all
             all.filter { u ->
-                if (u.height <= 0 || tip - u.height + 1 >= LONG_MATURITY) return@filter true
+                if (!mayBeImmature(u.height, tip)) return@filter true
                 val tx = txCache[u.txid] ?: runCatching { TxParse.parse(client.transaction(u.txid)) }.getOrNull()
                     ?.also { txCache[u.txid] = it } ?: return@filter true
                 val coinbase = tx.inputs.size == 1 && tx.inputs[0].txid.all { it == '0' } && tx.inputs[0].vout == -1
-                !coinbase || tip - u.height + 1 >= maturityFor(u.height)
+                !immature(coinbase, u.height, tip)
             }
         } finally {
             client.close()
@@ -335,9 +335,36 @@ class Scanner(
         /** The easiest block a payment proof is accepted from (Android app value). */
         const val SPV_FLOOR_BITS = 0x191b0540L
         const val SPV_WINDOW = 144
-        /** Coinbase maturity on the BLAKE2b chain: blocks 973 440–979 919 wait 6 480 confirmations. */
-        const val LONG_MATURITY = 6480
-        fun maturityFor(height: Int): Int = if (height in 973_440..979_919) LONG_MATURITY else 100
+        /**
+         * Coinbase maturity on the BLAKE2b chain, as Knots 29.4.3 relays a spend of it (knots#468;
+         * Android app `Scanner.maturityFor`, pinned by [MaturityVectors]): rewards mined in blocks
+         * 973 440–979 918 keep their 6 480 confirmations; from 979 919, while the median time past
+         * of the block before is under 2027-09-01 00:00 UTC (RDTS expiry), each waits 25 920 (about
+         * 180 days, counted from its own block); any other, 100.
+         */
+        const val HISTORICAL_MATURITY = 6480
+        const val LONG_MATURITY = 25920
+        const val LONG_START = 979_919
+
+        /**
+         * The rewards mined after the expiry date need only 100 again, but which block that is is only
+         * known from the chain's times: until then every reward from [LONG_START] counts as covered, the
+         * same as the node does for a block it does not know.
+         */
+        fun maturityFor(height: Int): Int = when {
+            height >= LONG_START -> LONG_MATURITY
+            height >= 973_440 -> HISTORICAL_MATURITY
+            else -> 100
+        }
+
+        /** The first tip at which a reward mined at [height] can be spent (as [gatherUtxos] counts it). */
+        fun maturesAt(height: Int): Int = height + maturityFor(height) - 1
+
+        /** A coin at [height] is young enough at [tip] that, if it is a mined reward, it can't be spent yet. */
+        fun mayBeImmature(height: Int, tip: Int): Boolean = height > 0 && tip - height + 1 < LONG_MATURITY
+
+        /** Whether a coin at [height] (a mined reward when [coinbase]) is still locked at [tip]. */
+        fun immature(coinbase: Boolean, height: Int, tip: Int): Boolean = coinbase && height > 0 && tip - height + 1 < maturityFor(height)
 
         fun purposeFor(type: ScriptType): Int = when (type) {
             ScriptType.P2PKH -> 44

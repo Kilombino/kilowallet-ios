@@ -25,6 +25,27 @@ val copyAndroid = tasks.register<Sync>("copyAndroidSources") {
 }
 sourceSets["main"].kotlin.srcDir(copyAndroid)
 
+// Coinbase maturity: the rule lives in the Android Scanner's companion, next to code that needs
+// the network. Its block (HISTORICAL_MATURITY … immature) is taken out of that file verbatim.
+val maturitySrc = tasks.register("extractMaturity") {
+    val src = file("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/data/Scanner.kt")
+    val out = layout.buildDirectory.file("maturitySrc/AndroidMaturity.kt")
+    inputs.file(src); outputs.file(out)
+    doLast {
+        val lines = src.readLines()
+        val from = lines.indexOfFirst { it.contains("const val HISTORICAL_MATURITY") }
+        val to = (from until lines.size).firstOrNull { lines[it].contains("fun immature(coinbase") } ?: -1
+        require(from in 0 until to) { "maturity block not found in ${src.path}" }
+        val body = lines.subList(from, to + 1).filterNot { it.contains("fun isCoinbase(") }
+        out.get().asFile.writeText(
+            "package com.kilombino.pyblockwatch.data\n\n" +
+                "// Taken verbatim from the Android app's data/Scanner.kt companion.\n" +
+                "object AndroidMaturity {\n" + body.joinToString("\n") + "\n}\n"
+        )
+    }
+}
+sourceSets["main"].kotlin.srcDir(maturitySrc.map { layout.buildDirectory.dir("maturitySrc") })
+
 kotlin { jvmToolchain(25) }
 repositories { mavenCentral() }
 dependencies {
@@ -51,4 +72,15 @@ tasks.register<JavaExec>("interop") {
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("InteropKt")
     workingDir = rootDir
+}
+
+// Coinbase maturity vectors from the Android rule (core/src/commonTest/.../MaturityVectors.kt).
+tasks.register<JavaExec>("maturity") {
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("MaturityKt")
+    workingDir = rootDir
+    args = listOf(
+        file("../../core/src/commonTest/kotlin/com/kilombino/kilowallet/core/MaturityVectors.kt").absolutePath,
+        providers.exec { commandLine("git", "-C", androidRepo, "rev-parse", "HEAD") }.standardOutput.asText.get().trim(),
+    )
 }
