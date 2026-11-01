@@ -1,0 +1,31 @@
+name: Ark engine (iOS)
+
+# Builds KilombinoArk.xcframework (device arm64 + simulator arm64/x86_64) from ark-engine/ENGINE.
+# The binary is not kept in git: the app's workflow downloads this run's artifact and checks its
+# sha256 against ENGINE. Run it after changing ENGINE (it also runs when ark-engine/build-ios.sh
+# changes), then write run= and sha256= there.
+
+on:
+  workflow_dispatch:
+  push:
+    paths: [ark-engine/build-ios.sh, ark-engine/ENGINE]
+
+jobs:
+  build:
+    name: cargo rustc --crate-type staticlib (iOS)
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: protoc
+        run: brew install protobuf && protoc --version
+      - name: Build
+        run: ./ark-engine/build-ios.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KilombinoArk-xcframework
+          path: |
+            build/ark/KilombinoArk.xcframework.zip
+            build/ark/KilombinoArk.xcframework.zip.sha256
+          retention-days: 90
+          compression-level: 0
