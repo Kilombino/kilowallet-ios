@@ -12,3 +12,6 @@ features=tokio,rustls-ring,static-sqlite,onion-service-client,vanguards,flowctl-
 build=tor-engine/build-ios.sh (profile release-small, one object exporting only kilombino_tor_*)
 rustc=1.98.0
 iosversion=16.0
+run=41305757467
+sha256=f24fa664cd0061681d7321e55e87ff8567cc681bd244ccc007a54c9898b2a634
+size=43 MB unpacked (device arm64 14 MB, simulator arm64+x86_64 28 MB); zip 15 MB; build 15 min on macos-15
