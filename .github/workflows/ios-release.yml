@@ -13,6 +13,8 @@ on:
 
 permissions:
   contents: write
+  # The engines' artifacts of their own workflow runs (the fetch scripts' fallback).
+  actions: read
 
 jobs:
   archive:
@@ -44,6 +46,21 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
           SDK=$(xcrun --sdk iphoneos --show-sdk-version); test "${SDK%%.*}" -ge 26
           echo "Commit: $(git rev-parse HEAD) ($TAG)"
+      - name: Fetch the Lightning engine (Lndmobile.xcframework, checked against lnd-engine/ENGINE)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/fetch-lnd-engine.sh
+
+      - name: Fetch the Ark engine (KilombinoArk.xcframework, checked against ark-engine/ENGINE)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/fetch-ark-engine.sh
+
+      - name: Fetch the Tor engine (KilombinoTor.xcframework, checked against tor-engine/ENGINE)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/fetch-tor-engine.sh
+
       - name: Archive Release for iphoneos without signing
         run: |
           set -o pipefail
@@ -62,7 +79,8 @@ jobs:
           mkdir -p build/ipa/Payload
           cp -R build/Kilowallet.xcarchive/Products/Applications/Kilowallet.app build/ipa/Payload/
           (cd build/ipa && zip -qry "../../out/Kilowallet-$V-unsigned.ipa" Payload)
-          (cd out && shasum -a 256 * > SHA256SUMS && cat SHA256SUMS)
+          # Its own sums file: the release may already carry the engines' SHA256SUMS.
+          (cd out && shasum -a 256 * > "Kilowallet-$V-SHA256SUMS" && cat "Kilowallet-$V-SHA256SUMS")
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
