@@ -117,4 +117,14 @@ class LnTest {
             assertEquals(true, line in conf.lines(), line)
         assertEquals(false, "tor.active=true" in conf)
     }
+
+    /**
+     * The node LND made in the iOS simulator from the "abandon … about" words (CI run 41268837589,
+     * KW_DEMO=ln-live) has the identity key LnSeed works out from the same words: the key LND gets
+     * (masterXprv) and the one the app expects (nodePubkey) agree.
+     */
+    @Test fun theSimulatorNodeHasTheWordsKey() {
+        val seed = com.kilombino.kilowallet.core.crypto.Bip39.toSeed(List(11) { "abandon" } + "about", "")
+        assertEquals(true, LnSeed.nodePubkey(seed).startsWith("02faeca8e7361ff87b57"), LnSeed.nodePubkey(seed))
+    }
 }
