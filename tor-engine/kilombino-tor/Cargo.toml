@@ -1,0 +1,42 @@
+[package]
+name = "kilombino-tor"
+version = "2.7.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Arti (the Tor Project's Tor in Rust) as a library for Kilowallet iOS: a SOCKS proxy on 127.0.0.1 inside the app"
+publish = false
+
+# Its own workspace: the arti checkout next to this folder (tor-engine/arti, at the tag in
+# tor-engine/ENGINE) is reached by path, and Cargo.lock starts from arti's own lock file, so every
+# crate is the version Kilowallet Android's libarti.so is built from.
+[workspace]
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+# Arti's features as Android builds them (tor-engine/ENGINE), less `harden`: that one only acts
+# when arti runs as its own program (it turns off core dumps and debugger attachment for the
+# process); linked into the app it would act on the whole app, and iOS already keeps other
+# processes out of it. `experimental-api` makes arti's SOCKS proxy callable from here.
+[dependencies]
+arti = { path = "../arti/crates/arti", default-features = false, features = [
+    "tokio", "rustls-ring", "static-sqlite", "onion-service-client", "vanguards", "flowctl-cc",
+    "compression", "experimental-api",
+] }
+arti-client = { path = "../arti/crates/arti-client", default-features = false }
+tor-rtcompat = { path = "../arti/crates/tor-rtcompat", default-features = false }
+tokio = { version = "1.47.1", features = ["rt-multi-thread", "net", "time"] }
+anyhow = "1.0.23"
+futures = "0.3.14"
+tracing = "0.1.36"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+# As arti's own release-small (Android's profile): size first.
+[profile.release-small]
+inherits = "release"
+strip = "debuginfo"
+opt-level = "s"

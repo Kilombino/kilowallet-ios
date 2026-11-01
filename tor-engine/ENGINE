@@ -1,0 +1,14 @@
+# The Tor engine: Arti, the Tor Project's Tor in Rust, as a static library for iOS
+# (KilombinoTor.xcframework). Same tag, commit and features as Kilowallet Android 1.4.4's
+# libarti.so (its tor-engine/ENGINE), less `harden` (process hardening of arti's own program; see
+# kilombino-tor/Cargo.toml). iOS can't run a program, so tor-engine/kilombino-tor runs arti's
+# proxy as a library with Android's arti.toml settings. .github/workflows/tor-ios.yml builds it;
+# the app's build fetches that run's artifact and checks it against sha256 before linking it.
+repo=https://gitlab.torproject.org/tpo/core/arti
+tag=arti-v2.7.0
+commit=ce8bc6e0998bd5a4efdf06dd62dce53c98ea1087
+crate=arti 2.7.0 (arti-client 0.47.0)
+features=tokio,rustls-ring,static-sqlite,onion-service-client,vanguards,flowctl-cc,compression,experimental-api
+build=tor-engine/build-ios.sh (profile release-small, one object exporting only kilombino_tor_*)
+rustc=1.98.0
+iosversion=16.0
