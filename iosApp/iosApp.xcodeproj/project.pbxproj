@@ -12,6 +12,7 @@
 		97229F7A1A6BE1044726833E /* Bridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A8FA1AD56754D6005D93FB9 /* Bridge.swift */; };
 		C0FFEE000000000000000A01 /* LndmobileEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000A02 /* LndmobileEngine.swift */; };
 		C0FFEE000000000000000A03 /* ArkEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000A04 /* ArkEngine.swift */; };
+		C0FFEE000000000000000A05 /* ArtiEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE000000000000000A06 /* ArtiEngine.swift */; };
 		85B9D0D31C81531652DAEE96 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9267B55DABDD08D11B695885 /* Keychain.swift */; };
 		D9D6B73F416D057687211ACD /* ElectrumConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 233B7995D37BBB0F5CE870B3 /* ElectrumConnection.swift */; };
 		96D38FB4F22BF89419F4FD06 /* QrCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD495524FB540E452313EE93 /* QrCode.swift */; };
@@ -28,6 +29,7 @@
 		9A8FA1AD56754D6005D93FB9 /* Bridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bridge.swift; sourceTree = "<group>"; };
 		C0FFEE000000000000000A02 /* LndmobileEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LndmobileEngine.swift; sourceTree = "<group>"; };
 		C0FFEE000000000000000A04 /* ArkEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArkEngine.swift; sourceTree = "<group>"; };
+		C0FFEE000000000000000A06 /* ArtiEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtiEngine.swift; sourceTree = "<group>"; };
 		9267B55DABDD08D11B695885 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		233B7995D37BBB0F5CE870B3 /* ElectrumConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElectrumConnection.swift; sourceTree = "<group>"; };
 		AD495524FB540E452313EE93 /* QrCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrCode.swift; sourceTree = "<group>"; };
@@ -84,6 +86,7 @@
 				9A8FA1AD56754D6005D93FB9 /* Bridge.swift */,
 				C0FFEE000000000000000A02 /* LndmobileEngine.swift */,
 				C0FFEE000000000000000A04 /* ArkEngine.swift */,
+				C0FFEE000000000000000A06 /* ArtiEngine.swift */,
 				9267B55DABDD08D11B695885 /* Keychain.swift */,
 				233B7995D37BBB0F5CE870B3 /* ElectrumConnection.swift */,
 				AD495524FB540E452313EE93 /* QrCode.swift */,
@@ -219,6 +222,7 @@
 				97229F7A1A6BE1044726833E /* Bridge.swift in Sources */,
 				C0FFEE000000000000000A01 /* LndmobileEngine.swift in Sources */,
 				C0FFEE000000000000000A03 /* ArkEngine.swift in Sources */,
+				C0FFEE000000000000000A05 /* ArtiEngine.swift in Sources */,
 				85B9D0D31C81531652DAEE96 /* Keychain.swift in Sources */,
 				D9D6B73F416D057687211ACD /* ElectrumConnection.swift in Sources */,
 				96D38FB4F22BF89419F4FD06 /* QrCode.swift in Sources */,
@@ -321,18 +325,22 @@
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/KilombinoArk.xcframework/ios-arm64",
+					"$(SRCROOT)/Frameworks/KilombinoTor.xcframework/ios-arm64",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/KilombinoArk.xcframework/ios-arm64_x86_64-simulator",
+					"$(SRCROOT)/Frameworks/KilombinoTor.xcframework/ios-arm64_x86_64-simulator",
 				);
 				"SWIFT_INCLUDE_PATHS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/KilombinoArk.xcframework/ios-arm64/Headers",
+					"$(SRCROOT)/Frameworks/KilombinoTor.xcframework/ios-arm64/Headers",
 				);
 				"SWIFT_INCLUDE_PATHS[sdk=iphonesimulator*]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/KilombinoArk.xcframework/ios-arm64_x86_64-simulator/Headers",
+					"$(SRCROOT)/Frameworks/KilombinoTor.xcframework/ios-arm64_x86_64-simulator/Headers",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -348,6 +356,7 @@
 					Lndmobile,
 					"-lresolv",
 					"-lkilombino_ark",
+					"-lkilombino_tor",
 					"-framework",
 					Security,
 					"-framework",
@@ -388,18 +397,22 @@
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/KilombinoArk.xcframework/ios-arm64",
+					"$(SRCROOT)/Frameworks/KilombinoTor.xcframework/ios-arm64",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/KilombinoArk.xcframework/ios-arm64_x86_64-simulator",
+					"$(SRCROOT)/Frameworks/KilombinoTor.xcframework/ios-arm64_x86_64-simulator",
 				);
 				"SWIFT_INCLUDE_PATHS[sdk=iphoneos*]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/KilombinoArk.xcframework/ios-arm64/Headers",
+					"$(SRCROOT)/Frameworks/KilombinoTor.xcframework/ios-arm64/Headers",
 				);
 				"SWIFT_INCLUDE_PATHS[sdk=iphonesimulator*]" = (
 					"$(inherited)",
 					"$(SRCROOT)/Frameworks/KilombinoArk.xcframework/ios-arm64_x86_64-simulator/Headers",
+					"$(SRCROOT)/Frameworks/KilombinoTor.xcframework/ios-arm64_x86_64-simulator/Headers",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -415,6 +428,7 @@
 					Lndmobile,
 					"-lresolv",
 					"-lkilombino_ark",
+					"-lkilombino_tor",
 					"-framework",
 					Security,
 					"-framework",

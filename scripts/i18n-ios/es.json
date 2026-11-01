@@ -486,5 +486,22 @@
  "The fee comes out of the amount.": "La comisión sale del importe.",
  "resizing {0} sats → {1} sats · the channel keeps working meanwhile": "redimensionando {0} sats → {1} sats · el canal sigue funcionando mientras tanto",
  "resizing {0} sats → {1} sats · {2} confirmations · the channel keeps working meanwhile": "redimensionando {0} sats → {1} sats · {2} confirmaciones · el canal sigue funcionando mientras tanto",
- "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "redimensionando {0} sats → {1} sats · esperando su primera confirmación · el canal sigue funcionando mientras tanto"
+ "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "redimensionando {0} sats → {1} sats · esperando su primera confirmación · el canal sigue funcionando mientras tanto",
+ "Arti's own log, the last lines. It has no addresses or keys (safe logging): copy it to send it when Tor doesn't come up.": "El registro propio de Arti, las últimas líneas. No tiene direcciones ni claves (registro seguro): cópialo para enviarlo cuando Tor no arranque.",
+ "Connecting…": "Conectando…",
+ "If Tor doesn't come up in a minute, Lightning starts without it (no watchtower), as on Android.": "Si Tor no arranca en un minuto, Lightning arranca sin él (sin watchtower), como en Android.",
+ "Lightning reaches Kilombino's watchtower and onion peers through it; the pools' relay, the inbound channel service and the explorer go through it while it runs.": "Lightning llega por él a la watchtower y a los peers onion de Kilombino; el relay de los pools, el servicio de canal entrante y el explorador van por él mientras está en marcha.",
+ "On · SOCKS 127.0.0.1:{0}": "Activado · SOCKS 127.0.0.1:{0}",
+ "Stopped": "Parado",
+ "Not running": "Sin arrancar",
+ "TOR'S LOG": "REGISTRO DE TOR",
+ "The server never sees this phone's address. TLS and the pinned certificate stay as they are. Slower; if Tor doesn't start, nothing is sent without it. Needs iOS 17 or later.": "El servidor nunca ve la dirección de este teléfono. TLS y el certificado fijado siguen igual. Más lento; si Tor no arranca, no se envía nada sin él. Necesita iOS 17 o posterior.",
+ "This build has no Tor.": "Esta compilación no tiene Tor.",
+ "This build has no Tor: a .onion server can't be reached, and this stays off.": "Esta compilación no tiene Tor: no se puede llegar a un servidor .onion, y esto queda desactivado.",
+ "Tor (Arti, the Tor Project's Tor) runs inside the app when something needs it: Lightning, a .onion server, or the server through Tor.": "Tor (Arti, el Tor del Tor Project) se ejecuta dentro de la app cuando algo lo necesita: Lightning, un servidor .onion o el servidor a través de Tor.",
+ "Tor did not start ({0}). Lightning waits for Tor because \"Only over Tor\" is on: nothing was sent without it. Try again, look at Tor's log in Settings, or turn \"Only over Tor\" off there to start without Tor.": "Tor no arrancó ({0}). Lightning espera a Tor porque \"Solo por Tor\" está activado: no se ha enviado nada sin él. Vuelve a intentarlo, mira el registro de Tor en Ajustes o apaga allí \"Solo por Tor\" para arrancar sin Tor.",
+ "Watchtower: not reachable. The node started without Tor, and Kilombino's tower is an onion service. Turn \"Only over Tor\" on in Settings (it starts with Tor next time), and keep the app opening every few days while you have channels.": "Watchtower: no se alcanza. El nodo arrancó sin Tor y la torre de Kilombino es un servicio onion. Activa \"Solo por Tor\" en Ajustes (la próxima vez arranca con Tor) y abre la app cada pocos días mientras tengas canales.",
+ "What goes over Tor waits for it: Lightning doesn't start without Tor, and says why if Tor doesn't come up. Nothing is sent over the clear net instead.": "Lo que va por Tor lo espera: Lightning no arranca sin Tor y dice por qué si Tor no arranca. No se envía nada por la red abierta en su lugar.",
+ "Connecting to a server through Tor needs iOS 17 or later: nothing was sent without it.": "Conectar a un servidor a través de Tor necesita iOS 17 o posterior: no se ha enviado nada sin él.",
+ "connecting to Tor": "conectando con Tor"
 }

@@ -2815,5 +2815,22 @@
 "The fee comes out of the amount.": "La comissió surt de l'import.",
 "resizing {0} sats → {1} sats · the channel keeps working meanwhile": "redimensionant {0} sats → {1} sats · el canal continua funcionant mentrestant",
 "resizing {0} sats → {1} sats · {2} confirmations · the channel keeps working meanwhile": "redimensionant {0} sats → {1} sats · {2} confirmacions · el canal continua funcionant mentrestant",
-"resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "redimensionant {0} sats → {1} sats · esperant la primera confirmació · el canal continua funcionant mentrestant"
+"resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "redimensionant {0} sats → {1} sats · esperant la primera confirmació · el canal continua funcionant mentrestant",
+"Arti's own log, the last lines. It has no addresses or keys (safe logging): copy it to send it when Tor doesn't come up.": "El registre propi d'Arti, les últimes línies. No té adreces ni claus (registre segur): copia'l per enviar-lo quan Tor no arrenqui.",
+"Connecting…": "Connectant…",
+"If Tor doesn't come up in a minute, Lightning starts without it (no watchtower), as on Android.": "Si Tor no arrenca en un minut, Lightning arrenca sense ell (sense watchtower), com a Android.",
+"Lightning reaches Kilombino's watchtower and onion peers through it; the pools' relay, the inbound channel service and the explorer go through it while it runs.": "Lightning arriba per ell a la watchtower i als peers onion de Kilombino; el relay dels pools, el servei de canal entrant i l'explorador hi van mentre està en marxa.",
+"On · SOCKS 127.0.0.1:{0}": "Activat · SOCKS 127.0.0.1:{0}",
+"Stopped": "Aturat",
+"Not running": "Sense arrencar",
+"TOR'S LOG": "REGISTRE DE TOR",
+"The server never sees this phone's address. TLS and the pinned certificate stay as they are. Slower; if Tor doesn't start, nothing is sent without it. Needs iOS 17 or later.": "El servidor mai no veu l'adreça d'aquest telèfon. TLS i el certificat fixat continuen igual. Més lent; si Tor no arrenca, no s'envia res sense ell. Necessita iOS 17 o posterior.",
+"This build has no Tor.": "Aquesta compilació no té Tor.",
+"This build has no Tor: a .onion server can't be reached, and this stays off.": "Aquesta compilació no té Tor: no es pot arribar a un servidor .onion, i això queda desactivat.",
+"Tor (Arti, the Tor Project's Tor) runs inside the app when something needs it: Lightning, a .onion server, or the server through Tor.": "Tor (Arti, el Tor del Tor Project) s'executa dins l'app quan alguna cosa el necessita: Lightning, un servidor .onion o el servidor a través de Tor.",
+"Tor did not start ({0}). Lightning waits for Tor because \"Only over Tor\" is on: nothing was sent without it. Try again, look at Tor's log in Settings, or turn \"Only over Tor\" off there to start without Tor.": "Tor no ha arrencat ({0}). Lightning espera Tor perquè \"Només per Tor\" està activat: no s'ha enviat res sense ell. Torna-ho a provar, mira el registre de Tor a Configuració o desactiva-hi \"Només per Tor\" per arrencar sense Tor.",
+"Watchtower: not reachable. The node started without Tor, and Kilombino's tower is an onion service. Turn \"Only over Tor\" on in Settings (it starts with Tor next time), and keep the app opening every few days while you have channels.": "Watchtower: no s'hi arriba. El node ha arrencat sense Tor i la torre de Kilombino és un servei onion. Activa \"Només per Tor\" a Configuració (la propera vegada arrenca amb Tor) i obre l'app cada pocs dies mentre tinguis canals.",
+"What goes over Tor waits for it: Lightning doesn't start without Tor, and says why if Tor doesn't come up. Nothing is sent over the clear net instead.": "El que va per Tor l'espera: Lightning no arrenca sense Tor i diu per què si Tor no arrenca. No s'envia res per la xarxa oberta en el seu lloc.",
+"Connecting to a server through Tor needs iOS 17 or later: nothing was sent without it.": "Connectar a un servidor a través de Tor necessita iOS 17 o posterior: no s'ha enviat res sense ell.",
+"connecting to Tor": "connectant amb Tor"
 }

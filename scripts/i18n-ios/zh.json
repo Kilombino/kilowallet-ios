@@ -486,5 +486,22 @@
  "The fee comes out of the amount.": "手续费从金额中扣除。",
  "resizing {0} sats → {1} sats · the channel keeps working meanwhile": "调整大小 {0} sats → {1} sats · 通道在此期间照常工作",
  "resizing {0} sats → {1} sats · {2} confirmations · the channel keeps working meanwhile": "调整大小 {0} sats → {1} sats · {2} 次确认 · 通道在此期间照常工作",
- "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "调整大小 {0} sats → {1} sats · 等待首次确认 · 通道在此期间照常工作"
+ "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "调整大小 {0} sats → {1} sats · 等待首次确认 · 通道在此期间照常工作",
+ "Arti's own log, the last lines. It has no addresses or keys (safe logging): copy it to send it when Tor doesn't come up.": "Arti 自己的日志，最后几行。不含地址或密钥（安全日志）：Tor 无法启动时复制并发送它。",
+ "Connecting…": "正在连接…",
+ "If Tor doesn't come up in a minute, Lightning starts without it (no watchtower), as on Android.": "如果 Tor 一分钟内没有启动，Lightning 会在没有它的情况下启动（没有 watchtower），与 Android 相同。",
+ "Lightning reaches Kilombino's watchtower and onion peers through it; the pools' relay, the inbound channel service and the explorer go through it while it runs.": "Lightning 通过它连接 Kilombino 的 watchtower 和 onion 节点；池的 relay、入站通道服务和区块浏览器在它运行时也通过它。",
+ "On · SOCKS 127.0.0.1:{0}": "已开启 · SOCKS 127.0.0.1:{0}",
+ "Stopped": "已停止",
+ "Not running": "未运行",
+ "TOR'S LOG": "TOR 日志",
+ "The server never sees this phone's address. TLS and the pinned certificate stay as they are. Slower; if Tor doesn't start, nothing is sent without it. Needs iOS 17 or later.": "服务器永远看不到这部手机的地址。TLS 和固定的证书保持不变。更慢；如果 Tor 没有启动，不会在没有它的情况下发送任何内容。需要 iOS 17 或更高版本。",
+ "This build has no Tor.": "此版本没有 Tor。",
+ "This build has no Tor: a .onion server can't be reached, and this stays off.": "此版本没有 Tor：无法连接 .onion 服务器，此项保持关闭。",
+ "Tor (Arti, the Tor Project's Tor) runs inside the app when something needs it: Lightning, a .onion server, or the server through Tor.": "Tor（Arti，Tor Project 的 Tor）在需要时在应用内运行：Lightning、.onion 服务器，或通过 Tor 连接服务器。",
+ "Tor did not start ({0}). Lightning waits for Tor because \"Only over Tor\" is on: nothing was sent without it. Try again, look at Tor's log in Settings, or turn \"Only over Tor\" off there to start without Tor.": "Tor 没有启动（{0}）。因为开启了“仅通过 Tor”，Lightning 会等待 Tor：没有在没有它的情况下发送任何内容。请重试，在设置中查看 Tor 日志，或在那里关闭“仅通过 Tor”以在没有 Tor 的情况下启动。",
+ "Watchtower: not reachable. The node started without Tor, and Kilombino's tower is an onion service. Turn \"Only over Tor\" on in Settings (it starts with Tor next time), and keep the app opening every few days while you have channels.": "Watchtower：无法连接。节点在没有 Tor 的情况下启动，而 Kilombino 的塔是 onion 服务。在设置中开启“仅通过 Tor”（下次会带 Tor 启动），有通道期间请每隔几天打开一次应用。",
+ "What goes over Tor waits for it: Lightning doesn't start without Tor, and says why if Tor doesn't come up. Nothing is sent over the clear net instead.": "通过 Tor 的内容会等待它：没有 Tor 时 Lightning 不会启动，并在 Tor 无法启动时说明原因。不会改为通过公开网络发送任何内容。",
+ "Connecting to a server through Tor needs iOS 17 or later: nothing was sent without it.": "通过 Tor 连接服务器需要 iOS 17 或更高版本：没有在没有它的情况下发送任何内容。",
+ "connecting to Tor": "正在连接 Tor"
 }

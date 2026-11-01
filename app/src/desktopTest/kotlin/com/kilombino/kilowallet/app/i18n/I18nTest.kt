@@ -210,11 +210,15 @@ class I18nTest {
         "closing", "disabled", "peer_not_locked", "peer_misbehaved", "insufficient_funds", "immature_inputs", "below_min",
         "above_max_out", "fee_below_floor", "reserve_on_change", "close_address_set", "node_cap", "confirmed", "broadcast",
         "kilowallet-channel.backup", "bc1…", "12…  12 sats · 12",
+        // Tor: the screenshot runs' names, a preference key, the state words the CI log shows.
+        "tor-live", "tor-log", "tower_added", "it stopped", "still connecting after 3 minutes", "Tor",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""(12 345 · )?12(/12 345)? conf"""), Regex(""" · 12/12 345 conf"""), Regex("""\d{4}-\d\d-\d\dT[0-9:]+"""),
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates
         Regex("""m/.*"""), Regex("""pin\..*"""), Regex("""mempool\.kilombino\.com/tx/.*"""), Regex("""bc1q[a-z0-9]{30,}"""),
         Regex(""".*kilombino\.com:17717"""), Regex("""kilojoin\..*"""),
+        // What the screenshot runs print to the CI log.
+        Regex("""KW .*"""),
     )
 
     private fun iosStrings(src: String): List<String> {

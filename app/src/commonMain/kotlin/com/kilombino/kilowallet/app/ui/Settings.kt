@@ -45,6 +45,12 @@ import com.kilombino.kilowallet.core.chain.Chain
 import com.kilombino.kilowallet.core.chain.NodeEndpoint
 import com.kilombino.kilowallet.core.market.Fiat
 import com.kilombino.kilowallet.core.market.MarketFeed
+import com.kilombino.kilowallet.core.tor.Tor
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.text.font.FontFamily
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -99,6 +105,8 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                     }
                 }
             }
+
+            TorSettings(model)
 
             Text("Currency", style = MaterialTheme.typography.bodyMedium, color = TextMain)
             var more by remember { mutableStateOf(false) }
@@ -157,6 +165,13 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                     }
                 }
                 KeyValue("in use", state.endpoint.toString() + if (state.endpoint.isCustom) " (yours)" else " (default)")
+                // Every Electrum server through Tor (a .onion always goes through it), as Android.
+                var viaTor by remember { mutableStateOf(Tor.electrum) }
+                SettingRow("Connect to the server through Tor", if (!Tor.available) "This build has no Tor: a .onion server can't be reached, and this stays off."
+                    else "The server never sees this phone's address. TLS and the pinned certificate stay as they are. " +
+                        "Slower; if Tor doesn't start, nothing is sent without it. Needs iOS 17 or later.") {
+                    Switch(checked = viaTor, enabled = Tor.available, onCheckedChange = { viaTor = it; model.setElectrumThroughTor(it) })
+                }
                 Text("Pinned certificate (SHA-256):", style = MaterialTheme.typography.bodySmall, color = TextSoft)
                 Text(state.pinned?.let { chunked(it) } ?: "none yet — trusted on first connection",
                     style = MaterialTheme.typography.bodySmall, color = TextFaint)
@@ -239,6 +254,59 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("CANCEL", color = TextSoft) } },
         containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft,
     )
+}
+
+/**
+ * Tor (Android 1.4.4: Arti in the app): whether it runs and why not, "Only over Tor" and its log.
+ * Android keeps the switch and the log under the Telegram alerts, which iOS doesn't have; here
+ * they are general, and "Only over Tor" also makes Lightning wait for Tor.
+ */
+@Composable
+private fun TorSettings(model: WalletModel) {
+    var st by remember { mutableStateOf(Tor.status()) }
+    LaunchedEffect(Unit) { while (true) { st = Tor.status(); delay(1_000) } }
+    var only by remember { mutableStateOf(Tor.only) }
+    Text("Tor", style = MaterialTheme.typography.bodyMedium, color = TextMain)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        PulseDot(when { !Tor.available -> TextFaint; st.state == 2 -> Good; st.state == 1 -> Warn; st.wanted -> Bad; else -> TextFaint })
+        Spacer(Modifier.width(8.dp))
+        Text(when {
+            !Tor.available -> "This build has no Tor."
+            st.state == 2 -> "On · SOCKS 127.0.0.1:${st.port}"
+            st.state == 1 -> "Connecting…"
+            st.wanted -> "Stopped"
+            else -> "Not running"
+        }, style = MaterialTheme.typography.bodySmall, color = TextSoft)
+    }
+    if (Tor.available) {
+        if (st.state != 2 && st.line.isNotBlank()) Text(st.line, style = MaterialTheme.typography.bodySmall, color = TextFaint)
+        Explain(if (st.state == 2) "Lightning reaches Kilombino's watchtower and onion peers through it; the pools' relay, the inbound " +
+            "channel service and the explorer go through it while it runs."
+            else "Tor (Arti, the Tor Project's Tor) runs inside the app when something needs it: Lightning, a .onion server, " +
+                "or the server through Tor.")
+        SettingRow("Only over Tor", if (only) "What goes over Tor waits for it: Lightning doesn't start without Tor, and says why if Tor doesn't come up. Nothing is sent over the clear net instead."
+            else "If Tor doesn't come up in a minute, Lightning starts without it (no watchtower), as on Android.") {
+            Switch(checked = only, onCheckedChange = { only = it; model.setTorOnly(it) })
+        }
+        LinkText("SHOW TOR'S LOG", color = Purple) { model.go(com.kilombino.kilowallet.app.Screen.TorLog) }
+    }
+}
+
+/** The end of Tor's log (Arti's own, without addresses or keys), to read and copy. */
+@Composable
+fun TorLogScreen(model: WalletModel) {
+    val clipboard = LocalClipboardManager.current
+    var log by remember { mutableStateOf(if (Tor.available) Tor.logTail() else "") }
+    LaunchedEffect(Unit) { while (true) { delay(2_000); if (Tor.available) log = Tor.logTail() } }
+    ScreenColumn {
+        BackLink("← back") { model.back() }
+        Panel {
+            SectionLabel("Tor's log")
+            Explain("Arti's own log, the last lines. It has no addresses or keys (safe logging): copy it to send it when Tor doesn't come up.")
+            Text(log.ifBlank { "(Tor has not run yet)" }, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace), color = TextSoft)
+            SecondaryButton("COPY THE LOG", Modifier.fillMaxWidth(), enabled = log.isNotBlank()) { clipboard.setText(AnnotatedString(log)) }
+        }
+    }
 }
 
 /** A setting: its name and what it does on the left, its control on the right (Android's rows). */

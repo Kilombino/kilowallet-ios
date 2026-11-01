@@ -19,6 +19,8 @@ interface IosBridge {
 
     /** Open a connection (blocking). Check [IosConnection.error] before using it. */
     fun openConnection(host: String, port: Int, tls: Boolean, pinnedFingerprint: String?): IosConnection
+    /** The same through Tor's SOCKS port [socksPort] (iOS 17 or later), the name resolved by Tor. */
+    fun openConnectionVia(host: String, port: Int, tls: Boolean, pinnedFingerprint: String?, socksPort: Int): IosConnection
 
     /** A PNG of the QR code for [text]. */
     fun qrPng(text: String): NSData?
@@ -42,6 +44,8 @@ interface IosBridge {
      * certificate checks). Blocks until it is open or failed: check [IosSocket.error]. Never on the main thread.
      */
     fun openWebSocket(url: String, listener: IosSocketListener): IosSocket
+    /** The same through Tor's SOCKS port [socksPort] (0: directly), on the circuit named [isolation]. */
+    fun openWebSocketVia(url: String, listener: IosSocketListener, socksPort: Int, isolation: String?): IosSocket
 
     // ---- Lightning (iosApp/iosApp/LndEngine.swift): LND linked in as Lndmobile.xcframework
 
@@ -58,9 +62,28 @@ interface IosBridge {
     fun lndPasswordDelete()
     /** HTTPS request (blocking; never on the main thread): status and body, or status 0 and the error. */
     fun httpRequest(method: String, url: String, body: String?): IosHttpResult
+    /** The same through Tor's SOCKS port [socksPort] (0: directly). */
+    fun httpRequestVia(method: String, url: String, body: String?, socksPort: Int): IosHttpResult
     /** A background task while a payment is on its way; returns its id (0 when none was given). */
     fun beginBackgroundWork(name: String): Long
     fun endBackgroundWork(id: Long)
+
+    // ---- Tor (iosApp/iosApp/ArtiEngine.swift): Arti linked in as KilombinoTor.xcframework
+
+    /** False when the app was built without the engine. */
+    fun torAvailable(): Boolean
+    /** Starts Arti (blocking; never on the main thread): null once its SOCKS port listens, else why not. */
+    fun torStart(dir: String, logPath: String, port: Int): String?
+    fun torStop()
+    /** 0: not running. 1: connecting. 2: the SOCKS port carries traffic. */
+    fun torState(): Int
+    /** Arti's folder: Application Support/arti, excluded from iCloud and device backups. */
+    fun torDir(): String
+    /** Tor's log: Application Support/tor.log. */
+    fun torLogPath(): String
+    fun torFreePort(): Int
+    /** True when 127.0.0.1:[port] answers a SOCKS5 greeting. */
+    fun torSocksAnswers(port: Int): Boolean
 
     // ---- Ark (iosApp/iosApp/ArkEngine.swift): the Paperclip/bark wallet linked in as KilombinoArk.xcframework
 

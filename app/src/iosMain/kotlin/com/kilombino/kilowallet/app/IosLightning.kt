@@ -52,8 +52,11 @@ class IosLightning(private val bridge: IosBridge, private val memoryPassword: Bo
         }
         // Go resolves names itself on iOS (cgo, the system resolver): nothing to add here.
         override fun resolve(host: String): List<String> = emptyList()
+        // Through Tor when it is already running (Android: the LSP and the explorer), so neither
+        // sees this phone's address next to the node's.
         override fun http(method: String, url: String, body: String?): Pair<Int, String> {
-            val r = bridge.httpRequest(method, url, body)
+            val socks = com.kilombino.kilowallet.core.tor.Tor.proxyIfRunning()
+            val r = if (socks != null) bridge.httpRequestVia(method, url, body, socks) else bridge.httpRequest(method, url, body)
             if (r.status() == 0) throw IllegalStateException(r.body().ifBlank { "no connection" })
             return r.status() to r.body()
         }

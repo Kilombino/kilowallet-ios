@@ -486,5 +486,22 @@
  "The fee comes out of the amount.": "La commissione esce dall'importo.",
  "resizing {0} sats → {1} sats · the channel keeps working meanwhile": "ridimensionamento {0} sats → {1} sats · il canale continua a funzionare nel frattempo",
  "resizing {0} sats → {1} sats · {2} confirmations · the channel keeps working meanwhile": "ridimensionamento {0} sats → {1} sats · {2} conferme · il canale continua a funzionare nel frattempo",
- "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "ridimensionamento {0} sats → {1} sats · in attesa della prima conferma · il canale continua a funzionare nel frattempo"
+ "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "ridimensionamento {0} sats → {1} sats · in attesa della prima conferma · il canale continua a funzionare nel frattempo",
+ "Arti's own log, the last lines. It has no addresses or keys (safe logging): copy it to send it when Tor doesn't come up.": "Il log di Arti stesso, le ultime righe. Non contiene indirizzi né chiavi (log sicuro): copialo per inviarlo quando Tor non parte.",
+ "Connecting…": "Connessione…",
+ "If Tor doesn't come up in a minute, Lightning starts without it (no watchtower), as on Android.": "Se Tor non parte entro un minuto, Lightning parte senza (senza watchtower), come su Android.",
+ "Lightning reaches Kilombino's watchtower and onion peers through it; the pools' relay, the inbound channel service and the explorer go through it while it runs.": "Lightning raggiunge tramite esso la watchtower e i peer onion di Kilombino; il relay dei pool, il servizio di canale in entrata e l'explorer passano da lì mentre è attivo.",
+ "On · SOCKS 127.0.0.1:{0}": "Attivo · SOCKS 127.0.0.1:{0}",
+ "Stopped": "Fermato",
+ "Not running": "Non avviato",
+ "TOR'S LOG": "LOG DI TOR",
+ "The server never sees this phone's address. TLS and the pinned certificate stay as they are. Slower; if Tor doesn't start, nothing is sent without it. Needs iOS 17 or later.": "Il server non vede mai l'indirizzo di questo telefono. TLS e il certificato fissato restano come sono. Più lento; se Tor non parte, non viene inviato nulla senza. Richiede iOS 17 o successivo.",
+ "This build has no Tor.": "Questa build non ha Tor.",
+ "This build has no Tor: a .onion server can't be reached, and this stays off.": "Questa build non ha Tor: un server .onion non è raggiungibile, e questo resta disattivato.",
+ "Tor (Arti, the Tor Project's Tor) runs inside the app when something needs it: Lightning, a .onion server, or the server through Tor.": "Tor (Arti, il Tor del Tor Project) gira dentro l'app quando qualcosa ne ha bisogno: Lightning, un server .onion o il server tramite Tor.",
+ "Tor did not start ({0}). Lightning waits for Tor because \"Only over Tor\" is on: nothing was sent without it. Try again, look at Tor's log in Settings, or turn \"Only over Tor\" off there to start without Tor.": "Tor non è partito ({0}). Lightning aspetta Tor perché \"Solo via Tor\" è attivo: non è stato inviato nulla senza. Riprova, guarda il log di Tor nelle Impostazioni o disattiva lì \"Solo via Tor\" per partire senza Tor.",
+ "Watchtower: not reachable. The node started without Tor, and Kilombino's tower is an onion service. Turn \"Only over Tor\" on in Settings (it starts with Tor next time), and keep the app opening every few days while you have channels.": "Watchtower: non raggiungibile. Il nodo è partito senza Tor e la torre di Kilombino è un servizio onion. Attiva \"Solo via Tor\" nelle Impostazioni (la prossima volta parte con Tor) e apri l'app ogni pochi giorni finché hai canali.",
+ "What goes over Tor waits for it: Lightning doesn't start without Tor, and says why if Tor doesn't come up. Nothing is sent over the clear net instead.": "Ciò che passa da Tor lo aspetta: Lightning non parte senza Tor e dice perché se Tor non parte. Non viene inviato nulla sulla rete aperta al suo posto.",
+ "Connecting to a server through Tor needs iOS 17 or later: nothing was sent without it.": "Connettersi a un server tramite Tor richiede iOS 17 o successivo: non è stato inviato nulla senza.",
+ "connecting to Tor": "connessione a Tor"
 }

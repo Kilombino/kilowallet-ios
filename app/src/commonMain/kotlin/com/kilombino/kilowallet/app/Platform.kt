@@ -107,4 +107,6 @@ interface AppPlatform {
     val lightning: LightningPlatform? get() = null
     /** Ark, or null where it is not available (desktop, screenshot demos). */
     val ark: ArkPlatform? get() = null
+    /** Calls [action] each time the app comes back to the foreground (iOS: after being suspended). */
+    fun onForeground(action: () -> Unit) {}
 }

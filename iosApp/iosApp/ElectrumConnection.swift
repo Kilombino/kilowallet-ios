@@ -19,7 +19,8 @@ final class ElectrumConnection: NSObject, IosConnection {
     private var err: String?
     private var closed = false
 
-    init(host: String, port: Int32, tls: Bool, pinnedFingerprint: String?) {
+    /// [socksPort] > 0: through the app's Tor (TorProxy, iOS 17 or later), the name resolved by Tor.
+    init(host: String, port: Int32, tls: Bool, pinnedFingerprint: String?, socksPort: Int32 = 0) {
         let tcp = NWProtocolTCP.Options()
         tcp.connectionTimeout = 20
         tcp.noDelay = true
@@ -53,11 +54,17 @@ final class ElectrumConnection: NSObject, IosConnection {
         }
 
         let params = NWParameters(tls: tlsOptions, tcp: tcp)
+        let proxied = TorProxy.apply(to: params, port: socksPort)
         conn = NWConnection(host: NWEndpoint.Host(host),
                             port: NWEndpoint.Port(rawValue: UInt16(clamping: port)) ?? 50002,
                             using: params)
         self.box = box
         super.init()
+        if !proxied {
+            err = "Connecting to a server through Tor needs iOS 17 or later: nothing was sent without it."
+            closed = true
+            return
+        }
 
         let ready = DispatchSemaphore(value: 0)
         var signalled = false

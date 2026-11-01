@@ -26,6 +26,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -64,6 +66,8 @@ sealed interface Screen {
     data class PoolJoin(val poolId: String) : Screen
     /** A payment from SEND, to be paid through a new pool: its recipients. */
     data object PoolPay : Screen
+    /** The end of Tor's log, to read and copy (Android: SHOW TOR'S LOG). */
+    data object TorLog : Screen
 }
 
 sealed interface ScanPhase {
@@ -243,6 +247,8 @@ class WalletModel(private val platform: AppPlatform) {
         const val K_STREET = "ui.street"
         const val K_REFRESH = "refresh.seconds"
         const val K_GAP = "scan.gap"
+        const val K_TOR_ONLY = "tor.only"
+        const val K_TOR_ELECTRUM = "tor.electrum"
         const val K_MARKET = "market.json"
         const val K_MARKET_AT = "market.fetched"
         /** Screenshot mode's price: no network, the same figures every run. */
@@ -251,6 +257,12 @@ class WalletModel(private val platform: AppPlatform) {
     }
 
     init {
+        // Tor's two settings (Android: "Only over Tor" on by default, Electrum through Tor off).
+        com.kilombino.kilowallet.core.tor.Tor.only = prefs.get(K_TOR_ONLY) != "0"
+        com.kilombino.kilowallet.core.tor.Tor.electrum = prefs.get(K_TOR_ELECTRUM) == "1"
+        // Back from the background: Tor's port may be gone (iOS suspends the app); it comes back
+        // before the node and the pools need it again.
+        platform.onForeground { scope.launch { runCatching { com.kilombino.kilowallet.core.tor.Tor.onForeground() } } }
         val host = prefs.get(K_HOST)
         val port = prefs.get(K_PORT)?.toIntOrNull()
         val endpoint = if (host != null && port != null) NodeEndpoint(host, port, true) else NodeEndpoint.DEFAULT
@@ -386,6 +398,7 @@ class WalletModel(private val platform: AppPlatform) {
             s.kind == null -> Screen.Welcome
             s.screen == Screen.PoolCreate || s.screen is Screen.PoolJoin -> Screen.Pools
             s.screen == Screen.PoolPay -> Screen.Send
+            s.screen == Screen.TorLog -> Screen.Settings
             else -> Screen.Home
         })
     }
@@ -681,6 +694,19 @@ class WalletModel(private val platform: AppPlatform) {
         prefs.put(pinKey(s.endpoint), fp)
         _state.update { it.copy(pinned = fp, certChanged = null) }
         scan()
+    }
+
+    /** "Only over Tor": what goes over Tor never goes without it (Lightning waits for Tor). */
+    fun setTorOnly(on: Boolean) {
+        com.kilombino.kilowallet.core.tor.Tor.only = on
+        prefs.put(K_TOR_ONLY, if (on) null else "0")
+    }
+
+    /** "Connect to the server through Tor": every Electrum server through Tor; scans again that way. */
+    fun setElectrumThroughTor(on: Boolean) {
+        com.kilombino.kilowallet.core.tor.Tor.electrum = on
+        prefs.put(K_TOR_ELECTRUM, if (on) "1" else null)
+        if (_state.value.zpub != null) scan()
     }
 
     fun setServer(host: String, port: Int?) {
@@ -1058,6 +1084,30 @@ class WalletModel(private val platform: AppPlatform) {
 
     // ------------------------------------------------------------------ demo (CI screenshots only)
 
+    /**
+     * Screenshot run, real node: Lightning over Tor end to end. Waits for the watchtower to be added
+     * (through Tor) and for a peer, then reaches Kilombino's node by its onion (after dropping the
+     * clearnet link), and logs what LND says. Nothing moves money.
+     */
+    private suspend fun lightningOverTorCheck() {
+        val ln = com.kilombino.kilowallet.core.ln.Lnd
+        val k = com.kilombino.kilowallet.core.ln.Kilombino
+        println("KW ln-live: node running, Tor in LND: ${lightning.torOn}, SOCKS ${com.kilombino.kilowallet.core.tor.Tor.port}")
+        if (!lightning.torOn) return
+        withTimeoutOrNull(240_000) {
+            while (runCatching { ln.towers() }.getOrDefault(emptyList()).isEmpty()) { runCatching { lightning.refresh() }; delay(5_000) }
+        }
+        val towers = runCatching { ln.towers().toString() }.getOrElse { it.message ?: it.toString() }
+        println("KW ln-live: towers $towers")
+        runCatching { ln.disconnect(k.NODE) }
+        delay(2_000)
+        val r = runCatching { ln.connect(k.NODE, k.ONION) }
+        val how = r.exceptionOrNull()?.message ?: "OK"
+        val peers = runCatching { ln.peerAddresses().toString() }.getOrElse { it.message ?: it.toString() }
+        println("KW ln-live: connect Kilombino by onion: $how; peers $peers")
+        runCatching { lightning.refresh() }
+    }
+
     /** Throwaway state for the screenshot run in CI: the well-known "abandon … about" test wallet. */
     fun setUpDemo(screen: String) {
         val words = List(11) { "abandon" } + "about"
@@ -1086,13 +1136,30 @@ class WalletModel(private val platform: AppPlatform) {
                         selectTab(Tab.LIGHTNING)
                         lightning.chainTip = 979_937
                         launch {
-                            lightning.status.collect { st ->
-                                if (st is LightningModel.Status.Running || st is LightningModel.Status.Failed) platform.markReady(screen)
-                            }
+                            val st = lightning.status.first { it is LightningModel.Status.Running || it is LightningModel.Status.Failed }
+                            if (st is LightningModel.Status.Running) lightningOverTorCheck()
+                            platform.markReady(screen)
                         }
                         runCatching {
                             val seed = withContext(Dispatchers.Default) { Bip39.toSeed(words, "") }
                             withContext(Dispatchers.Default) { lightning.enable(seed) }
+                        }
+                    }
+                    "tor-live", "tor-log" -> {
+                        // The real Tor (Arti in the app): it starts and bootstraps, and with "Connect to
+                        // the server through Tor" the wallet's Electrum server is reached through it.
+                        launch {
+                            val p = com.kilombino.kilowallet.core.tor.Tor.startAndWait(240_000)
+                            val torSays = com.kilombino.kilowallet.core.tor.Tor.lastLine
+                            println("KW $screen: Tor SOCKS port $p (null: not up), last line: $torSays")
+                            if (screen == "tor-live" && p != null) {
+                                setElectrumThroughTor(true)
+                                val end = withTimeoutOrNull(180_000) { _state.first { it.scan is ScanPhase.Done || it.scan is ScanPhase.Error }.scan }
+                                val height = _state.value.height
+                                println("KW tor-live: Electrum through Tor: $end (null: no answer in 3 min); height $height")
+                            }
+                            go(if (screen == "tor-log") Screen.TorLog else Screen.Settings)
+                            delay(2_500); platform.markReady(screen)
                         }
                     }
                     "ark" -> { selectTab(Tab.ARK); platform.markReady(screen) }

@@ -7,6 +7,7 @@ import com.kilombino.kilowallet.core.ln.Lnd
 import com.kilombino.kilowallet.core.ln.LndError
 import com.kilombino.kilowallet.core.platform.ioDispatcher
 import com.kilombino.kilowallet.core.platform.secureRandomBytes
+import com.kilombino.kilowallet.core.tor.Tor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -34,10 +35,14 @@ import kotlin.concurrent.Volatile
  * Lightning is on, bringing [Lnd] up (start, create or unlock its wallet, add the watchtower,
  * reach Kilombino's node), and a status the screen draws, refreshed while it is shown.
  *
- * iPhone differences: no Tor (LND reaches peers over clearnet, so the onion watchtower can't be
- * reached yet: see [towerNote]); the node only runs while the app is open (iOS gives a payment
- * about 30 s more after leaving, and payments still on their way are followed again on return);
- * no notifications with the app closed.
+ * Tor as Android 1.4.4: Arti starts before LND, which gets its SOCKS port (`tor.socks`, clearnet
+ * peers still direct as on Android), so Kilombino's onion watchtower and node are reached. One
+ * iPhone difference: with "Only over Tor" on (the default), the node waits for Tor and says so if
+ * it doesn't come up, instead of starting without it after a minute.
+ *
+ * iPhone differences: the node only runs while the app is open (iOS gives a payment about 30 s
+ * more after leaving, and payments still on their way are followed again on return); no
+ * notifications with the app closed.
  */
 class LightningModel(private val platform: AppPlatform) {
     private val ln = platform.lightning
@@ -250,7 +255,9 @@ class LightningModel(private val platform: AppPlatform) {
         _status.value = Status.Starting("starting the node")
         if (!Lnd.running) {
             if (Lnd.stoppedThisRun) throw LndError("The node was stopped: it starts again the next time the app opens.")
-            Lnd.writeConfig(peers(), null, alias())
+            val tor = torPort()
+            torOn = tor != null
+            Lnd.writeConfig(peers(), tor, alias())
             Lnd.start()
         }
         // The wallet RPC comes first; the main RPC once the wallet is open.
@@ -265,23 +272,63 @@ class LightningModel(private val platform: AppPlatform) {
             _status.value = Status.Starting("opening the Lightning wallet")
             Lnd.unlock(password())
         }
-        linked = false
+        linked = false; towerAdded = false
         _status.value = Status.Starting("catching up with the chain")
         refreshHere()
     }
 
+    /**
+     * Tor before the node (Android's bringUp): its SOCKS port for LND, or null to start without
+     * it. With "Only over Tor" on, it waits up to 3 minutes and then fails, saying why, rather
+     * than start the node without Tor; with it off, as Android: a minute, then without Tor.
+     */
+    private suspend fun torPort(): Int? {
+        if (!Tor.available) return null
+        _status.value = Status.Starting("connecting to Tor")
+        val err = Tor.start()
+        if (err != null) {
+            if (Tor.only) throw LndError(torFailed(err))
+            return null
+        }
+        val until = Lnd.host.nowSeconds() + if (Tor.only) 180 else 60
+        while (true) {
+            if (Tor.running) return Tor.port
+            if (!Tor.alive || Lnd.host.nowSeconds() >= until) break
+            delay(500)
+        }
+        if (Tor.only) throw LndError(torFailed(Tor.lastLine.ifBlank { if (Tor.alive) "still connecting after 3 minutes" else "it stopped" }))
+        return null
+    }
+
+    private fun torFailed(why: String) = "Tor did not start ($why). Lightning waits for Tor because \"Only over Tor\" is on: " +
+        "nothing was sent without it. Try again, look at Tor's log in Settings, or turn \"Only over Tor\" off there to start without Tor."
+
+    /** LND has Tor this run (its SOCKS port in the settings it started with). */
+    @Volatile var torOn = false
+        private set
+    @Volatile private var towerAdded = false
     @Volatile private var linked = false
 
     /**
-     * The watchtower: Kilombino's (and the other towers this app knows) are onion services, and
-     * this iPhone build has no Tor, so LND can't reach them yet. Shown on the screen so nobody
-     * thinks the channels are watched while the app is closed.
+     * The watchtower line on the screen: Kilombino's, through Tor (Android's text), or why it isn't
+     * reachable when the node runs without Tor.
      */
-    val towerNote: String = "Watchtower: not reachable on iPhone yet. Kilombino's tower is an onion service and this " +
-        "build has no Tor. Until it is, keep the app opening every few days while you have channels."
+    val towerNote: String get() = when {
+        torOn -> "A watchtower (Kilombino's, through Tor) watches your channels while the phone is off."
+        Tor.available && Lnd.running -> "Watchtower: not reachable. The node started without Tor, and Kilombino's tower is an " +
+            "onion service. Turn \"Only over Tor\" on in Settings (it starts with Tor next time), and keep the app opening every few days while you have channels."
+        Tor.available -> "A watchtower (Kilombino's, through Tor) watches your channels while the phone is off."
+        else -> "Watchtower: not reachable on iPhone yet. Kilombino's tower is an onion service and this " +
+            "build has no Tor. Until it is, keep the app opening every few days while you have channels."
+    }
 
-    /** With no peer at all, reach Kilombino's node again every half minute. */
+    /**
+     * Once the node answers, best effort (Android's link): the watchtower, once and only once the
+     * node is fully up (AddTower holds the tower client's lock while it reaches the tower over Tor,
+     * and LND's start waits on that same lock), then a link to Kilombino's node.
+     */
     private suspend fun link(peers: Int) {
+        if (torOn && !towerAdded && (peers > 0 || linked)) addTowerOnce()
         if (peers > 0) { linked = true; return }
         val now = Lnd.host.nowSeconds()
         if (now - lastLink < 30) return
@@ -289,10 +336,17 @@ class LightningModel(private val platform: AppPlatform) {
         connectKilombino()
     }
 
-    /** Connects to Kilombino's node; true when connected. */
+    private suspend fun addTowerOnce() {
+        if (pref("tower_added") == "1") { towerAdded = true; return }
+        runCatching { Lnd.addTower(Kilombino.TOWER, Kilombino.TOWER_HOST) }.onSuccess {
+            towerAdded = true; setPref("tower_added", "1")
+        }
+    }
+
+    /** Connects to Kilombino's node (its name, then its onion when LND has Tor); true when connected. */
     suspend fun connectKilombino(): Boolean {
         val errors = ArrayList<String>()
-        for (t in Lnd.resolved(Kilombino.HOSTS)) {
+        for (t in Lnd.resolved(Kilombino.HOSTS) + (if (torOn) listOf(Kilombino.ONION) else emptyList())) {
             val r = runCatching { Lnd.connect(Kilombino.NODE, t) }
             if (r.isSuccess) { linked = true; linkError = null; return true }
             errors += "$t: ${r.exceptionOrNull()?.message}"
@@ -345,7 +399,7 @@ class LightningModel(private val platform: AppPlatform) {
         Lnd.stop()
         delay(6_000)
         Lnd.host.delete(Lnd.host.dir)
-        setPref("enabled", null)
+        setPref("enabled", null); setPref("tower_added", null)
         _status.value = Status.Off
     }
 

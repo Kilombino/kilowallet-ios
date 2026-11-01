@@ -61,6 +61,10 @@ final class Bridge: NSObject, IosBridge {
         ElectrumConnection(host: host, port: port, tls: tls, pinnedFingerprint: pinnedFingerprint)
     }
 
+    func openConnectionVia(host: String, port: Int32, tls: Bool, pinnedFingerprint: String?, socksPort: Int32) -> IosConnection {
+        ElectrumConnection(host: host, port: port, tls: tls, pinnedFingerprint: pinnedFingerprint, socksPort: socksPort)
+    }
+
     // MARK: QR
 
     func qrPng(text: String) -> Data? { QrCode.png(text) }
@@ -161,6 +165,12 @@ final class Bridge: NSObject, IosBridge {
     /// One HTTPS request (the LSP, the explorer), blocking the calling (background) thread: no
     /// cookies, no cache, a 30 s timeout. Status 0 with the error when there was no answer.
     func httpRequest(method: String, url: String, body: String?) -> IosHttpResult {
+        httpRequestVia(method: method, url: url, body: body, socksPort: 0)
+    }
+
+    /// The same through the app's Tor when [socksPort] > 0 (Android: the LSP and the explorer go
+    /// through Tor when it is already running).
+    func httpRequestVia(method: String, url: String, body: String?, socksPort: Int32) -> IosHttpResult {
         guard let u = URL(string: url), u.scheme == "https" else { return HttpResult(0, "not an https URL") }
         var req = URLRequest(url: u, timeoutInterval: 30)
         req.httpMethod = method
@@ -172,7 +182,8 @@ final class Bridge: NSObject, IosBridge {
         }
         let done = DispatchSemaphore(value: 0)
         var result = HttpResult(0, "no answer")
-        Self.session.dataTask(with: req) { data, response, error in
+        let session = socksPort > 0 ? Self.torSession(socksPort) : Self.session
+        session.dataTask(with: req) { data, response, error in
             if let http = response as? HTTPURLResponse {
                 result = HttpResult(Int32(http.statusCode), data.flatMap { String(data: $0, encoding: .utf8) } ?? "")
             } else {
@@ -182,6 +193,24 @@ final class Bridge: NSObject, IosBridge {
         }.resume()
         done.wait()
         return result
+    }
+
+    /// One ephemeral session per Tor port (the port stays the same for the app's run).
+    private static var torSessions: [Int32: URLSession] = [:]
+    private static let torLock = NSLock()
+    private static func torSession(_ port: Int32) -> URLSession {
+        torLock.lock(); defer { torLock.unlock() }
+        if let s = torSessions[port] { return s }
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForRequest = 60
+        c.timeoutIntervalForResource = 90
+        c.httpCookieStorage = nil
+        c.urlCache = nil
+        c.requestCachePolicy = .reloadIgnoringLocalCacheData
+        TorProxy.apply(to: c, port: port, isolation: nil)
+        let s = URLSession(configuration: c)
+        torSessions[port] = s
+        return s
     }
 
     private final class HttpResult: NSObject, IosHttpResult {
@@ -277,6 +306,21 @@ final class Bridge: NSObject, IosBridge {
         RelaySocket(url: url, listener: listener)
     }
 
+    func openWebSocketVia(url: String, listener: IosSocketListener, socksPort: Int32, isolation: String?) -> IosSocket {
+        RelaySocket(url: url, listener: listener, socksPort: socksPort, isolation: isolation)
+    }
+
+    // MARK: Tor (ArtiEngine.swift: KilombinoTor.xcframework)
+
+    func torAvailable() -> Bool { true }
+    func torStart(dir: String, logPath: String, port: Int32) -> String? { ArtiEngine.start(dir: dir, logPath: logPath, port: port) }
+    func torStop() { ArtiEngine.stop() }
+    func torState() -> Int32 { ArtiEngine.state() }
+    func torDir() -> String { ArtiEngine.dir() }
+    func torLogPath() -> String { ArtiEngine.logPath() }
+    func torFreePort() -> Int32 { ArtiEngine.freePort() }
+    func torSocksAnswers(port: Int32) -> Bool { ArtiEngine.socksAnswers(port: port) }
+
     static func topViewController() -> UIViewController? {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
         var top = scene?.windows.first(where: { $0.isKeyWindow })?.rootViewController
@@ -298,14 +342,16 @@ final class RelaySocket: NSObject, IosSocket, URLSessionWebSocketDelegate {
     private var finished = false
     private var openError: String?
 
-    init(url: String, listener: IosSocketListener) {
+    /// [socksPort] > 0: through the app's Tor, on the circuit named [isolation] (TorProxy).
+    init(url: String, listener: IosSocketListener, socksPort: Int32 = 0, isolation: String? = nil) {
         self.listener = listener
         super.init()
         guard let u = URL(string: url), u.scheme == "wss" else { openError = "only wss:// relays"; return }
         let c = URLSessionConfiguration.ephemeral
         c.httpCookieStorage = nil
         c.urlCache = nil
-        c.timeoutIntervalForRequest = 30
+        c.timeoutIntervalForRequest = socksPort > 0 ? 60 : 30
+        TorProxy.apply(to: c, port: socksPort, isolation: isolation)
         session = URLSession(configuration: c, delegate: self, delegateQueue: nil)
         var req = URLRequest(url: u)
         req.setValue("Kilowallet", forHTTPHeaderField: "User-Agent")
@@ -313,7 +359,7 @@ final class RelaySocket: NSObject, IosSocket, URLSessionWebSocketDelegate {
         t.maximumMessageSize = 8_000_000
         task = t
         t.resume()
-        if opened.wait(timeout: .now() + 20) == .timedOut {
+        if opened.wait(timeout: .now() + (socksPort > 0 ? 60 : 20)) == .timedOut {
             lock.lock(); if openError == nil && !didOpen { openError = "the relay did not answer" }; lock.unlock()
         }
         if openError != nil { t.cancel(); session.invalidateAndCancel(); return }

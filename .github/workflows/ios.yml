@@ -14,7 +14,7 @@ jobs:
   simulator:
     name: Tests, simulator build, screenshots
     runs-on: macos-15
-    timeout-minutes: 100
+    timeout-minutes: 140
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +52,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/fetch-ark-engine.sh
+
+      - name: Fetch the Tor engine (KilombinoTor.xcframework, checked against tor-engine/ENGINE)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/fetch-tor-engine.sh
 
       - name: Build the app for the iOS Simulator (no signing)
         run: |
@@ -110,6 +115,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/fetch-ark-engine.sh
+
+      - name: Fetch the Tor engine (KilombinoTor.xcframework, checked against tor-engine/ENGINE)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/fetch-tor-engine.sh
       - name: Build Release for iphoneos without signing
         run: |
           mkdir -p build

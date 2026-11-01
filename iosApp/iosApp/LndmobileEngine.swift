@@ -13,6 +13,7 @@ enum LndmobileEngine {
         "closedChannels": { d, c in LndmobileClosedChannels(d, c) },
         "connectPeer": { d, c in LndmobileConnectPeer(d, c) },
         "decodePayReq": { d, c in LndmobileDecodePayReq(d, c) },
+        "disconnectPeer": { d, c in LndmobileDisconnectPeer(d, c) },
         "estimateSplice": { d, c in LndmobileEstimateSplice(d, c) },
         "exportAllChannelBackups": { d, c in LndmobileExportAllChannelBackups(d, c) },
         "fundingStateStep": { d, c in LndmobileFundingStateStep(d, c) },
@@ -23,6 +24,7 @@ enum LndmobileEngine {
         "listChannels": { d, c in LndmobileListChannels(d, c) },
         "listInvoices": { d, c in LndmobileListInvoices(d, c) },
         "listPayments": { d, c in LndmobileListPayments(d, c) },
+        "listPeers": { d, c in LndmobileListPeers(d, c) },
         "listUnspent": { d, c in LndmobileListUnspent(d, c) },
         "lookupInvoice": { d, c in LndmobileLookupInvoice(d, c) },
         "newAddress": { d, c in LndmobileNewAddress(d, c) },
@@ -47,6 +49,7 @@ enum LndmobileEngine {
         "walletKitListUnspent": { d, c in LndmobileWalletKitListUnspent(d, c) },
         "walletKitReleaseOutput": { d, c in LndmobileWalletKitReleaseOutput(d, c) },
         "watchtowerClientAddTower": { d, c in LndmobileWatchtowerClientAddTower(d, c) },
+        "watchtowerClientListTowers": { d, c in LndmobileWatchtowerClientListTowers(d, c) },
     ]
 
     private static let streams: [String: (Data?, LndmobileRecvStreamProtocol?) -> Void] = [

@@ -486,5 +486,22 @@
  "The fee comes out of the amount.": "Les frais sont pris sur le montant.",
  "resizing {0} sats → {1} sats · the channel keeps working meanwhile": "redimensionnement {0} sats → {1} sats · le canal continue de fonctionner pendant ce temps",
  "resizing {0} sats → {1} sats · {2} confirmations · the channel keeps working meanwhile": "redimensionnement {0} sats → {1} sats · {2} confirmations · le canal continue de fonctionner pendant ce temps",
- "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "redimensionnement {0} sats → {1} sats · en attente de sa première confirmation · le canal continue de fonctionner pendant ce temps"
+ "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "redimensionnement {0} sats → {1} sats · en attente de sa première confirmation · le canal continue de fonctionner pendant ce temps",
+ "Arti's own log, the last lines. It has no addresses or keys (safe logging): copy it to send it when Tor doesn't come up.": "Le journal d'Arti lui-même, les dernières lignes. Il ne contient ni adresses ni clés (journalisation sûre) : copie-le pour l'envoyer quand Tor ne démarre pas.",
+ "Connecting…": "Connexion…",
+ "If Tor doesn't come up in a minute, Lightning starts without it (no watchtower), as on Android.": "Si Tor ne démarre pas en une minute, Lightning démarre sans lui (sans watchtower), comme sur Android.",
+ "Lightning reaches Kilombino's watchtower and onion peers through it; the pools' relay, the inbound channel service and the explorer go through it while it runs.": "Lightning atteint par lui la watchtower et les pairs onion de Kilombino ; le relais des pools, le service de canal entrant et l'explorateur passent par lui tant qu'il tourne.",
+ "On · SOCKS 127.0.0.1:{0}": "Activé · SOCKS 127.0.0.1:{0}",
+ "Stopped": "Arrêté",
+ "Not running": "Pas démarré",
+ "TOR'S LOG": "JOURNAL DE TOR",
+ "The server never sees this phone's address. TLS and the pinned certificate stay as they are. Slower; if Tor doesn't start, nothing is sent without it. Needs iOS 17 or later.": "Le serveur ne voit jamais l'adresse de ce téléphone. TLS et le certificat épinglé restent tels quels. Plus lent ; si Tor ne démarre pas, rien n'est envoyé sans lui. Nécessite iOS 17 ou plus récent.",
+ "This build has no Tor.": "Cette version n'a pas Tor.",
+ "This build has no Tor: a .onion server can't be reached, and this stays off.": "Cette version n'a pas Tor : un serveur .onion est injoignable, et ceci reste désactivé.",
+ "Tor (Arti, the Tor Project's Tor) runs inside the app when something needs it: Lightning, a .onion server, or the server through Tor.": "Tor (Arti, le Tor du Tor Project) tourne dans l'app quand quelque chose en a besoin : Lightning, un serveur .onion ou le serveur par Tor.",
+ "Tor did not start ({0}). Lightning waits for Tor because \"Only over Tor\" is on: nothing was sent without it. Try again, look at Tor's log in Settings, or turn \"Only over Tor\" off there to start without Tor.": "Tor n'a pas démarré ({0}). Lightning attend Tor parce que \"Seulement par Tor\" est activé : rien n'a été envoyé sans lui. Réessaie, regarde le journal de Tor dans les Réglages, ou désactive-y \"Seulement par Tor\" pour démarrer sans Tor.",
+ "Watchtower: not reachable. The node started without Tor, and Kilombino's tower is an onion service. Turn \"Only over Tor\" on in Settings (it starts with Tor next time), and keep the app opening every few days while you have channels.": "Watchtower : injoignable. Le nœud a démarré sans Tor, et la tour de Kilombino est un service onion. Active \"Seulement par Tor\" dans les Réglages (la prochaine fois il démarre avec Tor) et ouvre l'app tous les quelques jours tant que tu as des canaux.",
+ "What goes over Tor waits for it: Lightning doesn't start without Tor, and says why if Tor doesn't come up. Nothing is sent over the clear net instead.": "Ce qui passe par Tor l'attend : Lightning ne démarre pas sans Tor et dit pourquoi si Tor ne démarre pas. Rien n'est envoyé sur le réseau ouvert à la place.",
+ "Connecting to a server through Tor needs iOS 17 or later: nothing was sent without it.": "Se connecter à un serveur par Tor nécessite iOS 17 ou plus récent : rien n'a été envoyé sans lui.",
+ "connecting to Tor": "connexion à Tor"
 }

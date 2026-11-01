@@ -27,7 +27,7 @@ xcrun simctl install "$UDID" "$APP"
 
 n=0
 # "screen@lang" shows that screen in another language (the app's language picker, set by the demo).
-for screen in welcome create restore watch home simple lightning ln-starting ln-running ln-failed ark locked receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round home@es receive@es settings@es lightning@es ln-running@es pools@es pool-round@zh home@zh dice backup cpfp receive-taproot settings-taproot pool-history psbt immature dice@es backup@es pool-history@es psbt@es ark-ready ark-ready@es ark@es ark-live ln-live; do
+for screen in welcome create restore watch home simple lightning ln-starting ln-running ln-failed ark locked receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round home@es receive@es settings@es lightning@es ln-running@es pools@es pool-round@zh home@zh dice backup cpfp receive-taproot settings-taproot pool-history psbt immature dice@es backup@es pool-history@es psbt@es ark-ready ark-ready@es ark@es ark-live tor-live tor-log ln-live; do
   n=$((n + 1))
   base=${screen%@*}
   name=${screen/@/-}
@@ -39,7 +39,10 @@ for screen in welcome create restore watch home simple lightning ln-starting ln-
   limit=20; { [ "$base" = home ] || [ "$base" = simple ] || [ "$base" = immature ]; } && limit=150
   case "$base" in pool*) limit=90 ;; esac
   # The real Lightning engine: LND starts, makes a throwaway wallet and syncs with the chain's peers.
-  [ "$base" = ln-live ] && limit=900
+  # Tor first (up to 3 min), then the node, the watchtower and Kilombino's node by its onion.
+  [ "$base" = ln-live ] && limit=1300
+  # The real Tor (Arti in the app): it bootstraps, then the Electrum server is reached through it.
+  { [ "$base" = tor-live ] || [ "$base" = tor-log ]; } && limit=420
   # The real Ark engine: it starts, makes a throwaway wallet on the Ark server and hands out an address.
   [ "$base" = ark-live ] && limit=300
   for i in $(seq 1 $limit); do
@@ -54,6 +57,11 @@ for screen in welcome create restore watch home simple lightning ln-starting ln-
     [ -f "$LOG" ] && cp "$LOG" screenshots-logs/lnd-live.log && tail -25 screenshots-logs/lnd-live.log || echo "no LND log at $LOG"
     ls -la "$DATA/Library/Application Support/lnd" || true
   fi
+  case "$base" in tor-live|tor-log|ln-live)
+    TLOG="$DATA/Library/Application Support/tor.log"
+    [ -f "$TLOG" ] && cp "$TLOG" "screenshots-logs/tor-$name.log" && tail -15 "screenshots-logs/tor-$name.log" || echo "no Tor log at $TLOG"
+    grep "KW " "screenshots-logs/$name.log" || true ;;
+  esac
   if [ "$base" = ark-live ]; then
     ALOG="$DATA/Library/Application Support/ark/debug.log"
     [ -f "$ALOG" ] && cp "$ALOG" screenshots-logs/ark-live.log && grep -viE 'mnemonic|seed|passphrase' screenshots-logs/ark-live.log | tail -25 || echo "no Ark log at $ALOG"

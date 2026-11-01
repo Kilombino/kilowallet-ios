@@ -486,5 +486,22 @@
  "The fee comes out of the amount.": "Die Gebühr geht vom Betrag ab.",
  "resizing {0} sats → {1} sats · the channel keeps working meanwhile": "Größenänderung {0} sats → {1} sats · der Kanal arbeitet währenddessen weiter",
  "resizing {0} sats → {1} sats · {2} confirmations · the channel keeps working meanwhile": "Größenänderung {0} sats → {1} sats · {2} Bestätigungen · der Kanal arbeitet währenddessen weiter",
- "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "Größenänderung {0} sats → {1} sats · wartet auf die erste Bestätigung · der Kanal arbeitet währenddessen weiter"
+ "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "Größenänderung {0} sats → {1} sats · wartet auf die erste Bestätigung · der Kanal arbeitet währenddessen weiter",
+ "Arti's own log, the last lines. It has no addresses or keys (safe logging): copy it to send it when Tor doesn't come up.": "Arti eigenes Protokoll, die letzten Zeilen. Es enthält keine Adressen oder Schlüssel (sicheres Logging): kopiere es und schick es, wenn Tor nicht startet.",
+ "Connecting…": "Verbinde…",
+ "If Tor doesn't come up in a minute, Lightning starts without it (no watchtower), as on Android.": "Startet Tor nicht innerhalb einer Minute, startet Lightning ohne Tor (ohne Watchtower), wie unter Android.",
+ "Lightning reaches Kilombino's watchtower and onion peers through it; the pools' relay, the inbound channel service and the explorer go through it while it runs.": "Lightning erreicht darüber Kilombinos Watchtower und Onion-Peers; das Relay der Pools, der Dienst für eingehende Kanäle und der Explorer laufen darüber, solange es läuft.",
+ "On · SOCKS 127.0.0.1:{0}": "An · SOCKS 127.0.0.1:{0}",
+ "Stopped": "Gestoppt",
+ "Not running": "Läuft nicht",
+ "TOR'S LOG": "TOR-PROTOKOLL",
+ "The server never sees this phone's address. TLS and the pinned certificate stay as they are. Slower; if Tor doesn't start, nothing is sent without it. Needs iOS 17 or later.": "Der Server sieht nie die Adresse dieses Telefons. TLS und das angeheftete Zertifikat bleiben, wie sie sind. Langsamer; startet Tor nicht, wird ohne Tor nichts gesendet. Braucht iOS 17 oder neuer.",
+ "This build has no Tor.": "Dieser Build hat kein Tor.",
+ "This build has no Tor: a .onion server can't be reached, and this stays off.": "Dieser Build hat kein Tor: Ein .onion-Server ist nicht erreichbar, und das bleibt aus.",
+ "Tor (Arti, the Tor Project's Tor) runs inside the app when something needs it: Lightning, a .onion server, or the server through Tor.": "Tor (Arti, das Tor des Tor Project) läuft in der App, wenn etwas es braucht: Lightning, ein .onion-Server oder der Server über Tor.",
+ "Tor did not start ({0}). Lightning waits for Tor because \"Only over Tor\" is on: nothing was sent without it. Try again, look at Tor's log in Settings, or turn \"Only over Tor\" off there to start without Tor.": "Tor ist nicht gestartet ({0}). Lightning wartet auf Tor, weil \"Nur über Tor\" an ist: Ohne Tor wurde nichts gesendet. Versuch es erneut, sieh dir das Tor-Protokoll in den Einstellungen an oder schalte dort \"Nur über Tor\" aus, um ohne Tor zu starten.",
+ "Watchtower: not reachable. The node started without Tor, and Kilombino's tower is an onion service. Turn \"Only over Tor\" on in Settings (it starts with Tor next time), and keep the app opening every few days while you have channels.": "Watchtower: nicht erreichbar. Der Knoten ist ohne Tor gestartet, und Kilombinos Turm ist ein Onion-Dienst. Schalte \"Nur über Tor\" in den Einstellungen ein (beim nächsten Mal startet er mit Tor) und öffne die App alle paar Tage, solange du Kanäle hast.",
+ "What goes over Tor waits for it: Lightning doesn't start without Tor, and says why if Tor doesn't come up. Nothing is sent over the clear net instead.": "Was über Tor geht, wartet darauf: Lightning startet nicht ohne Tor und sagt, warum, wenn Tor nicht startet. Stattdessen wird nichts über das offene Netz gesendet.",
+ "Connecting to a server through Tor needs iOS 17 or later: nothing was sent without it.": "Die Verbindung zu einem Server über Tor braucht iOS 17 oder neuer: Ohne Tor wurde nichts gesendet.",
+ "connecting to Tor": "verbinde mit Tor"
 }
