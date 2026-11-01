@@ -28,12 +28,12 @@ object TxBuilder {
         val privateKey: ByteArray, // 32-byte secret (for Taproot, the internal key's)
         val pubkey: ByteArray,     // 33-byte compressed (for Taproot, the internal key)
         val sequence: Long = 0xffffffffL,
-        /** P2WPKH or P2TR: the two kinds of coin this wallet holds keys for. */
+        /** P2WPKH or P2TR (the coins this wallet holds keys for), or P2SH-P2WPKH (a watch-only wallet's, signed elsewhere). */
         val type: ScriptType = ScriptType.P2WPKH,
     ) {
         init {
             require(pubkey.size == 33) { "SegWit inputs need a compressed public key" }
-            require(type == ScriptType.P2WPKH || type == ScriptType.P2TR) { "Only native SegWit and Taproot coins are signed here" }
+            require(type != ScriptType.P2PKH) { "Legacy (1…) coins are not spent here" }
         }
         /** The scriptPubKey of the output being spent. */
         val spentScript: ByteArray get() = Address.scriptPubKey(pubkey, type)
@@ -278,6 +278,9 @@ object TxBuilder {
         return assemble(inputs, outputs, witnesses, version, locktime)
     }
 
+    /** One data push of up to 75 bytes (a redeem script). */
+    private fun push(b: ByteArray): ByteArray { require(b.size <= 75); return byteArrayOf(b.size.toByte()) + b }
+
     /** Serialise a SegWit transaction from already-made signatures, one per input. */
     fun assemble(
         inputs: List<Input>, outputs: List<Output>, witnesses: List<ByteArray>,
@@ -289,7 +292,8 @@ object TxBuilder {
             out.write(varint(inputs.size.toLong()))
             for (i in inputs) {
                 out.write(outpoint(i.txid, i.vout))
-                out.write(varBytes(ByteArray(0)))   // P2WPKH and P2TR: empty scriptSig
+                // P2WPKH and P2TR: empty scriptSig; nested SegWit puts its redeem script there.
+                out.write(varBytes(if (i.type == ScriptType.P2SH_P2WPKH) push(Address.scriptPubKey(i.pubkey, ScriptType.P2WPKH)) else ByteArray(0)))
                 out.write(u32le(i.sequence))
             }
             out.write(varint(outputs.size.toLong()))

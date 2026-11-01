@@ -12,7 +12,7 @@ val pkg = "$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/crypto"
 val files = listOf(
     "Hashes", "Ripemd160", "Secp256k1", "NativeSecp", "Ecdsa", "Bip32", "Bip32Priv", "Bip39",
     "Bip39Wordlist", "Base58", "Bech32", "Address", "TxBuilder", "Schnorr", "TxParse", "Blake2b", "BlockHeader",
-    "XChaCha20Poly1305", "DiceCheck",
+    "XChaCha20Poly1305", "DiceCheck", "Psbt", "Ur",
 )
 // The pool (Kilojoin) code: the protocol, the transaction, blind signatures, nostr, and the session
 // itself (the interop tool runs it against this port's).

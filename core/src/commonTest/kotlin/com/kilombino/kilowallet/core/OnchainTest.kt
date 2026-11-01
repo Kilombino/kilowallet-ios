@@ -174,6 +174,45 @@ class OnchainTest {
     }
 
     @Test
+    fun psbtsLikeAndroidAndTheirSignaturesChecked() {
+        val ps = root["psbts"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(3, ps.size)
+        for (p in ps) {
+            val type = ScriptType.valueOf(p["type"]!!.jsonPrimitive.content)
+            val coins = p["coins"]!!.jsonArray.map { it.jsonObject }.map { c ->
+                val o = hex(c["origin"]!!.jsonPrimitive.content)
+                val path = (4 until o.size step 4).map { i -> (0 until 4).fold(0L) { a, k -> a or ((o[i + k].toLong() and 0xff) shl (8 * k)) } }
+                com.kilombino.kilowallet.core.crypto.Psbt.Coin(c["txid"]!!.jsonPrimitive.content, c["vout"]!!.jsonPrimitive.int,
+                    c["value"]!!.jsonPrimitive.long, type, hex(c["pubkey"]!!.jsonPrimitive.content),
+                    com.kilombino.kilowallet.core.crypto.Psbt.Origin(o.copyOfRange(0, 4), path))
+            }
+            val outputs = p["outputs"]!!.jsonArray.map { it.jsonObject }.map { TxBuilder.Output(hex(it["script"]!!.jsonPrimitive.content), it["value"]!!.jsonPrimitive.long) }
+            val purpose = p["purpose"]!!.jsonPrimitive.long
+            val change = mapOf(1 to com.kilombino.kilowallet.core.crypto.Psbt.Change(hex(p["changePubkey"]!!.jsonPrimitive.content), type,
+                com.kilombino.kilowallet.core.crypto.Psbt.Origin(byteArrayOf(1, 2, 3, 4), listOf(purpose + 0x80000000L, 0x80000000L, 0x80000000L, 1L, 5L))))
+            val exported = com.kilombino.kilowallet.core.crypto.Psbt.create(coins, outputs, change)
+            assertEquals(p["exported"]!!.jsonPrimitive.content, exported.toHex(), type.name)
+            val returned = hex(p["returned"]!!.jsonPrimitive.content)
+            val tx = com.kilombino.kilowallet.core.crypto.Psbt.finish(exported, returned, coins, outputs)
+            assertEquals(p["raw"]!!.jsonPrimitive.content, tx.rawHex, type.name)
+            assertEquals(p["txid"]!!.jsonPrimitive.content, tx.txid)
+            // A signature over something else is refused, never broadcast.
+            val parsed = com.kilombino.kilowallet.core.crypto.Psbt.parse(returned)
+            val badInputs = parsed.inputs.mapIndexed { i, m -> if (i != 0) m else m.map { (k, v) ->
+                if (k[0] == 0x02.toByte() || k[0] == 0x13.toByte()) k to v.copyOf().also { it[6] = (it[6].toInt() xor 1).toByte() } else k to v } }
+            val tampered = com.kilombino.kilowallet.core.crypto.Psbt.serialize(com.kilombino.kilowallet.core.crypto.Psbt.Parsed(parsed.global, badInputs, parsed.outputs))
+            assertTrue(runCatching { com.kilombino.kilowallet.core.crypto.Psbt.finish(exported, tampered, coins, outputs) }.isFailure)
+            // The animated QR: the same parts as the Android app, and back to the same bytes.
+            val enc = com.kilombino.kilowallet.core.crypto.Ur.psbtEncoder(exported)
+            val parts = p["ur"]!!.jsonArray.map { it.jsonPrimitive.content }
+            assertEquals(parts, parts.map { enc.nextPart() })
+            val dec = com.kilombino.kilowallet.core.crypto.Ur.Decoder()
+            for (part in parts) if (dec.receive(part)) break
+            assertTrue(dec.psbt().contentEquals(exported))
+        }
+    }
+
+    @Test
     fun cpfpChildPaysForThePair() {
         val coin = SpendableUtxo("cd".repeat(32), 1, 40_000, 0, 3, 0)
         val to = ByteArray(22).also { it[1] = 0x14 }

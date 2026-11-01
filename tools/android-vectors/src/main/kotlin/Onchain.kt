@@ -115,8 +115,45 @@ fun main(args: Array<String>) {
         .put("androidFile", androidFile.toHex()).put("androidPassword", "correct horse").put("androidPassphrase", "pass phrase")
         .put("app", app)
 
+    // PSBTs for a watch-only wallet of each type: what the app exports, a signed copy as a signer
+    // returns it (unified 0x21 signatures put in by the Android code), and the transaction it builds.
+    val psbts = JSONArray()
+    val pw = Bip39.fromEntropy(det("kw-ios-psbt", 16))
+    val pm = Bip32Priv.fromSeed(Bip39.toSeed(pw, ""))
+    for ((type, purpose) in listOf(ScriptType.P2WPKH to 84, ScriptType.P2SH_P2WPKH to 49, ScriptType.P2TR to 86)) {
+        val coins = (0..1).map { k ->
+            val node = Bip32Priv.derivePath(pm, "m/$purpose'/0'/0'/$k/${k + 1}")
+            com.kilombino.pyblockwatch.crypto.Psbt.Coin(det("psbt-prev-$purpose-$k").toHex(), k, 70_000L + 1_000L * k, type, node.publicKey(),
+                com.kilombino.pyblockwatch.crypto.Psbt.Origin(byteArrayOf(1, 2, 3, 4), listOf(purpose + 0x80000000L, 0x80000000L, 0x80000000L, k.toLong(), (k + 1).toLong()))) to node
+        }
+        val changePub = Bip32Priv.derivePath(pm, "m/$purpose'/0'/0'/1/5").publicKey()
+        val outputs = listOf(
+            TxBuilder.Output(Address.decodeToScriptPubKey(recipients[purpose % 3]), 100_000),
+            TxBuilder.Output(Address.scriptPubKey(changePub, type), 39_000),
+        )
+        val change = mapOf(1 to com.kilombino.pyblockwatch.crypto.Psbt.Change(changePub, type,
+            com.kilombino.pyblockwatch.crypto.Psbt.Origin(byteArrayOf(1, 2, 3, 4), listOf(purpose + 0x80000000L, 0x80000000L, 0x80000000L, 1L, 5L))))
+        val exported = com.kilombino.pyblockwatch.crypto.Psbt.create(coins.map { it.first }, outputs, change)
+        val signedInputs = coins.map { (c, node) -> TxBuilder.Input(c.txid, c.vout, c.value, node.key, node.publicKey(), c.sequence, type) }
+        val parsed = com.kilombino.pyblockwatch.crypto.Psbt.parse(exported)
+        val newInputs = parsed.inputs.mapIndexed { i, m ->
+            val sig = TxBuilder.witnessSignature(2, signedInputs, outputs, i, 0, unified = true, auxRand = det("psbt-aux-$purpose-$i"))
+            m + listOf(if (type == ScriptType.P2TR) byteArrayOf(0x13) to sig else (byteArrayOf(0x02) + coins[i].first.pubkey) to sig)
+        }
+        val returned = com.kilombino.pyblockwatch.crypto.Psbt.serialize(com.kilombino.pyblockwatch.crypto.Psbt.Parsed(parsed.global, newInputs, parsed.outputs))
+        val final = com.kilombino.pyblockwatch.crypto.Psbt.finish(exported, returned, coins.map { it.first }, outputs)
+        val enc = com.kilombino.pyblockwatch.crypto.Ur.psbtEncoder(exported)
+        psbts.put(JSONObject().put("type", type.name).put("purpose", purpose)
+            .put("coins", JSONArray(coins.map { (c, _) -> JSONObject().put("txid", c.txid).put("vout", c.vout).put("value", c.value)
+                .put("pubkey", c.pubkey.toHex()).put("origin", c.origin!!.bytes().toHex()) }))
+            .put("changePubkey", changePub.toHex())
+            .put("outputs", JSONArray(outputs.map { JSONObject().put("script", it.scriptPubKey.toHex()).put("value", it.value) }))
+            .put("exported", exported.toHex()).put("returned", returned.toHex()).put("raw", final.rawHex).put("txid", final.txid)
+            .put("ur", JSONArray((0 until 12).map { enc.nextPart() })))
+    }
+
     val json = JSONObject().put("androidCommit", commit).put("taprootWallets", wallets).put("taprootTxs", txs)
-        .put("dice", dice).put("kab", kab).toString().replace("},{", "},\n{")
+        .put("dice", dice).put("kab", kab).put("psbts", psbts).toString().replace("},{", "},\n{")
     out.writeText(
         """
         |package com.kilombino.kilowallet.core
