@@ -33,7 +33,7 @@ export CARGO_TARGET_DIR=$out/target
 targets="aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios"
 rustup target add $targets
 for t in $targets; do
-  time cargo build --locked --profile release-small --lib --target "$t"
+  time cargo rustc --locked --profile release-small --lib --target "$t" --crate-type staticlib
 done
 # One object per slice that exports only the C functions.
 hide() { # target arch platform out

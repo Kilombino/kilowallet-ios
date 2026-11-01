@@ -11,8 +11,12 @@ publish = false
 # crate is the version Kilowallet Android's libarti.so is built from.
 [workspace]
 
+# An rlib here (the desktop live check links it); build-ios.sh asks rustc for the static library
+# itself (`cargo rustc --crate-type staticlib`), so LTO makes it one object of machine code. With
+# both kinds at once, cargo skips LTO and leaves bitcode of rustc's newer LLVM in every member,
+# which Xcode's tools can't read.
 [lib]
-crate-type = ["staticlib", "rlib"]
+crate-type = ["rlib"]
 
 # Arti's features as Android builds them (tor-engine/ENGINE), less `harden`: that one only acts
 # when arti runs as its own program (it turns off core dumps and debugger attachment for the
