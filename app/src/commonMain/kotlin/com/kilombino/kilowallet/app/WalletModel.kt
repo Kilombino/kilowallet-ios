@@ -201,6 +201,27 @@ class WalletModel(private val platform: AppPlatform) {
         }
     }
 
+    /**
+     * The channels a channel.backup holds, read with the node's keys from the recovery words (one
+     * unlock): what restoring it will close. A backup of other words is refused ([Scb.WrongSeed]).
+     */
+    fun readChannelBackup(file: ByteArray, done: (Result<List<com.kilombino.kilowallet.core.ln.Scb.Channel>>) -> Unit) {
+        platform.seeds.load(I18n.tr("Read the channel backup")) { secret, error ->
+            if (secret == null) { done(Result.failure(IllegalStateException(error ?: "Not unlocked."))); return@load }
+            scope.launch {
+                done(runCatching {
+                    withContext(Dispatchers.Default) {
+                        val (words, pass) = decodeSecret(secret)
+                        val seed = Bip39.toSeed(words, pass)
+                        val root = com.kilombino.kilowallet.core.ln.LnSeed.root(seed)
+                        seed.fill(0)
+                        try { com.kilombino.kilowallet.core.ln.Scb.decode(file, root) } finally { root.wipe() }
+                    }
+                })
+            }
+        }
+    }
+
     /** Lightning: the node on this phone (LND linked in), ported from Android's ln/Lightning.kt. */
     val lightning = LightningModel(platform)
     val ark = ArkModel(platform)

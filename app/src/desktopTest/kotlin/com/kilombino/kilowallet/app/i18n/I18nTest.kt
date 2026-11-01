@@ -204,6 +204,12 @@ class I18nTest {
         " UTC", "normal",
         // The locked-rewards screenshot's name and made-up txids.
         "immature", "c0", "c1",
+        // LND's splice status and refusal codes the code matches (the screen shows its own text for each),
+        // the channel backup's file name and an address field's hint.
+        "ok", "peer_not_announcing", "peer_offline", "peer_unsupported", "no_unified_sigs", "taproot", "zero_conf", "pending",
+        "closing", "disabled", "peer_not_locked", "peer_misbehaved", "insufficient_funds", "immature_inputs", "below_min",
+        "above_max_out", "fee_below_floor", "reserve_on_change", "close_address_set", "node_cap", "confirmed", "broadcast",
+        "kilowallet-channel.backup", "bc1…", "12…  12 sats · 12",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""(12 345 · )?12(/12 345)? conf"""), Regex(""" · 12/12 345 conf"""), Regex("""\d{4}-\d\d-\d\dT[0-9:]+"""),
         Regex("""[?=+]? ?12( 345)?( sats| sat/vB| BTC( \(XBT\))?)?( · 12 345 sat/vB)?"""), // amounts and rates

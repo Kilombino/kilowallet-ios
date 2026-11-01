@@ -2806,5 +2806,14 @@
 "Kilojoin is an open protocol over nostr, the same one Kilowallet for Android and for desktop use, so you can be in a pool with people on any of them. A pool is all native SegWit (bc1q) or all Taproot (bc1p); Taproot pools show once Taproot is on in Settings. Several seats of yours in one pool count as one person. Pools are open from {0} sats per person, {1} sats per output at least.": "Kilojoin est un protocole ouvert sur nostr, le même qu'utilisent Kilowallet pour Android et pour ordinateur, donc tu peux être dans un pool avec des gens de n'importe lequel. Un pool est entièrement SegWit natif (bc1q) ou entièrement Taproot (bc1p) ; les pools Taproot apparaissent une fois Taproot activé dans les Réglages. Plusieurs places à toi dans un même pool comptent comme une seule personne. Il y a des pools à partir de {0} sats par personne, {1} sats par sortie au minimum.",
 "A Taproot pool's outputs go to this wallet: the watch-only key is native SegWit.": "Les sorties d'un pool Taproot vont à ce portefeuille : la clé en lecture seule est en SegWit natif.",
 "Taproot is not turned on in this wallet.": "Taproot n'est pas activé dans ce portefeuille.",
-"The coins and the recipients' addresses must be of the same type.": "Les pièces et les adresses des destinataires doivent être du même type."
+"The coins and the recipients' addresses must be of the same type.": "Les pièces et les adresses des destinataires doivent être du même type.",
+"{0} channel(s) · {1} sats of capacity": "{0} canal(aux) · {1} sats de capacité",
+"Address (bc1…)": "Adresse (bc1…)",
+"Not possible now ({0}).": "Impossible pour l'instant ({0}).",
+"Read the channel backup": "Lire la sauvegarde des canaux",
+"Send {0} sats?": "Envoyer {0} sats ?",
+"The fee comes out of the amount.": "Les frais sont pris sur le montant.",
+"resizing {0} sats → {1} sats · the channel keeps working meanwhile": "redimensionnement {0} sats → {1} sats · le canal continue de fonctionner pendant ce temps",
+"resizing {0} sats → {1} sats · {2} confirmations · the channel keeps working meanwhile": "redimensionnement {0} sats → {1} sats · {2} confirmations · le canal continue de fonctionner pendant ce temps",
+"resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "redimensionnement {0} sats → {1} sats · en attente de sa première confirmation · le canal continue de fonctionner pendant ce temps"
 }

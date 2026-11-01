@@ -477,5 +477,14 @@
  "Kilojoin is an open protocol over nostr, the same one Kilowallet for Android and for desktop use, so you can be in a pool with people on any of them. A pool is all native SegWit (bc1q) or all Taproot (bc1p); Taproot pools show once Taproot is on in Settings. Several seats of yours in one pool count as one person. Pools are open from {0} sats per person, {1} sats per output at least.": "Kilojoin 是基于 nostr 的开放协议，与 Android 版和桌面版 Kilowallet 使用的相同，所以你可以和任何一个版本的用户在同一个池中。一个池要么全是原生 SegWit（bc1q），要么全是 Taproot（bc1p）；在设置中开启 Taproot 后才会显示 Taproot 池。你在同一个池中的多个座位只算一个人。池的起点为每人 {0} sats，每个输出至少 {1} sats。",
  "A Taproot pool's outputs go to this wallet: the watch-only key is native SegWit.": "Taproot 池的输出会进入本钱包：只读密钥是原生 SegWit。",
  "Taproot is not turned on in this wallet.": "本钱包未开启 Taproot。",
- "The coins and the recipients' addresses must be of the same type.": "币和收款人的地址必须是同一类型。"
+ "The coins and the recipients' addresses must be of the same type.": "币和收款人的地址必须是同一类型。",
+ "{0} channel(s) · {1} sats of capacity": "{0} 个通道 · 容量 {1} sats",
+ "Address (bc1…)": "地址（bc1…）",
+ "Not possible now ({0}).": "现在无法进行（{0}）。",
+ "Read the channel backup": "读取通道备份",
+ "Send {0} sats?": "发送 {0} sats？",
+ "The fee comes out of the amount.": "手续费从金额中扣除。",
+ "resizing {0} sats → {1} sats · the channel keeps working meanwhile": "调整大小 {0} sats → {1} sats · 通道在此期间照常工作",
+ "resizing {0} sats → {1} sats · {2} confirmations · the channel keeps working meanwhile": "调整大小 {0} sats → {1} sats · {2} 次确认 · 通道在此期间照常工作",
+ "resizing {0} sats → {1} sats · waiting for its first confirmation · the channel keeps working meanwhile": "调整大小 {0} sats → {1} sats · 等待首次确认 · 通道在此期间照常工作"
 }

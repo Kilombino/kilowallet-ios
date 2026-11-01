@@ -70,7 +70,7 @@ fun LightningTab(model: WalletModel, state: UiState, platform: AppPlatform) {
         LightningModel.Status.Off -> LnIntro(ln) { model.enableLightning() }
         is LightningModel.Status.Starting -> LnStarting(s, ln)
         is LightningModel.Status.Failed -> LnFailed(s, ln)
-        is LightningModel.Status.Running -> LnNode(s, ln, state, platform)
+        is LightningModel.Status.Running -> LnNode(s, ln, state, platform, model)
     }
 }
 
@@ -156,9 +156,11 @@ private fun LnFailed(s: LightningModel.Status.Failed, ln: LightningModel) {
 private enum class LnSheet { None, Fund, Open, Receive, Pay }
 
 @Composable
-private fun LnNode(s: LightningModel.Status.Running, ln: LightningModel, state: UiState, platform: AppPlatform) {
+private fun LnNode(s: LightningModel.Status.Running, ln: LightningModel, state: UiState, platform: AppPlatform, model: WalletModel) {
     var sheet by remember { mutableStateOf(LnSheet.None) }
     var closing by remember { mutableStateOf<Lnd.Channel?>(null) }
+    var resizing by remember { mutableStateOf<Lnd.Channel?>(null) }
+    var speeding by remember { mutableStateOf<Lnd.Closing?>(null) }
     val i = s.info
     val b = s.balances
     val hide = { t: String -> if (state.hidden) MASK else t }
@@ -171,6 +173,8 @@ private fun LnNode(s: LightningModel.Status.Running, ln: LightningModel, state: 
             containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft)
     }
     closing?.let { c -> CloseChannelDialog(c, ln) { closing = null } }
+    resizing?.let { c -> ResizeChannelDialog(c, ln) { resizing = null } }
+    speeding?.let { c -> SpeedUpCloseDialog(c, ln) { speeding = null } }
 
     Panel(accent = LnGold) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -246,17 +250,29 @@ private fun LnNode(s: LightningModel.Status.Running, ln: LightningModel, state: 
                      else "Cannot reach it yet; it keeps trying. " + e.lines().first().substringAfter("desc = "),
                     style = MaterialTheme.typography.labelSmall, color = TextFaint)
             }
-            TextButton(onClick = { closing = c }, contentPadding = PaddingValues(0.dp)) {
-                Text("CLOSE CHANNEL", color = LnGold, style = MaterialTheme.typography.labelSmall)
+            c.splice?.let { sp -> Text(spliceLine(sp), style = MaterialTheme.typography.bodySmall, color = if (sp.dead) Bad else Warn) }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (c.splice == null) TextButton(onClick = { resizing = c }, contentPadding = PaddingValues(0.dp)) {
+                    Text("RESIZE", color = LnGold, style = MaterialTheme.typography.labelSmall)
+                }
+                TextButton(onClick = { closing = c }, contentPadding = PaddingValues(0.dp)) {
+                    Text("CLOSE CHANNEL", color = LnGold, style = MaterialTheme.typography.labelSmall)
+                }
             }
         }
         s.closing.forEach { c ->
             Text(c.peer.take(16) + "…  " + hide(formatSats(c.capacity)) + " sats", style = MaterialTheme.typography.bodySmall, color = TextMain)
             Text(c.note + " · yours " + hide(formatSats(c.limbo)), style = MaterialTheme.typography.bodySmall, color = Warn)
+            if (c.waiting && c.txid.isNotEmpty()) TextButton(onClick = { speeding = c }, contentPadding = PaddingValues(0.dp)) {
+                Text("SPEED UP", color = LnGold, style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 
     InboundPanel(ln, s)
+    if ((b?.onchainConfirmed ?: 0) + (b?.onchainUnconfirmed ?: 0) > 0) PayOnchainPanel(ln)
+    ChannelBackupPanel(model, ln, platform)
+    LnSettingsPanels(ln, i.alias)
     IphoneLimits(ln)
     Panel(accent = Warn) {
         Explain("Beta. Never run Lightning with these words on another phone or profile at the same time. Node: ${i.pubkey.take(20)}…")
@@ -526,39 +542,6 @@ private fun PayLn(ln: LightningModel, platform: AppPlatform, channels: List<Lnd.
             dismissButton = { TextButton(onClick = { req = null }) { Text(if (inFlight) "HIDE" else "CANCEL", color = TextSoft) } },
             containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft)
     }
-}
-
-@Composable
-private fun CloseChannelDialog(c: Lnd.Channel, ln: LightningModel, onDone: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var fee by remember { mutableStateOf("1") }
-    var busy by remember { mutableStateOf(false) }
-    var msg by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
-    AlertDialog(onDismissRequest = { if (!busy) onDone() },
-        title = { Text("Close this channel?", style = MaterialTheme.typography.titleMedium) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(c.peerAlias.ifBlank { c.peer.take(16) + "…" } + " · yours " + formatSats(c.local) + " sats",
-                    style = MaterialTheme.typography.bodySmall)
-                Text("Your side of the channel comes back to the node's on-chain wallet, once the closing transaction confirms.",
-                    style = MaterialTheme.typography.bodySmall, color = TextSoft)
-                Field(fee, { fee = it.filter(Char::isDigit) }, "Fee rate (sat/vB)", keyboard = KeyboardType.Number)
-                msg?.let { (t, ok) -> Text(t, color = if (ok) Good else Bad, style = MaterialTheme.typography.bodySmall) }
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = !busy && msg?.second != true, onClick = {
-                busy = true
-                scope.launch {
-                    runCatching { withContext(ioDispatcher) { Lnd.closeChannel(c.point, force = false, delivery = null, satPerVbyte = (fee.toLongOrNull() ?: 1).coerceAtLeast(1)) } }
-                        .onSuccess { msg = "Closing: transaction ${it.take(12)}…" to true; ln.refresh() }
-                        .onFailure { msg = (it.message ?: "could not close it") to false }
-                    busy = false
-                }
-            }) { Text(if (busy) "CLOSING…" else "CLOSE CHANNEL", color = LnGold) }
-        },
-        dismissButton = { TextButton(enabled = !busy, onClick = onDone) { Text(if (msg?.second == true) "OK" else "CANCEL", color = TextSoft) } },
-        containerColor = PanelBg, titleContentColor = TextMain, textContentColor = TextSoft)
 }
 
 /** [delta] is what the channels lost or gained, routing fee included; [fee] is that fee, shown apart. */
