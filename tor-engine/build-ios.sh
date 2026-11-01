@@ -42,8 +42,9 @@ hide() { # target arch platform out
   xcrun --sdk "$sdk" ld -r -arch "$2" -platform_version "$3" "$IPHONEOS_DEPLOYMENT_TARGET" "$(xcrun --sdk "$sdk" --show-sdk-version)" \
     -S -exported_symbols_list "$crate/exported_symbols.txt" -force_load "$a" -o "$out/$1.o"
   echo "== $1: the C functions before and after hiding the rest"
-  { nm -gU "$a" 2>/dev/null || true; } | grep ' _kilombino_tor_' | sort -u
-  { nm -m "$out/$1.o" 2>/dev/null || true; } | grep '_kilombino_tor_'
+  { nm -gU "$a" 2>&1 || true; } | grep -i 'kilombino_tor_\|error' | grep -v '_R' | sort -u | head -20 || true
+  { nm -m "$out/$1.o" 2>&1 || true; } | grep -i 'kilombino_tor_\|error' | grep -v '_R' | head -20 || true
+  ar -t "$a" | head -5 || true
   ls -la "$a" "$out/$1.o"
   xcrun libtool -static -o "$4" "$out/$1.o" 2>&1 | grep -v "has no symbols" || true
 }
@@ -61,8 +62,9 @@ xcodebuild -create-xcframework \
 find KilombinoTor.xcframework | sort
 du -sh KilombinoTor.xcframework KilombinoTor.xcframework/*
 # Only the four C functions are left global (nm exits non-zero on odd members: its output counts).
-{ nm -gU KilombinoTor.xcframework/ios-arm64/libkilombino_tor.a 2>&1 || true; } | tee exported.txt
-test "$(grep -c ' _kilombino_tor_' exported.txt)" = 4
+{ nm -gU KilombinoTor.xcframework/ios-arm64/libkilombino_tor.a 2>&1 || true; } > exported.txt
+grep -v '^$' exported.txt | head -40 || true
+test "$(grep -c ' _kilombino_tor_' exported.txt || true)" = 4
 if grep -E '^[0-9a-f]+ [A-Z] ' exported.txt | grep -v ' _kilombino_tor_'; then echo "warning: more global symbols than the four" >&2; fi
 # A stable zip (sorted entries, fixed times) so the hash depends on the contents only.
 find KilombinoTor.xcframework -exec touch -h -t 202601010000 {} +
