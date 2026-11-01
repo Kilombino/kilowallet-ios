@@ -212,8 +212,7 @@ private fun ArkBalancePanel(f: ArkModel.Figures, state: UiState, hide: (String) 
             style = MaterialTheme.typography.bodySmall, color = Bad)
         f.expiry?.let {
             Spacer(Modifier.height(6.dp))
-            Text("Next coin expires in $it blocks (≈ ${Ark.oneDecimalDays(it)} days). " +
-                "The wallet renews it while it is open; tap RENEW to do it now.",
+            Text("Next coin expires in $it blocks (≈ ${Ark.oneDecimalDays(it)} days). Opening the app renews it; tap RENEW to do it now.",
                 style = MaterialTheme.typography.bodySmall, color = if (it < 1008) Bad else TextFaint)
         }
     }
@@ -771,7 +770,7 @@ private fun ArkActivate(model: WalletModel, ark: ArkModel) {
     }
 
     Panel(accent = ArkRed) {
-        if (!ark.available) {
+        if (!ark.canActivate) {
             Text("This build has no Ark engine.", style = MaterialTheme.typography.bodySmall, color = Warn)
             return@Panel
         }

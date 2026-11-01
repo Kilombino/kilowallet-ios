@@ -27,6 +27,8 @@ class ArkModel(private val platform: AppPlatform) {
 
     /** False when this build has no Ark engine (desktop, screenshot demos). */
     val available: Boolean get() = ark != null
+    /** ACTIVATE is offered: with the engine, or in the screenshot demos (which only show the screen). */
+    val canActivate: Boolean get() = available || platform.demoScreen != null
 
     init {
         ark?.let { Ark.engine = it.engine; Ark.host = it.host }

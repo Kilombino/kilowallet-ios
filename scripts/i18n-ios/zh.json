@@ -472,5 +472,7 @@
  "successful": "成功",
  "turn Ark off on this phone": "在此手机上关闭 Ark",
  "⚡ INVOICE": "⚡ 发票",
- "⚡ OFFER": "⚡ 报价"
+ "⚡ OFFER": "⚡ 报价",
+ "Next coin expires in {0} blocks (≈ {1} days). Opening the app renews it; tap RENEW to do it now.": "下一枚币将在 {0} 个区块后过期（≈ {1} 天）。打开应用即可续期；点“续期”立即续期。",
+ "{0} of {1} confirmations": "{1} 个确认中的 {0} 个"
 }

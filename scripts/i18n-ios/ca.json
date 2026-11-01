@@ -472,5 +472,7 @@
  "successful": "completat",
  "turn Ark off on this phone": "desactivar Ark en aquest telèfon",
  "⚡ INVOICE": "⚡ FACTURA",
- "⚡ OFFER": "⚡ OFERTA"
+ "⚡ OFFER": "⚡ OFERTA",
+ "Next coin expires in {0} blocks (≈ {1} days). Opening the app renews it; tap RENEW to do it now.": "La propera moneda caduca d'aquí a {0} blocs (≈ {1} dies). Obrir l'app la renova; prem RENOVA per fer-ho ara.",
+ "{0} of {1} confirmations": "{0} de {1} confirmacions"
 }

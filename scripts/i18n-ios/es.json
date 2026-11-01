@@ -472,5 +472,7 @@
  "successful": "completado",
  "turn Ark off on this phone": "desactivar Ark en este teléfono",
  "⚡ INVOICE": "⚡ FACTURA",
- "⚡ OFFER": "⚡ OFERTA"
+ "⚡ OFFER": "⚡ OFERTA",
+ "Next coin expires in {0} blocks (≈ {1} days). Opening the app renews it; tap RENEW to do it now.": "La próxima moneda caduca en {0} bloques (≈ {1} días). Abrir la app la renueva; pulsa RENOVAR para hacerlo ya.",
+ "{0} of {1} confirmations": "{0} de {1} confirmaciones"
 }
