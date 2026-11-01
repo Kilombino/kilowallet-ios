@@ -22,7 +22,7 @@ val copyAndroid = tasks.register<Sync>("copyAndroidSources") {
     from(pkg) { include(files.map { "$it.kt" }); into("crypto") }
     from("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/coinjoin") { include(coinjoin.map { "$it.kt" }); into("coinjoin") }
     // The backup file (.kab) writer/reader, for the on-chain vectors (android.util.Base64 is shimmed).
-    from("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/ark") { include("ArkBackup.kt"); into("ark") }
+    from("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/ark") { include("ArkBackup.kt", "ArkDerive.kt"); into("ark") }
     into(layout.buildDirectory.dir("androidSrc"))
 }
 sourceSets["main"].kotlin.srcDir(copyAndroid)
@@ -129,6 +129,18 @@ tasks.register<JavaExec>("ln") {
     workingDir = rootDir
     args = listOf(
         file("../../core/src/commonTest/kotlin/com/kilombino/kilowallet/core/LnVectors.kt").absolutePath,
+        providers.exec { commandLine("git", "-C", androidRepo, "rev-parse", "HEAD") }.standardOutput.asText.get().trim(),
+    )
+}
+
+// Ark: the Ark wallet's own words made from the BTC wallet's (ark/ArkDerive.kt, verbatim)
+// (core/src/commonTest/.../ArkVectors.kt).
+tasks.register<JavaExec>("ark") {
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("ArkKt")
+    workingDir = rootDir
+    args = listOf(
+        file("../../core/src/commonTest/kotlin/com/kilombino/kilowallet/core/ArkVectors.kt").absolutePath,
         providers.exec { commandLine("git", "-C", androidRepo, "rev-parse", "HEAD") }.standardOutput.asText.get().trim(),
     )
 }
