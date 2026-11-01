@@ -29,6 +29,8 @@ interface LndHost {
     fun writeBytes(path: String, bytes: ByteArray)
     fun exists(path: String): Boolean
     fun delete(path: String)
+    /** Every file under [dir], at any depth (full paths). */
+    fun files(dir: String): List<String> = emptyList()
     /** The last [maxBytes] of a file, as text, or null. */
     fun tail(path: String, maxBytes: Int): String?
     /** The addresses [host] resolves to (empty when it doesn't). */

@@ -8,7 +8,7 @@ package com.kilombino.kilowallet.core.backup
  */
 object Gzip {
     fun gzip(data: ByteArray): ByteArray {
-        val out = ArrayList<Byte>(data.size + 64)
+        val out = Bytes(data.size + data.size / 65535 * 5 + 64)
         fun put(vararg b: Int) { for (x in b) out.add(x.toByte()) }
         put(0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 255)        // magic, deflate, no flags, no mtime, unknown OS
         var off = 0
@@ -16,7 +16,7 @@ object Gzip {
             val n = minOf(65535, data.size - off)
             val last = off + n == data.size
             put(if (last) 1 else 0, n and 0xff, n ushr 8, n.inv() and 0xff, (n.inv() ushr 8) and 0xff)
-            for (i in off until off + n) out.add(data[i])
+            out.addAll(data, off, n)
             off += n
         } while (off < data.size)
         val crc = crc32(data)
@@ -25,6 +25,9 @@ object Gzip {
         put(len and 0xff, (len ushr 8) and 0xff, (len ushr 16) and 0xff, (len ushr 24) and 0xff)
         return out.toByteArray()
     }
+
+    /** Raw deflate data (RFC 1951) from [start] of [src], as in a zip entry. */
+    fun inflateRaw(src: ByteArray, start: Int): ByteArray = Inflater(src, start).inflate()
 
     fun gunzip(gz: ByteArray): ByteArray {
         require(gz.size >= 18 && (gz[0].toInt() and 0xff) == 0x1f && (gz[1].toInt() and 0xff) == 0x8b) { "Not gzip data." }
@@ -63,7 +66,7 @@ object Gzip {
         private var pos = start
         private var bitBuf = 0
         private var bitCnt = 0
-        private val out = ArrayList<Byte>()
+        private val out = Bytes(maxOf(64, src.size * 3))
 
         fun bytePos(): Int = pos
 
@@ -120,7 +123,7 @@ object Gzip {
             val len = (src[pos].toInt() and 0xff) or ((src[pos + 1].toInt() and 0xff) shl 8)
             pos += 4
             require(pos + len <= src.size) { "The backup file is cut short." }
-            for (i in 0 until len) out.add(src[pos + i])
+            out.addAll(src, pos, len)
             pos += len
         }
 
@@ -180,4 +183,21 @@ object Gzip {
             val FIXED_DIST = Huffman(IntArray(30) { 5 })
         }
     }
+}
+
+/** A growing byte buffer (a list of boxed bytes made several MB of inflate far too slow and big). */
+internal class Bytes(initial: Int) {
+    private var buf = ByteArray(maxOf(16, initial))
+    var size = 0
+        private set
+    private fun room(n: Int) {
+        if (size + n <= buf.size) return
+        var cap = buf.size
+        while (cap < size + n) cap *= 2
+        buf = buf.copyOf(cap)
+    }
+    fun add(b: Byte) { room(1); buf[size++] = b }
+    fun addAll(src: ByteArray, off: Int, n: Int) { room(n); src.copyInto(buf, size, off, off + n); size += n }
+    operator fun get(i: Int): Byte = buf[i]
+    fun toByteArray(): ByteArray = buf.copyOf(size)
 }
