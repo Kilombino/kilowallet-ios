@@ -125,7 +125,7 @@ Portabilidad: **P** = Kotlin puro, se copia al core KMP con sus vectores. **A** 
   - **Sin dispositivo en el CI:** el simulador sí arranca LND, así que se puede probar neutrino contra testnet4 o regtest en el CI, pero los canales reales y la batería solo los puede probar Russo.
 
 ### 3.3 Tor
-Android usa Arti (`tor-engine/`, Rust). En iOS se puede compilar igual como xcframework, aunque no es imprescindible para 1.0: LN y Ark funcionan sin Tor por clearnet, y la torre de Kilombino tiene onion, que necesita Tor. Se puede posponer y avisarlo.
+Android usa Arti (`tor-engine/`, Rust). **Hecho en iOS** (1 nov 2026, ver «Estado — Tor» al final): el mismo Arti 2.7.0 como biblioteca estática dentro de la app.
 
 ### 3.4 Segundo plano en general
 iOS no tiene servicios en primer plano. Para avisos de saldo, moneda perfecta, rondas automáticas y renovación de Ark: `BGAppRefreshTask` (unos 30 s, cuando iOS quiere) y `BGProcessingTask` (minutos, normalmente con el móvil cargando), más notificaciones locales. La UI debe decirlo con honestidad ("en iPhone esto ocurre cuando abres la app o cuando iOS te deja").
@@ -264,3 +264,32 @@ Cada hito es una rama (`parity/1-ui`, …) que se fusiona en `main` con el CI ve
 - **Sin probar:** splice/cierre/CPFP/SCB con canales reales (solo dispositivo o regtest con LND iOS), Taproot y asientos múltiples desde la app (probado el core por interop, no la UI con fondos).
 
 **Para la 1.0.0 queda:** probar en dispositivo con dinero (Kilojoin bc1q/bc1p, Lightning, Ark), puente/mover nodo si se quieren, Jam, avisos con la app cerrada/widget, `.kab` con Ark y SCB, watchtower, y adjuntar los dos xcframework a la release.
+
+## Estado — Tor (Arti) dentro de la app (1 nov 2026, rama `v1`)
+
+**Motor** (`tor-engine/`): el mismo Arti que Android 1.4.4 (tag `arti-v2.7.0`, commit `ce8bc6e`, arti 2.7.0 / arti-client 0.47.0, mismas features menos `harden`, que solo endurece el proceso del programa `arti` y aquí actuaría sobre toda la app). iOS no deja lanzar programas, así que `tor-engine/kilombino-tor` (crate propio, `Cargo.lock` sacado del de arti: todas las versiones iguales) ejecuta el proxy SOCKS de arti como biblioteca, con los ajustes del `arti.toml` de Android: un puerto SOCKS en 127.0.0.1, sin DNS, `.onion` permitidas, `cache/` y `state/` en `Application Support/arti` (fuera de copias), `dangerously_trust_everyone`, log `info` con registro seguro en `Application Support/tor.log`, y la línea "Sufficiently bootstrapped; proxy now functional." como el programa. Runtime tokio propio para que parar Tor libere de verdad el bloqueo de `state/` (comprobado: sin eso el segundo arranque iba en solo lectura). C API: `kilombino_tor_start/stop/state/free`.
+- `build-ios.sh`: `cargo rustc --crate-type staticlib` (LTO, un objeto) por porción y `ld -r -exported_symbols_list` para dejar globales solo las 4 funciones (convive con la biblioteca Rust de Ark sin choques de símbolos). OJO: la std precompilada de Rust 1.98 trae bitcode de LLVM 22 en compiler_builtins y el `nm` de Xcode 16.4 se para con él: las comprobaciones usan `nm --no-llvm-bc` (el enlazador solo usa el código máquina, igual que con Ark). `tor-ios.yml` (15 min), pin run 41305757467, sha256 `f24fa664…`, 14 MB dispositivo / 28 MB simulador, zip 15 MB. `scripts/fetch-tor-engine.sh` en el CI.
+- Probado en start10 (Linux, `examples/live.rs`): arranque en 25 s (3 s con caché), conexión SOCKS a la torre `b44c2u…onion:9911`, al nodo `eu2pnt…onion:9735` y al puente `li7nwm…onion:80`; parar y arrancar en el mismo puerto; un `guards.json` con ceros reproduce "corrupted data in persistent state" (Arti muere tras escuchar, durante el bootstrap).
+
+**Core** (`core/.../tor/Tor.kt`, port de `chain/Tor.kt` de Android 1.4.4): `repairState` (1.2.7-beta6: solo objeto/array JSON), borrado de `state/` y **rearranque inmediato** cuando Arti dice "corrupted data in persistent state" (también si muere después de escuchar), puerto fijo durante toda la ejecución (LND lo tiene en su configuración; uno nuevo solo si está ocupado), `onForeground` (iOS suspende la app y puede quitarle el puerto: si no contesta un saludo SOCKS5, se rearranca en el mismo puerto), log recortado a 32 kB pasados 256 kB. `TorStateTest` 6/6 (el test de Android + estado corrupto, puerto, primer plano, sin Tor).
+
+**Qué va por Tor** (lo mismo que Android 1.4.4):
+- **LND**: Tor arranca antes que el nodo; `tor.active`, `tor.socks=127.0.0.1:<puerto>`, `tor.skip-proxy-for-clearnet-targets=true` (los peers clearnet siguen directos, como Android). Torre de Kilombino `033f366c…@b44c2u…onion:9911` añadida una vez con el nodo ya arriba (como Android), y el onion del nodo de Kilombino como alternativa al conectar.
+- **"Solo por Tor"** (ON por defecto, como Android desde 1.2.7-beta6): en Android solo afecta a los avisos de Telegram (que iOS no tiene); en iOS hace que **Lightning espere a Tor** (hasta 3 min) y, si no llega, se para diciendo por qué (con la última línea de Arti) en vez de arrancar sin Tor en silencio (fallo de Android 1.2.7-beta4). Apagado: como Android, 1 min y sin Tor, y la pantalla avisa de que no hay torre.
+- **Electrum**: un `.onion` siempre por Tor; "Conectar al servidor a través de Tor" (OFF por defecto, como Android) lleva cualquiera. iOS 17+ (proxy SOCKS5 de Network.framework); onion en 50001 en claro primero, como Android. Si Tor no arranca no se envía nada.
+- **Relay de Kilojoin, kilo-lsp y el explorador (FUND)**: por Tor cuando ya está en marcha, como Android; cada asiento y cada salida entregada con su propio circuito (usuario SOCKS `kj-…`/`kj-out-…`, como RelayClient de Android).
+- **No aplica en iOS** (no portado): bot de Telegram (fallback onion → https de 1.2.7-beta7), puente SHA-256 (onion `li7nwm…`), nodo propio por RPC. Ark no usa Tor (tampoco en Android).
+
+**Ajustes**: bloque Tor (estado: no arrancado / conectando + última línea / activado con puerto / parado), "Solo por Tor", "VER EL REGISTRO DE TOR" (pantalla con las últimas 40 líneas y COPIAR); "Conectar al servidor a través de Tor" en "Nodo y explorador". 17 textos nuevos en 7 idiomas (scripts/i18n-ios; los de Android —"Solo por Tor", "VER EL REGISTRO DE TOR"…— vienen de sus tablas).
+
+**Segundo plano**: Tor arranca bajo demanda (Lightning, onion, Electrum por Tor) antes que LND; al volver a primer plano se comprueba el puerto y se rearranca si hace falta. Sin servicio en segundo plano (iOS).
+
+**Probado en CI** (run 41306510714 verde: tests, simulador, Release para dispositivo enlazando Tor + Ark + LND sin choques de símbolos; capturas en /mnt/datos2/kw-ios-ci/v1-41306510714/):
+- `tor-live`: Arti real en el simulador, bootstrap en ~8 s, y el escaneo del monedero con "Conectar al servidor a través de Tor" (fulcrum por Tor con TLS y huella) terminó en el bloque 980 019. Captura `48-tor-live` (Ajustes: Tor activado con su puerto, "Solo por Tor").
+- `tor-log`: `49-tor-log` (pantalla del registro).
+- `ln-live`: LND con Tor: torre `033f366c…@b44c2u…onion:9911` añadida y activa (ListTowers), y conexión al nodo de Kilombino **por su onion** (`eu2pnt…onion:9735`, "Established outbound connection" en el log de LND). Captura `50-ln-live`.
+- Logs: `reports/screenshots-logs/{tor-tor-live,tor-ln-live,lnd-live,ln-live}.log`.
+
+**Sin probar**: dispositivo real (memoria/batería de Arti + LND, suspensión real y `onForeground`), Electrum a un `.onion` (no hay servidor BLAKE2b onion a mano; el código es el de Android), relay de Kilojoin por Tor con aislamiento por usuario SOCKS (iOS 17 `ProxyConfiguration.applyCredential`; en iOS 16 las claves CFNetwork), iOS 16 en general (Electrum por Tor exige 17).
+
+**Pendiente menor**: la pantalla del registro muestra las 40 últimas líneas desde arriba (en la captura, el final queda bajo el pliegue); "Bootstrap status" puede escribirse después de "Sufficiently bootstrapped" (orden de eventos de Arti), sin efecto en el estado.
