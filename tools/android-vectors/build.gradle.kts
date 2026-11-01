@@ -12,7 +12,7 @@ val pkg = "$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/crypto"
 val files = listOf(
     "Hashes", "Ripemd160", "Secp256k1", "NativeSecp", "Ecdsa", "Bip32", "Bip32Priv", "Bip39",
     "Bip39Wordlist", "Base58", "Bech32", "Address", "TxBuilder", "Schnorr", "TxParse", "Blake2b", "BlockHeader",
-    "XChaCha20Poly1305",
+    "XChaCha20Poly1305", "DiceCheck",
 )
 // The pool (Kilojoin) code: the protocol, the transaction, blind signatures, nostr, and the session
 // itself (the interop tool runs it against this port's).
@@ -21,6 +21,8 @@ val coinjoin = listOf("Protocol", "CoinjoinTx", "BlindRsa", "NostrEvent", "Nip44
 val copyAndroid = tasks.register<Sync>("copyAndroidSources") {
     from(pkg) { include(files.map { "$it.kt" }); into("crypto") }
     from("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/coinjoin") { include(coinjoin.map { "$it.kt" }); into("coinjoin") }
+    // The backup file (.kab) writer/reader, for the on-chain vectors (android.util.Base64 is shimmed).
+    from("$androidRepo/app/src/main/java/com/kilombino/pyblockwatch/ark") { include("ArkBackup.kt"); into("ark") }
     into(layout.buildDirectory.dir("androidSrc"))
 }
 sourceSets["main"].kotlin.srcDir(copyAndroid)
@@ -105,6 +107,17 @@ tasks.register<JavaExec>("maturity") {
     workingDir = rootDir
     args = listOf(
         file("../../core/src/commonTest/kotlin/com/kilombino/kilowallet/core/MaturityVectors.kt").absolutePath,
+        providers.exec { commandLine("git", "-C", androidRepo, "rev-parse", "HEAD") }.standardOutput.asText.get().trim(),
+    )
+}
+
+// On-chain vectors (Taproot, dice, backup file) from the Android code (core/src/commonTest/.../OnchainVectors.kt).
+tasks.register<JavaExec>("onchain") {
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("OnchainKt")
+    workingDir = rootDir
+    args = listOf(
+        file("../../core/src/commonTest/kotlin/com/kilombino/kilowallet/core/OnchainVectors.kt").absolutePath,
         providers.exec { commandLine("git", "-C", androidRepo, "rev-parse", "HEAD") }.standardOutput.asText.get().trim(),
     )
 }

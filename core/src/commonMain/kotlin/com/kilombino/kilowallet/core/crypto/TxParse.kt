@@ -44,6 +44,9 @@ object TxParse {
         return (base * 3 + total + 3) / 4
     }
 
+    /** Bytes of [rawHex] without its witnesses. */
+    fun baseSize(rawHex: String): Int = baseBytes(parse(rawHex)).size
+
     /** The serialisation without witnesses (what the txid hashes). */
     private fun baseBytes(tx: Tx): ByteArray {
         val out = ByteWriter()

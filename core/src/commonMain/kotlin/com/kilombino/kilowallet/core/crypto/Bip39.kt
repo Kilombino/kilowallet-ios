@@ -49,6 +49,19 @@ object Bip39 {
         return words
     }
 
+    /**
+     * SeedSigner-compatible dice entropy (Android app: `Bip39.entropyFromDiceRolls`): SHA-256 over
+     * the roll string (each die a digit '1'..'6'), truncated to the requested strength. 50 rolls
+     * give a 12-word seed, 99 a 24-word one: the same rolls in SeedSigner make the same seed.
+     */
+    fun entropyFromDiceRolls(rolls: String, strengthBits: Int): ByteArray {
+        require(strengthBits == 128 || strengthBits == 256) { "strength must be 128 or 256 bits" }
+        val needed = if (strengthBits == 128) 50 else 99
+        require(rolls.length == needed) { "need exactly $needed dice rolls, got ${rolls.length}" }
+        require(rolls.all { it in '1'..'6' }) { "each roll must be a digit 1–6" }
+        return Hashes.sha256(rolls.encodeToByteArray()).copyOf(strengthBits / 8)
+    }
+
     /** True when the word is in the BIP-39 English list. */
     fun isWord(w: String): Boolean = INDEX.containsKey(w)
 

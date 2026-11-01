@@ -4,6 +4,7 @@ import com.kilombino.kilowallet.core.crypto.Address
 import com.kilombino.kilowallet.core.crypto.Bip32
 import com.kilombino.kilowallet.core.crypto.Bip32Priv
 import com.kilombino.kilowallet.core.crypto.Bip39
+import com.kilombino.kilowallet.core.crypto.ScriptType
 import com.kilombino.kilowallet.core.crypto.TxBuilder
 import kotlin.math.ceil
 import kotlin.math.roundToLong
@@ -22,10 +23,14 @@ data class SendDraft(
     val replacedFee: Long = 0,
     /** A cancellation (RBF): [replaces] is sent back to this wallet instead of to its recipients. */
     val cancels: Boolean = false,
+    /** Set for a CPFP: the stuck transaction this child pulls along, and the pair's fee rate. */
+    val cpfpParent: String? = null,
+    val packageRate: Double = 0.0,
 ) {
     val totalSent: Long get() = amount + fee
     /** The fee rate actually paid, from the estimated size. */
-    val effectiveRate: Double get() = fee.toDouble() / SendPlanner.estimateVbytes(inputs.size, outputs.map { it.scriptPubKey })
+    val effectiveRate: Double get() = fee.toDouble() /
+        SendPlanner.estimateVbytes(inputs.size, outputs.map { it.scriptPubKey }, inputs.count { it.type == ScriptType.P2TR })
 }
 
 /**
@@ -40,17 +45,25 @@ object SendPlanner {
     const val MIN_RATE = 0.1
     const val MAX_RATE = 1000.0
 
-    /** P2WPKH inputs and these exact outputs (8 + 1 + script bytes each). */
-    fun estimateVbytes(nIn: Int, outputScripts: List<ByteArray>): Double =
-        10.5 + 68.0 * nIn + outputScripts.sumOf { 9.0 + it.size }
+    /**
+     * [nIn] inputs ([taprootIn] of them Taproot key path with the unified sighash byte, 57.75 vB;
+     * the rest P2WPKH, 68) and these exact outputs (8 + 1 + script bytes each). Android app:
+     * `estimateFee` with `taprootIn`.
+     */
+    fun estimateVbytes(nIn: Int, outputScripts: List<ByteArray>, taprootIn: Int = 0): Double {
+        val tr = taprootIn.coerceIn(0, nIn)
+        return 10.5 + 68.0 * (nIn - tr) + 57.75 * tr + outputScripts.sumOf { 9.0 + it.size }
+    }
 
-    fun estimateFee(nIn: Int, outputScripts: List<ByteArray>, ratePerVb: Double): Long =
-        ceil(estimateVbytes(nIn, outputScripts) * ratePerVb).toLong()
+    fun estimateFee(nIn: Int, outputScripts: List<ByteArray>, ratePerVb: Double, taprootIn: Int = 0): Long =
+        ceil(estimateVbytes(nIn, outputScripts, taprootIn) * ratePerVb).toLong()
+
+    private fun trIn(coins: List<SpendableUtxo>) = coins.count { it.type == ScriptType.P2TR }
 
     /** The most a send can move from [utxos] at [ratePerVb]: everything minus a one-output fee (sized as Taproot). */
     fun maxSendable(ratePerVb: Double, utxos: List<SpendableUtxo>): Long {
         if (utxos.isEmpty()) return 0
-        val fee = estimateFee(utxos.size, listOf(ByteArray(34)), ratePerVb.coerceIn(MIN_RATE, MAX_RATE))
+        val fee = estimateFee(utxos.size, listOf(ByteArray(34)), ratePerVb.coerceIn(MIN_RATE, MAX_RATE), trIn(utxos))
         return (utxos.sumOf { it.value } - fee).coerceAtLeast(0)
     }
 
@@ -75,7 +88,7 @@ object SendPlanner {
 
         if (sendAll) {
             val sum = utxos.sumOf { it.value }
-            val fee = estimateFee(utxos.size, noChange, rate)
+            val fee = estimateFee(utxos.size, noChange, rate, trIn(utxos))
             val amount = sum - fee
             require(amount >= dustFor(toScript)) { "The coins ($sum sats) do not cover the fee ($fee sats)." }
             return SendDraft(to, amount, fee, 0, utxos, listOf(TxBuilder.Output(toScript, amount)), rate)
@@ -88,11 +101,11 @@ object SendPlanner {
         var sum = 0L
         for (u in utxos.sortedByDescending { it.value }) {
             chosen += u; sum += u.value
-            if (sum >= amountSats + estimateFee(chosen.size, withChange, rate)) break
+            if (sum >= amountSats + estimateFee(chosen.size, withChange, rate, trIn(chosen))) break
         }
-        var fee = estimateFee(chosen.size, withChange, rate)
+        var fee = estimateFee(chosen.size, withChange, rate, trIn(chosen))
         var noChangeOutput = false
-        if (sum < amountSats + fee) { fee = estimateFee(chosen.size, noChange, rate); noChangeOutput = true }
+        if (sum < amountSats + fee) { fee = estimateFee(chosen.size, noChange, rate, trIn(chosen)); noChangeOutput = true }
         require(sum >= amountSats + fee) { "Not enough funds for the amount plus fee." }
         var change = sum - amountSats - fee
         val outputs = mutableListOf(TxBuilder.Output(toScript, amountSats))
@@ -117,9 +130,9 @@ object SendPlanner {
         return if (reasons.isEmpty()) null else "This fee is high: " + reasons.joinToString(", ") + "."
     }
 
-    /** The change scriptPubKey at [index], derived publicly from the account zpub. */
-    fun changeScript(zpub: String, index: Int): ByteArray {
-        val parsed = Bip32.parseExtendedPubKey(zpub)
+    /** The change scriptPubKey at [index], derived publicly from the account key (read as [type] when given). */
+    fun changeScript(zpub: String, index: Int, type: ScriptType? = null): ByteArray {
+        val parsed = Bip32.parseExtendedPubKey(zpub).let { if (type != null) it.withType(type) else it }
         return Address.scriptPubKey(Bip32.derivePath(parsed, 1, index).pubkey(), parsed.scriptType)
     }
 }
@@ -139,31 +152,49 @@ fun dustFor(script: ByteArray): Long = when {
 
 /**
  * Signing with the recovery words, as the Android app's `WalletViewModel.confirmSend` does on the
- * BLAKE2b chain: keys at m/84'/0'/0'/chain/index, sequence 0xfffffffd (replace-by-fee), and the
- * unified sighash 0x21 on every input so the spend cannot be replayed on the SHA-256 chain.
+ * BLAKE2b chain: keys at m/84'/0'/0'/chain/index (m/86'/… for a Taproot coin), sequence 0xfffffffd
+ * (replace-by-fee), and the unified sighash 0x21 on every input so the spend cannot be replayed
+ * on the SHA-256 chain.
  */
 object Signer {
-    fun sign(draft: SendDraft, words: List<String>, passphrase: String, zpub: String): TxBuilder.Signed {
+    fun sign(
+        draft: SendDraft, words: List<String>, passphrase: String, zpub: String, taprootXpub: String? = null,
+        auxRand: ByteArray? = null,
+    ): TxBuilder.Signed {
         val account = Bip32.parseExtendedPubKey(zpub)
+        val taproot = taprootXpub?.let { Bip32.parseExtendedPubKey(it).withType(ScriptType.P2TR) }
         val seed = Bip39.toSeed(words, passphrase)
         val master = Bip32Priv.fromSeed(seed)
         seed.fill(0)
-        val nodes = draft.inputs.map { Bip32Priv.derivePath(master, "m/84'/0'/0'/${it.chainIndex}/${it.index}") }
+        val nodes = draft.inputs.map {
+            val purpose = if (it.type == ScriptType.P2TR) 86 else 84
+            Bip32Priv.derivePath(master, "m/$purpose'/0'/0'/${it.chainIndex}/${it.index}")
+        }
         try {
             val inputs = draft.inputs.mapIndexed { i, u ->
-                TxBuilder.Input(u.txid, u.vout, u.value, nodes[i].key, nodes[i].publicKey(), 0xfffffffdL)
+                TxBuilder.Input(u.txid, u.vout, u.value, nodes[i].key, nodes[i].publicKey(), 0xfffffffdL,
+                    if (u.type == ScriptType.P2TR) ScriptType.P2TR else ScriptType.P2WPKH)
             }
-            // The words must be this wallet's: every key must be the one its zpub derives for that coin.
+            // The words must be this wallet's: every key must be the one its account derives for that coin.
             draft.inputs.forEachIndexed { i, u ->
-                check(Bip32.derivePath(account, u.chainIndex, u.index).pubkey().contentEquals(inputs[i].pubkey)) {
+                val acc = if (u.type == ScriptType.P2TR) taproot ?: error("This wallet has no Taproot account.") else account
+                check(Bip32.derivePath(acc, u.chainIndex, u.index).pubkey().contentEquals(inputs[i].pubkey)) {
                     "These recovery words do not belong to this wallet. Nothing was signed."
                 }
             }
-            return TxBuilder.build(inputs, draft.outputs, unified = true)
+            return TxBuilder.build(inputs, draft.outputs, unified = true, auxRand = auxRand)
         } finally {
             nodes.forEach { it.wipe() }
             master.wipe()
         }
+    }
+
+    /** The Taproot account xpub (BIP-86, account 0) for these words; kept as a plain xpub, typed apart. */
+    fun accountTpub(words: List<String>, passphrase: String): String {
+        val seed = Bip39.toSeed(words, passphrase)
+        val master = Bip32Priv.fromSeed(seed)
+        seed.fill(0)
+        return try { Bip32Priv.accountXpub(master, 86, 0) } finally { master.wipe() }
     }
 
     /** The account zpub (BIP-84, account 0) for these words. */

@@ -5,8 +5,8 @@ package com.kilombino.kilowallet.core.crypto
  * Ported from the Android app's `crypto/Address.kt`. The BLAKE2b chain kept Bitcoin's address
  * formats (it changed the proof of work, not the keys), so these are ordinary `bc1…` addresses.
  *
- * This wallet derives P2WPKH (and, watch-only, P2PKH / P2SH-P2WPKH) addresses; it pays to any
- * standard address, Taproot included, but never derives Taproot keys itself.
+ * This wallet derives P2WPKH and Taproot (BIP-86) addresses, and, watch-only, P2PKH / P2SH-P2WPKH
+ * too; it pays to any standard address.
  */
 object Address {
 
@@ -54,7 +54,18 @@ object Address {
                 byteArrayOf(0xa9.toByte(), 0x14) + Hashes.hash160(redeem) + byteArrayOf(0x87.toByte())
             }
             ScriptType.P2WPKH -> byteArrayOf(0x00, 0x14) + h160
+            ScriptType.P2TR -> byteArrayOf(0x51, 0x20) + taprootOutputKey(pubkey)
         }
+    }
+
+    /**
+     * BIP-86 key-path Taproot output key (Android app: `Address.taprootOutputKey`): the internal key
+     * lifted to its even-y point, plus `int(TapTweak(x(P)))·G`, and the result's x. No script tree.
+     */
+    fun taprootOutputKey(pubkey: ByteArray): ByteArray {
+        val xOnly = pubkey.copyOfRange(1, 33)
+        val t = Hashes.taggedHash("TapTweak", xOnly)
+        return Ec.pointAddTweak(byteArrayOf(0x02) + xOnly, t).copyOfRange(1, 33)
     }
 
     /** The human-readable address for a public key under [type]. */
@@ -67,6 +78,7 @@ object Address {
                 Base58.encodeChecked(byteArrayOf(P2SH_VERSION.toByte()) + Hashes.hash160(redeem))
             }
             ScriptType.P2WPKH -> Bech32.encodeSegwit(HRP_MAINNET, 0, h160)
+            ScriptType.P2TR -> Bech32.encodeSegwit(HRP_MAINNET, 1, taprootOutputKey(pubkey))
         }
     }
 

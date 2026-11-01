@@ -3,9 +3,9 @@ package com.kilombino.kilowallet.core.crypto
 import com.kilombino.kilowallet.core.crypto.Hashes.toHex
 
 /**
- * Build and sign P2WPKH transactions. Ported from the Android app's `crypto/TxBuilder.kt`, keeping
- * only what this wallet spends (its own native SegWit coins): the BIP-143 sighash and the
- * unified opt-in sighash, with byte-identical serialisation.
+ * Build and sign transactions spending this wallet's own coins: native SegWit (P2WPKH) and Taproot
+ * key path (P2TR, BIP-86). Ported from the Android app's `crypto/TxBuilder.kt`: the BIP-143 and
+ * BIP-341 sighashes and the unified opt-in sighash, with byte-identical serialisation.
  *
  * On the BLAKE2b chain every input is signed with the UNIFIED sighash, hash type 0x21
  * (SIGHASH_UNIFIED | SIGHASH_ALL): a node without the BLAKE2b fork cannot rebuild that message, so
@@ -20,18 +20,23 @@ object TxBuilder {
     /** Opt-in unified sighash bit (`doc/unified-sighash.md`, Knots v29.4.1). With ALL: 0x21. */
     const val SIGHASH_UNIFIED = 0x20
 
-    /** A P2WPKH coin being spent, with the key that unlocks it. */
+    /** A coin being spent, with the key that unlocks it. */
     class Input(
         val txid: String,          // display (big-endian) txid
         val vout: Int,
         val value: Long,           // satoshis
-        val privateKey: ByteArray, // 32-byte secret
-        val pubkey: ByteArray,     // 33-byte compressed
+        val privateKey: ByteArray, // 32-byte secret (for Taproot, the internal key's)
+        val pubkey: ByteArray,     // 33-byte compressed (for Taproot, the internal key)
         val sequence: Long = 0xffffffffL,
+        /** P2WPKH or P2TR: the two kinds of coin this wallet holds keys for. */
+        val type: ScriptType = ScriptType.P2WPKH,
     ) {
-        init { require(pubkey.size == 33) { "SegWit inputs need a compressed public key" } }
+        init {
+            require(pubkey.size == 33) { "SegWit inputs need a compressed public key" }
+            require(type == ScriptType.P2WPKH || type == ScriptType.P2TR) { "Only native SegWit and Taproot coins are signed here" }
+        }
         /** The scriptPubKey of the output being spent. */
-        val spentScript: ByteArray get() = Address.scriptPubKey(pubkey, ScriptType.P2WPKH)
+        val spentScript: ByteArray get() = Address.scriptPubKey(pubkey, type)
         /** The BIP-143 / unified scriptCode: the key's P2PKH script. */
         val scriptCode: ByteArray get() = Address.scriptPubKey(pubkey, ScriptType.P2PKH)
     }
@@ -90,6 +95,71 @@ object TxBuilder {
         pre.write(u32le(locktime))
         pre.write(u32le(SIGHASH_ALL.toLong()))
         return Hashes.doubleSha256(pre.toByteArray())
+    }
+
+    // ---- BIP-341 Taproot key-path sighash ------------------------------------------
+
+    /** BIP-341 signature message hash for a key-path spend of input [index], no annex (SIGHASH_DEFAULT). */
+    fun taprootSighash(
+        version: Long, inputs: List<Input>, outputs: List<Output>, index: Int, locktime: Long, hashType: Int = 0,
+    ): ByteArray = taprootMessage(
+        version, locktime, hashType,
+        prevouts = inputs.map { outpoint(it.txid, it.vout) }, amounts = inputs.map { it.value },
+        spentScripts = inputs.map { it.spentScript }, sequences = inputs.map { it.sequence },
+        outputs = outputs, index = index,
+    )
+
+    internal fun taprootMessage(
+        version: Long, locktime: Long, hashType: Int,
+        prevouts: List<ByteArray>, amounts: List<Long>, spentScripts: List<ByteArray>,
+        sequences: List<Long>, outputs: List<Output>, index: Int,
+    ): ByteArray {
+        val anyoneCanPay = (hashType and 0x80) != 0
+        val base = hashType and 0x03
+        val msg = ByteWriter()
+        msg.write(0x00)                       // epoch
+        msg.write(hashType and 0xff)
+        msg.write(u32le(version))
+        msg.write(u32le(locktime))
+        if (!anyoneCanPay) {
+            val p = ByteWriter(); prevouts.forEach { p.write(it) }
+            val a = ByteWriter(); amounts.forEach { a.write(u64le(it)) }
+            val s = ByteWriter(); spentScripts.forEach { s.write(varBytes(it)) }
+            val q = ByteWriter(); sequences.forEach { q.write(u32le(it)) }
+            msg.write(Hashes.sha256(p.toByteArray()))
+            msg.write(Hashes.sha256(a.toByteArray()))
+            msg.write(Hashes.sha256(s.toByteArray()))
+            msg.write(Hashes.sha256(q.toByteArray()))
+        }
+        if (base != 0x02 && base != 0x03) {
+            val o = ByteWriter()
+            for (out in outputs) { o.write(u64le(out.value)); o.write(varBytes(out.scriptPubKey)) }
+            msg.write(Hashes.sha256(o.toByteArray()))
+        }
+        msg.write(0x00)                       // spend type: key path, no annex
+        if (anyoneCanPay) {
+            msg.write(prevouts[index]); msg.write(u64le(amounts[index]))
+            msg.write(varBytes(spentScripts[index])); msg.write(u32le(sequences[index]))
+        } else {
+            msg.write(u32le(index.toLong()))
+        }
+        if (base == 0x03) {
+            require(index < outputs.size) { "SIGHASH_SINGLE has no output at the input's index" }
+            val out = outputs[index]
+            msg.write(Hashes.sha256(u64le(out.value) + varBytes(out.scriptPubKey)))
+        }
+        return Hashes.taggedHash("TapSighash", msg.toByteArray())
+    }
+
+    /**
+     * The secret for a BIP-86 Taproot output (Android app: `Schnorr.tweakedSecret`): the internal key,
+     * negated if its point has an odd y, plus `TapTweak(x(P))`.
+     */
+    fun tweakedSecret(internal: ByteArray): ByteArray {
+        val pub = Ec.publicKey(internal)
+        val d = if (pub[0].toInt() == 0x02) internal else fr.acinq.secp256k1.Secp256k1.privKeyNegate(internal)
+        val t = Hashes.taggedHash("TapTweak", pub.copyOfRange(1, 33))
+        return Ec.secretAdd(d, t)
     }
 
     // ---- Unified opt-in sighash (anti-replay) ---------------------------------------
@@ -153,12 +223,12 @@ object TxBuilder {
         return Hashes.taggedHash("UnifiedSighash", msg.toByteArray())
     }
 
-    /** The unified sighash (0x21) for P2WPKH input [index]: script type 1. */
+    /** The unified sighash (0x21) for input [index]: script type 1 for P2WPKH, 2 for a Taproot key path. */
     fun unifiedSighash(version: Long, inputs: List<Input>, outputs: List<Output>, index: Int, locktime: Long): ByteArray =
         unifiedMessage(
             version = version, locktime = locktime,
             hashType = SIGHASH_UNIFIED or SIGHASH_ALL,
-            scriptType = 1,
+            scriptType = if (inputs[index].type == ScriptType.P2TR) 2 else 1,
             prevouts = inputs.map { outpoint(it.txid, it.vout) },
             amounts = inputs.map { it.value },
             spentScripts = inputs.map { it.spentScript },
@@ -167,12 +237,26 @@ object TxBuilder {
             scriptCode = inputs[index].scriptCode,
         )
 
-    /** The DER signature + sighash byte for input [index]. */
+    /**
+     * The signature for input [index]'s witness: DER + sighash byte for P2WPKH; for a Taproot key
+     * path a BIP-340 signature (64 bytes with SIGHASH_DEFAULT, plus 0x21 with the unified sighash).
+     */
     fun witnessSignature(
         version: Long, inputs: List<Input>, outputs: List<Output>, index: Int, locktime: Long, unified: Boolean,
         /** Ground to a low R (pool inputs, as the Android app signs them); a normal send does not grind. */
         grindLowR: Boolean = false,
+        /** BIP-340 auxiliary randomness; fresh unless a test pins it. */
+        auxRand: ByteArray? = null,
     ): ByteArray {
+        if (inputs[index].type == ScriptType.P2TR) {
+            val h = if (unified) unifiedSighash(version, inputs, outputs, index, locktime)
+                    else taprootSighash(version, inputs, outputs, index, locktime)
+            val secret = tweakedSecret(inputs[index].privateKey)
+            try {
+                val sig = if (auxRand != null) Ec.schnorrSign(secret, h, auxRand) else Ec.schnorrSign(secret, h)
+                return if (unified) sig + byteArrayOf((SIGHASH_UNIFIED or SIGHASH_ALL).toByte()) else sig
+            } finally { secret.fill(0) }
+        }
         val h = if (unified) unifiedSighash(version, inputs, outputs, index, locktime)
                 else sighash(version, inputs, outputs, index, locktime)
         val hashByte = if (unified) SIGHASH_UNIFIED or SIGHASH_ALL else SIGHASH_ALL
@@ -186,15 +270,15 @@ object TxBuilder {
      */
     fun build(
         inputs: List<Input>, outputs: List<Output>, version: Long = 2, locktime: Long = 0,
-        unified: Boolean = true,
+        unified: Boolean = true, auxRand: ByteArray? = null,
     ): Signed {
         require(inputs.isNotEmpty()) { "a transaction needs at least one input" }
         require(outputs.isNotEmpty()) { "a transaction needs at least one output" }
-        val witnesses = inputs.indices.map { witnessSignature(version, inputs, outputs, it, locktime, unified) }
+        val witnesses = inputs.indices.map { witnessSignature(version, inputs, outputs, it, locktime, unified, auxRand = auxRand) }
         return assemble(inputs, outputs, witnesses, version, locktime)
     }
 
-    /** Serialise a P2WPKH transaction from already-made signatures, one per input. */
+    /** Serialise a SegWit transaction from already-made signatures, one per input. */
     fun assemble(
         inputs: List<Input>, outputs: List<Output>, witnesses: List<ByteArray>,
         version: Long = 2, locktime: Long = 0,
@@ -205,7 +289,7 @@ object TxBuilder {
             out.write(varint(inputs.size.toLong()))
             for (i in inputs) {
                 out.write(outpoint(i.txid, i.vout))
-                out.write(varBytes(ByteArray(0)))   // P2WPKH: empty scriptSig
+                out.write(varBytes(ByteArray(0)))   // P2WPKH and P2TR: empty scriptSig
                 out.write(u32le(i.sequence))
             }
             out.write(varint(outputs.size.toLong()))
@@ -224,6 +308,9 @@ object TxBuilder {
         full.write(byteArrayOf(0x00, 0x01)) // segwit marker + flag
         writeInputsOutputs(full)
         for (i in inputs.indices) {
+            if (inputs[i].type == ScriptType.P2TR) {   // key path: the signature only
+                full.write(varint(1)); full.write(varBytes(witnesses[i])); continue
+            }
             full.write(varint(2))           // signature, pubkey
             full.write(varBytes(witnesses[i]))
             full.write(varBytes(inputs[i].pubkey))

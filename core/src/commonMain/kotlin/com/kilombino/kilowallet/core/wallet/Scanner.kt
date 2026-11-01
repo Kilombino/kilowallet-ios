@@ -26,6 +26,8 @@ data class AddressRow(
     val confirmed: Long = 0,
     val unconfirmed: Long = 0,
     val txCount: Int = 0,
+    /** Set for an address of the hot wallet's second account (Taproot, BIP-86); null = the wallet's own type. */
+    val type: ScriptType? = null,
 ) {
     val total: Long get() = confirmed + unconfirmed
     val isUsed: Boolean get() = txCount > 0 || total > 0
@@ -55,6 +57,8 @@ data class TxConf(val txid: String, val confirmations: Int, val pending: Boolean
 data class SpendableUtxo(
     val txid: String, val vout: Int, val value: Long,
     val chainIndex: Int, val index: Int, val height: Int,
+    /** Taproot coin of a hot wallet's second account; null = the wallet's own type. */
+    val type: ScriptType? = null,
 )
 
 /**
@@ -76,15 +80,23 @@ class Scanner(
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val worker = ioDispatcher.limitedParallelism(1)
 
-    fun scan(xpub: String, endpoint: NodeEndpoint, pinnedFingerprint: String?, gap: Int = gapLimit): Flow<ScanEvent> = flow {
+    /**
+     * [xpub]: the wallet's account, read as [type] when given (a Taproot watch-only key is a plain
+     * xpub); [taprootXpub]: a hot wallet's BIP-86 account, scanned after the main one once Taproot
+     * is on, as the Android app does.
+     */
+    fun scan(
+        xpub: String, endpoint: NodeEndpoint, pinnedFingerprint: String?, gap: Int = gapLimit,
+        type: ScriptType? = null, taprootXpub: String? = null,
+    ): Flow<ScanEvent> = flow {
         val txHeights = HashMap<String, Int>()
-        val parsed = try {
-            Bip32.parseExtendedPubKey(xpub)
+        val accounts = try {
+            val main = Bip32.parseExtendedPubKey(xpub).let { if (type != null) it.withType(type) else it }
+            listOf(main to null as ScriptType?) +
+                (taprootXpub?.let { listOf(Bip32.parseExtendedPubKey(it).withType(ScriptType.P2TR) to ScriptType.P2TR) } ?: emptyList())
         } catch (e: IllegalArgumentException) {
             emit(ScanEvent.Failed(e.message ?: "Invalid extended key")); return@flow
         }
-        val scriptType = parsed.scriptType
-        val purpose = purposeFor(scriptType)
 
         emit(ScanEvent.Connecting(endpoint))
         val client = client(endpoint, pinnedFingerprint)
@@ -100,7 +112,9 @@ class Scanner(
         try {
             val height = client.blockHeight()
             emit(ScanEvent.Connected(client.serverVersion ?: "unknown", height, client.serverFingerprint))
-            for (chainIndex in 0..1) {
+            for ((parsed, rowType) in accounts) for (chainIndex in 0..1) {
+                val scriptType = parsed.scriptType
+                val purpose = purposeFor(scriptType)
                 val branch = Bip32.deriveChild(parsed, chainIndex)
                 var index = 0
                 var consecutiveEmpty = 0
@@ -122,7 +136,7 @@ class Scanner(
                         // only when that status differs from the one remembered with them.
                         val entryData = resolve(client, endpoint, scriptHash, statuses[k])
                         val row = AddressRow(chainIndex, i, address, path, scriptHash,
-                            entryData.balance.confirmed, entryData.balance.unconfirmed, entryData.history.size)
+                            entryData.balance.confirmed, entryData.balance.unconfirmed, entryData.history.size, rowType)
                         index = i + 1
                         if (row.isUsed) {
                             rows += row
@@ -212,7 +226,7 @@ class Scanner(
             client.connect()
             // One round trip per 50 addresses, not one per address.
             val all = client.listUnspentMany(rows.map { it.scriptHash }).zip(rows).flatMap { (us, r) ->
-                us.map { SpendableUtxo(it.txid, it.vout, it.value, r.chainIndex, r.index, it.height) }
+                us.map { SpendableUtxo(it.txid, it.vout, it.value, r.chainIndex, r.index, it.height, r.type) }
             }
             val tip = runCatching { client.blockHeight() }.getOrNull() ?: return@withContext all
             all.filter { u ->
@@ -234,8 +248,10 @@ class Scanner(
      */
     suspend fun verifyCoins(
         xpub: String, coins: List<SpendableUtxo>, endpoint: NodeEndpoint, pinnedFingerprint: String?,
+        type: ScriptType? = null, taprootXpub: String? = null,
     ) = withContext(worker) {
-        val parsed = Bip32.parseExtendedPubKey(xpub)
+        val main = Bip32.parseExtendedPubKey(xpub).let { if (type != null) it.withType(type) else it }
+        val taproot = taprootXpub?.let { Bip32.parseExtendedPubKey(it).withType(ScriptType.P2TR) }
         val c = client(endpoint, pinnedFingerprint)
         try {
             c.connect()
@@ -244,6 +260,7 @@ class Scanner(
                 val tx = txs.getOrPut(u.txid) { TxParse.parse(c.transaction(u.txid)) }
                 val out = tx.outputs.getOrNull(u.vout)
                     ?: error("The server listed a coin that does not exist (${u.txid.take(8)}…:${u.vout}). Nothing was signed.")
+                val parsed = if (u.type == ScriptType.P2TR && taproot != null) taproot else main
                 val script = Address.scriptPubKey(Bip32.derivePath(parsed, u.chainIndex, u.index).pubkey(), parsed.scriptType)
                 require(out.value == u.value && out.scriptPubKey.contentEquals(script)) {
                     "The server's data about a coin (${u.txid.take(8)}…:${u.vout}) does not match the transaction itself. " +
@@ -276,9 +293,41 @@ class Scanner(
                     ?: error("The server listed a coin that does not exist (${i.txid.take(8)}…:${i.vout}).")
                 val row = byHash[Address.electrumScriptHash(prev.scriptPubKey)]
                     ?: error("This transaction spends coins that are not in this wallet: it can't be replaced from here.")
-                SpendableUtxo(i.txid, i.vout, prev.value, row.chainIndex, row.index, 0)
+                SpendableUtxo(i.txid, i.vout, prev.value, row.chainIndex, row.index, 0, row.type)
             }
             tx to coins
+        } finally { c.close() }
+    }
+
+    /**
+     * What a CPFP of unconfirmed [txid] needs (Android app: `prepareCpfp`): its fee and checked size,
+     * and its unspent outputs to this wallet's [rows]. Every transaction is checked against its txid;
+     * fails when the parent itself spends unconfirmed coins (speed up the earlier one first).
+     */
+    suspend fun cpfpParent(
+        txid: String, rows: List<AddressRow>, endpoint: NodeEndpoint, pinnedFingerprint: String?,
+    ): Triple<Long, Int, List<SpendableUtxo>> = withContext(worker) {
+        val c = client(endpoint, pinnedFingerprint)
+        try {
+            c.connect()
+            fun fetch(id: String): Pair<String, TxParse.Tx> = c.transaction(id).let { raw ->
+                raw to TxParse.parse(raw).also { require(TxParse.txid(it) == id) { "The server sent a different transaction than the one asked for (${id.take(8)}…)." } }
+            }
+            val (raw, tx) = fetch(txid)
+            val prevs = tx.inputs.map { i -> i to (fetch(i.txid).second.outputs.getOrNull(i.vout) ?: error("The server listed a coin that does not exist.")) }
+            val parentFee = prevs.sumOf { it.second.value } - tx.outputs.sumOf { it.value }
+            val unconfirmedAncestor = prevs.any { (i, o) ->
+                c.history(Address.electrumScriptHash(o.scriptPubKey)).firstOrNull { it.txid == i.txid }?.let { it.height <= 0 } ?: false
+            }
+            require(!unconfirmedAncestor) { "This transaction spends coins that are not confirmed yet either: speed up the earlier one first." }
+            val byHash = rows.associateBy { it.scriptHash }
+            val unspent = c.listUnspentMany(rows.filter { it.isUsed }.map { it.scriptHash }).flatten().map { "${it.txid}:${it.vout}" }.toSet()
+            val ours = tx.outputs.mapIndexedNotNull { n, o ->
+                val row = byHash[Address.electrumScriptHash(o.scriptPubKey)] ?: return@mapIndexedNotNull null
+                if ("$txid:$n" !in unspent) return@mapIndexedNotNull null
+                SpendableUtxo(txid, n, o.value, row.chainIndex, row.index, 0, row.type)
+            }
+            Triple(parentFee, CpfpPlanner.parentVsize(raw, prevs.map { it.second.scriptPubKey }), ours)
         } finally { c.close() }
     }
 
@@ -370,6 +419,7 @@ class Scanner(
             ScriptType.P2PKH -> 44
             ScriptType.P2SH_P2WPKH -> 49
             ScriptType.P2WPKH -> 84
+            ScriptType.P2TR -> 86
         }
     }
 }

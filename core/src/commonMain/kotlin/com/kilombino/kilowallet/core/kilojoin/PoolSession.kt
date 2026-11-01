@@ -130,6 +130,9 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         var closedVote: String? = null,
         /** Member: when the closing we took was sent; only a later one from the creator replaces it (see "closing"). */
         var closingAt: Long = 0,
+        /** When the round went out, and when it was over (confirmed, cancelled or refused): what HISTORY shows (Android 1.4.0). */
+        var sentAt: Long = 0,
+        var endedAt: Long = 0,
     ) {
         val poolId: String get() = terms.id
         val joinProof: String get() = joinProofs.first()
@@ -157,6 +160,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
             "handed_in" to handedIn.toList(), "blind_sigs" to blindSigs.toMap(), "blinded_of" to blindedOf.toMap(),
             "reg_outputs" to regOutputs.toList(), "pay_outputs" to payOutputs.toList(),
             "close_seq" to closeSeq, "closed_vote" to (closedVote ?: ""), "closing_at" to closingAt,
+            "sent_at" to sentAt, "ended_at" to endedAt,
         )
 
         companion object {
@@ -188,6 +192,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                     list0("reg_outputs").toMutableSet(),
                     list0("pay_outputs").toMutableList(),
                     o.optInt("close_seq"), o.s("closed_vote"), o.optLong("closing_at"),
+                    o.optLong("sent_at"), o.optLong("ended_at"),
                 )
             }
         }
@@ -289,7 +294,12 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         runCatching { connect() }.onFailure { env.log("reconnect: ${it.message}") }
     }
 
-    private fun save() { env.save(s); env.event(Event.Changed(s.poolId)) }
+    private fun save() {
+        // The times HISTORY shows: when it went out, and when it was over (Android 1.4.0).
+        if (s.phase in setOf(Phase.BROADCAST, Phase.CONFIRMED) && s.sentAt == 0L) s.sentAt = env.now()
+        if (s.phase in setOf(Phase.CONFIRMED, Phase.ABORTED, Phase.REJECTED) && s.endedAt == 0L) s.endedAt = env.now()
+        env.save(s); env.event(Event.Changed(s.poolId))
+    }
 
     // ------------------------------------------------------------------------------- sending
 

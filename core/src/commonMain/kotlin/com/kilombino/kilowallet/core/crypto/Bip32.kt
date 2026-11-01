@@ -5,6 +5,7 @@ enum class ScriptType(val label: String, val explain: String) {
     P2PKH("Legacy", "Addresses that start with 1. Bitcoin's original format."),
     P2SH_P2WPKH("Nested SegWit", "Addresses that start with 3. SegWit wrapped for older wallets."),
     P2WPKH("Native SegWit", "Addresses that start with bc1q. The most widely used."),
+    P2TR("Taproot", "Addresses that start with bc1p. The newest, and cheaper to spend."),
 }
 
 /**
@@ -28,6 +29,13 @@ object Bip32 {
         val scriptType: ScriptType,
     ) {
         fun pubkey(): ByteArray = pubkey
+
+        /**
+         * The same key read as making [type]'s addresses. Taproot has no SLIP-132 prefix of its
+         * own: a Taproot account travels as a plain xpub and its type is kept next to it, as the
+         * Android app's Store does.
+         */
+        fun withType(type: ScriptType): ExtendedPubKey = ExtendedPubKey(pubkey, chainCode, depth, type)
 
         override fun equals(other: Any?): Boolean =
             other is ExtendedPubKey && pubkey.contentEquals(other.pubkey) && chainCode.contentEquals(other.chainCode)
@@ -66,7 +74,8 @@ object Bip32 {
     fun withScriptType(encoded: String, type: ScriptType): String {
         parseExtendedPubKey(encoded) // the same readable errors first
         val raw = Base58.decodeChecked(encoded.trim())
-        val v = VERSIONS.entries.first { it.value == type }.key
+        // Taproot keeps the plain xpub prefix (no SLIP-132 version for it); its type is kept apart.
+        val v = VERSIONS.entries.first { it.value == (if (type == ScriptType.P2TR) ScriptType.P2PKH else type) }.key
         val out = raw.copyOf()
         out[0] = (v ushr 24).toByte(); out[1] = (v ushr 16).toByte(); out[2] = (v ushr 8).toByte(); out[3] = v.toByte()
         return Base58.encodeChecked(out)
