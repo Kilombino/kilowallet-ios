@@ -1,5 +1,6 @@
 #!/bin/bash
-# Binds LND for iOS as lnd-engine/ENGINE says. Needs macOS with Xcode and the pinned Go.
+# Binds LND for iOS as lnd-engine/ENGINE says (Lightning Fork 21.2 since 2 Nov 2026). Needs macOS
+# with Xcode and the pinned Go.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ENGINE=$PWD/lnd-engine/ENGINE
