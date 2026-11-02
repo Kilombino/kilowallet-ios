@@ -1,4 +1,0 @@
-_kilombino_tor_start
-_kilombino_tor_stop
-_kilombino_tor_state
-_kilombino_tor_free
