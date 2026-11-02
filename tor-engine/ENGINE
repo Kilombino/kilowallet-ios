@@ -15,3 +15,4 @@ iosversion=16.0
 run=41369494122
 sha256=d39a9f4b8ba61a8f5b3dd2d16ef6b83cf1bb00c4d31c6aef2901336691a161ea
 size=zip 12 MB (dynamic framework; device and simulator slices); build 15 min on macos-15
+release=v1.0.0-rc2

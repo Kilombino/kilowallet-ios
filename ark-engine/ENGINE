@@ -13,4 +13,4 @@ iosversion=16.0
 run=41278303674
 sha256=e1be8ad8cb45e1917026f1287bdfc1ef2adec1319829271ce02b067fc0ca5647
 size=109 MB unpacked (device arm64 37 MB, simulator arm64+x86_64 71 MB); zip 40 MB; build 18 min on macos-15
-release=v1.0.0-rc1
+release=v1.0.0-rc2

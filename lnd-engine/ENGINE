@@ -16,3 +16,4 @@ iosversion=16.0
 run=41375973088
 sha256=e135aeaa1dad6cdd5a77f1d6c7f194e49298cf67ce54f3811dfd9ac6c68da69d
 size=zip 77 MB; bind 42 min on macos-15
+release=v1.0.0-rc2
