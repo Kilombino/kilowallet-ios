@@ -1128,6 +1128,12 @@ class WalletModel(private val platform: AppPlatform) {
         val how = r.exceptionOrNull()?.message ?: "OK"
         val peers = runCatching { ln.peerAddresses().toString() }.getOrElse { it.message ?: it.toString() }
         println("KW ln-live: connect Kilombino by onion: $how; peers $peers")
+        // RestoreChannelBackups by RPC (fixed in Lightning Fork 21.2: up to 21.1 it took every backup
+        // for another chain's). The node's own backup has no channel, so this only shows the call goes through.
+        val scb = runCatching { ln.channelBackup() }
+        val restored = scb.mapCatching { ln.restoreChannelBackups(it); "OK" }.getOrElse { it.message ?: it.toString() }
+        val scbSize = scb.getOrNull()?.size ?: 0
+        println("KW ln-live: own channel backup $scbSize bytes; RestoreChannelBackups by RPC: $restored")
         runCatching { lightning.refresh() }
     }
 
