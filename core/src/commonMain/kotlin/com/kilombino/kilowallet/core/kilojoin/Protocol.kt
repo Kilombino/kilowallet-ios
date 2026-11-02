@@ -30,6 +30,11 @@ enum class PoolType { P2WPKH, P2TR }
  */
 object Protocol {
     const val RELAY = "wss://relay.kilombino.com"
+    /**
+     * The same relay (the same strfry) as an onion service, plain ws on port 80: the onion is its
+     * own encryption and authentication. Only a transport: events and pool terms keep naming [RELAY].
+     */
+    const val RELAY_ONION = "ws://pf7d47aytdrrlmoa6f23gpsi7bjwvpeo27gnuz4vhh44rtn2r4bdy6qd.onion"
     const val KIND_POOL = 32022
     /** Seconds between an open pool's re-announcements by its creator. */
     const val HEARTBEAT = 10 * 60L

@@ -46,6 +46,11 @@ interface IosBridge {
     fun openWebSocket(url: String, listener: IosSocketListener): IosSocket
     /** The same through Tor's SOCKS port [socksPort] (0: directly), on the circuit named [isolation]. */
     fun openWebSocketVia(url: String, listener: IosSocketListener, socksPort: Int, isolation: String?): IosSocket
+    /**
+     * A plain ws:// WebSocket to a .onion through Tor's SOCKS port (Network.framework, iOS 17 or
+     * later; not URLSession, whose App Transport Security refuses cleartext ws://), on the circuit [isolation].
+     */
+    fun openOnionWebSocket(url: String, listener: IosSocketListener, socksPort: Int, isolation: String?): IosSocket
 
     // ---- Lightning (iosApp/iosApp/LndEngine.swift): LND linked in as Lndmobile.xcframework
 

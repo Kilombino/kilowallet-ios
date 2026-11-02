@@ -1220,6 +1220,11 @@ class WalletModel(private val platform: AppPlatform) {
                                 val end = withTimeoutOrNull(180_000) { _state.first { it.scan is ScanPhase.Done || it.scan is ScanPhase.Error }.scan }
                                 val height = _state.value.height
                                 println("KW tor-live: Electrum through Tor: $end (null: no answer in 3 min); height $height")
+                                // The pools' relay through Tor: its onion first (RelayRoute).
+                                val pools = runCatching { withContext(Dispatchers.Default) { pools.countPoolsNow() } }
+                                val route = (platform.sockets as? RelayRoute)?.last
+                                val got = pools.getOrElse { "failed: " + (it.message ?: it.toString()) }
+                                println("KW tor-live: pool list through Tor via $route: $got")
                             }
                             go(if (screen == "tor-log") Screen.TorLog else Screen.Settings)
                             delay(2_500); platform.markReady(screen)

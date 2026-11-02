@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import KilowalletApp
 import KilombinoTor
 
 /// Tor inside the app: Arti, the Tor Project's Tor in Rust, linked in as KilombinoTor.xcframework
@@ -130,5 +131,96 @@ enum TorProxy {
             return true
         }
         return false
+    }
+}
+
+/// A plain ws:// WebSocket to an onion service through the app's Tor, over Network.framework (iOS 17
+/// or later). Not URLSession: App Transport Security refuses cleartext ws:// there, while a
+/// Network.framework connection isn't under ATS (and the onion address is itself the server's key,
+/// its traffic end-to-end encrypted by Tor). Blocks in init until open or failed.
+final class OnionSocket: NSObject, IosSocket {
+    private let listener: IosSocketListener
+    private var conn: NWConnection?
+    private let queue = DispatchQueue(label: "com.kilombino.kilowallet.onion-ws")
+    private let lock = NSLock()
+    private var finished = false
+    private var openError: String?
+
+    init(url: String, listener: IosSocketListener, socksPort: Int32, isolation: String?) {
+        self.listener = listener
+        super.init()
+        guard #available(iOS 17.0, *) else { openError = "needs iOS 17"; return }
+        guard let u = URL(string: url), u.scheme == "ws", (u.host ?? "").hasSuffix(".onion") else { openError = "only ws:// onions"; return }
+        let ws = NWProtocolWebSocket.Options()
+        ws.autoReplyPing = true
+        ws.maximumMessageSize = 8_000_000
+        ws.setAdditionalHeaders([("User-Agent", "Kilowallet")])
+        let params = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
+        params.defaultProtocolStack.applicationProtocols.insert(ws, at: 0)
+        let ctx = NWParameters.PrivacyContext(description: "Kilowallet Tor relay")
+        ctx.proxyConfigurations = [TorProxy.configuration(port: socksPort, isolation: isolation)]
+        params.setPrivacyContext(ctx)
+        let c = NWConnection(to: .url(u), using: params)
+        conn = c
+        let ready = DispatchSemaphore(value: 0)
+        var signalled = false
+        func once() { if !signalled { signalled = true; ready.signal() } }
+        c.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .ready: once()
+            case .failed(let e), .waiting(let e):
+                self?.lock.lock(); if self?.openError == nil { self?.openError = e.localizedDescription }; self?.lock.unlock()
+                once(); self?.finish(e.localizedDescription)
+            case .cancelled: once(); self?.finish(nil)
+            default: break
+            }
+        }
+        c.start(queue: queue)
+        if ready.wait(timeout: .now() + 60) == .timedOut { openError = "the onion did not answer" }
+        if openError != nil { c.cancel(); return }
+        receive()
+    }
+
+    private func receive() {
+        conn?.receiveMessage { [weak self] data, context, _, error in
+            guard let self = self else { return }
+            if let error = error { self.finish(error.localizedDescription); return }
+            if let meta = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata {
+                switch meta.opcode {
+                case .text, .binary: if let d = data, let t = String(data: d, encoding: .utf8) { self.listener.onText(text: t) }
+                case .pong: self.listener.onPong()
+                case .close: self.finish(nil); return
+                default: break
+                }
+            }
+            self.receive()
+        }
+    }
+
+    private func finish(_ error: String?) {
+        lock.lock(); let first = !finished; finished = true; lock.unlock()
+        if first { listener.onClosed(error: error) }
+    }
+
+    func error() -> String? { openError }
+
+    private func sendFrame(_ opcode: NWProtocolWebSocket.Opcode, _ data: Data?, pong: (() -> Void)? = nil) -> Bool {
+        guard let c = conn, !finished else { return false }
+        let meta = NWProtocolWebSocket.Metadata(opcode: opcode)
+        if let pong = pong { meta.setPongHandler(queue) { e in if e == nil { pong() } } }
+        let ctx = NWConnection.ContentContext(identifier: "ws", metadata: [meta])
+        let done = DispatchSemaphore(value: 0)
+        var ok = false
+        c.send(content: data, contentContext: ctx, isComplete: true, completion: .contentProcessed { e in ok = (e == nil); done.signal() })
+        if done.wait(timeout: .now() + 30) == .timedOut { return false }
+        return ok
+    }
+
+    func send(text: String) -> Bool { sendFrame(.text, Data(text.utf8)) }
+    func ping() -> Bool { sendFrame(.ping, Data(), pong: { [weak self] in self?.listener.onPong() }) }
+
+    func close() {
+        lock.lock(); finished = true; lock.unlock()
+        conn?.cancel()
     }
 }

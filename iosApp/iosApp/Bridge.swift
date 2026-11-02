@@ -311,6 +311,10 @@ final class Bridge: NSObject, IosBridge {
         RelaySocket(url: url, listener: listener, socksPort: socksPort, isolation: isolation)
     }
 
+    func openOnionWebSocket(url: String, listener: IosSocketListener, socksPort: Int32, isolation: String?) -> IosSocket {
+        OnionSocket(url: url, listener: listener, socksPort: socksPort, isolation: isolation)
+    }
+
     // MARK: Balance alerts with the app closed (BalanceWatch.swift)
 
     func watchNotify(title: String, body: String) { BalanceWatch.notify(title: title, body: body) }

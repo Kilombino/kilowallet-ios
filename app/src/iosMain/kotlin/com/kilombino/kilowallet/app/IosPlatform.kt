@@ -75,29 +75,32 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
     }
 
     /**
-     * The pools' relay: through Tor when it is already running (Android's RelayClient), on a
-     * circuit of its own per seat and per output handed in; directly otherwise.
+     * The pools' relay (RelayRoute): with Tor running, its onion first (plain ws through Tor, over
+     * Network.framework: App Transport Security, which refuses cleartext ws:// for URLSession, does
+     * not apply there), then wss through Tor; each connection on its own circuit. Without Tor, directly.
      */
-    override val sockets = object : WebSocketFactory {
-        override fun open(url: String, listener: WebSocketListener): WebSocket = openIsolated(url, listener, null)
-        override fun openIsolated(url: String, listener: WebSocketListener, isolation: String?): WebSocket {
-            val l = object : IosSocketListener {
-                override fun onText(text: String) = listener.onText(text)
-                override fun onPong() = listener.onPong()
-                override fun onClosed(error: String?) = listener.onClosed(error)
-            }
-            val socks = Tor.proxyIfRunning()
-            val ws = if (socks != null) bridge.openWebSocketVia(url, l, socks, isolation) else bridge.openWebSocket(url, l)
-            ws.error()?.let { ws.close(); throw IllegalStateException("Could not reach the relay: $it") }
-            return object : WebSocket {
-                override fun send(text: String) = ws.send(text)
-                override fun ping() = ws.ping()
-                override fun close() = ws.close()
-            }
+    private fun wrap(ws: IosSocket): WebSocket {
+        ws.error()?.let { ws.close(); throw IllegalStateException("Could not reach the relay: $it") }
+        return object : WebSocket {
+            override fun send(text: String) = ws.send(text)
+            override fun ping() = ws.ping()
+            override fun close() = ws.close()
         }
     }
-
-    override fun scheduleBalanceWatch(on: Boolean) { if (demoScreen == null) bridge.watchSchedule(on) }
+    private fun listen(listener: WebSocketListener) = object : IosSocketListener {
+        override fun onText(text: String) = listener.onText(text)
+        override fun onPong() = listener.onPong()
+        override fun onClosed(error: String?) = listener.onClosed(error)
+    }
+    val relayRoute = RelayRoute(
+        torPort = { Tor.proxyIfRunning() },
+        direct = { url, l -> wrap(bridge.openWebSocket(url, listen(l))) },
+        viaTor = { url, l, port, iso ->
+            if (url.startsWith("ws://") && url.substringAfter("://").substringBefore('/').substringBefore(':').endsWith(".onion"))
+                wrap(bridge.openOnionWebSocket(url, listen(l), port, iso))
+            else wrap(bridge.openWebSocketVia(url, listen(l), port, iso))
+        })
+    override val sockets: WebSocketFactory = relayRoute
 
     /** Back in the foreground: Tor's port is checked and Tor started again if iOS took it back. */
     override fun onForeground(action: () -> Unit) {
