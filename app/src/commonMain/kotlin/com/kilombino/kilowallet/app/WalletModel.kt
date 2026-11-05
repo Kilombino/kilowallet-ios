@@ -452,6 +452,8 @@ class WalletModel(private val platform: AppPlatform) {
 
     /** Screenshot mode (a throwaway demo wallet, nothing sent anywhere). */
     val isDemo: Boolean get() = platform.demoScreen != null
+    /** The screenshot run's screen, without its language suffix; null in a real run. */
+    val demoName: String? get() = platform.demoScreen?.substringBefore('@')
     val unlockName: String get() = platform.unlockName
 
     fun dismissMessage() = _state.update { it.copy(message = null) }
@@ -1274,12 +1276,12 @@ class WalletModel(private val platform: AppPlatform) {
                         _state.update { it.copy(taprootXpub = tpub, receiveTaproot = true) }
                         go(if (screen == "receive-taproot") Screen.Receive else Screen.Settings); platform.markReady(screen)
                     }
-                    "pools", "pool-round", "pool-intro", "pool-history" -> {
+                    "pools", "pool-round", "pool-intro", "pool-history", "pool-v6" -> {
                         withContext(Dispatchers.Default) { pools.setUpDemo(screen, words) }
                         if (screen == "pool-intro") pools.setEnabled(false)
                         go(Screen.Pools); platform.markReady(screen)
                     }
-                    "pool-create" -> { withContext(Dispatchers.Default) { pools.setUpDemo(screen, words) }; go(Screen.PoolCreate); platform.markReady(screen) }
+                    "pool-create", "pool-create-v6" -> { withContext(Dispatchers.Default) { pools.setUpDemo(screen, words) }; go(Screen.PoolCreate); platform.markReady(screen) }
                     "pool-join" -> {
                         withContext(Dispatchers.Default) { pools.setUpDemo(screen, words) }
                         pools.state.value.open?.firstOrNull()?.let { go(Screen.PoolJoin(it.id)) }; platform.markReady(screen)

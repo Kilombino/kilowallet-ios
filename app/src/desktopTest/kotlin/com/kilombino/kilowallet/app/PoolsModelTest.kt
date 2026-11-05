@@ -96,6 +96,7 @@ class PoolsModelTest {
         class U(val txid: String, val vout: Int, val value: Long, var height: Int)
         val utxos = HashMap<String, MutableList<U>>()           // scripthash → coins
         val history = HashMap<String, MutableList<Pair<String, Int>>>()
+        @Volatile var tip = 101
         val txs = HashMap<String, String>()
         val sent = CopyOnWriteArrayList<String>()
 
@@ -131,11 +132,13 @@ class PoolsModelTest {
         @Synchronized fun mine() {
             utxos.values.flatten().forEach { if (it.height == 0) it.height = 101 }
             history.values.forEach { l -> l.replaceAll { (t, h) -> t to if (h == 0) 101 else h } }
+            // Five more blocks on top: a round counts as confirmed only 6 deep (Android 1.5.1).
+            tip = 106
         }
 
         @Synchronized fun answer(method: String, p: JsonArray): JsonElement = when (method) {
             "server.version" -> JsonArray(listOf(JsonPrimitive("Fake 1.0"), JsonPrimitive("1.4")))
-            "blockchain.headers.subscribe" -> buildJsonObject { put("height", 101); put("hex", "00".repeat(164)) }
+            "blockchain.headers.subscribe" -> buildJsonObject { put("height", tip); put("hex", "00".repeat(164)) }
             "blockchain.scripthash.listunspent" -> JsonArray(utxos[p[0].jsonPrimitive.content].orEmpty().map { u ->
                 buildJsonObject { put("tx_hash", u.txid); put("tx_pos", u.vout); put("value", u.value); put("height", u.height) } })
             "blockchain.scripthash.get_history" -> JsonArray(history[p[0].jsonPrimitive.content].orEmpty().map { (t, h) ->

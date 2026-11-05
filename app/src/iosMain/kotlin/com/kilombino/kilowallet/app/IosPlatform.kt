@@ -37,6 +37,7 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
         override fun put(key: String, value: String?) {
             if (value == null) d.removeObjectForKey("kw.$key") else d.setObject(value, forKey = "kw.$key")
         }
+        override fun flush() { d.synchronize() }
     }
 
     init {

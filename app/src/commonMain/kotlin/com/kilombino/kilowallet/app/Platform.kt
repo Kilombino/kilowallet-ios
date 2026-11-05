@@ -26,6 +26,8 @@ interface SeedStore {
 interface Prefs {
     fun get(key: String): String?
     fun put(key: String, value: String?)
+    /** Writes what was put to disk now (a Kilojoin v6 pool this phone runs acknowledges only what is kept). */
+    fun flush() {}
 }
 
 /**

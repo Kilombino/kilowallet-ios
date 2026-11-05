@@ -219,6 +219,8 @@ class I18nTest {
         "no Ark files to back up", "the Ark database did not come back",
         // The bridge's refusal code the code asks the text of.
         "no_amount",
+        // Kilojoin v6 (Android 1.5.x): the screenshot runs' names and the demo rounds' made-up values.
+        "pool-v6", "pool-create-v6", "v6demo", "demo12", "demo-v6-12", "8c", "9d", "ae", "cd",
         // Moving the node: its file name and preference keys.
         "kilowallet-lightning.move", "moved_away", "moving", "Error: 12 345",
         // Balance alerts: the kept lists' key and the wallet kinds they are filed under.

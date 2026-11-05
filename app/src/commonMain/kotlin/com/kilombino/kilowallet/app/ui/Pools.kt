@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -88,7 +90,9 @@ private fun poolKind(t: Protocol.Terms): String = listOf(
         t.outputs > 1 -> "${t.outputs} equal outputs each"
         else -> "one equal output each"
     },
-).joinToString(" · ")
+    // Kilojoin v6 (Android 1.5.0): asynchronous rounds, with their announced windows.
+    t.async?.let { a -> "asynchronous (v6): ${a.vote / 60} min to answer, ${a.outputs / 60} for outputs, ${a.sign / 60} to sign" },
+).filterNotNull().joinToString(" · ")
 
 /** A reason that may come from another wallet, in this app's words. */
 private fun reasonText(r: String): String = I18n.tr(r.replace(OTHER_WORDS, "equal"))
@@ -199,6 +203,8 @@ private fun ForegroundNote() {
             "and for the short time iOS allows after you leave it; then they pause until you open the app again. " +
             "A round that needs your answer, your outputs or your signature while the app is closed may be cancelled. " +
             "Nothing is lost when that happens: no coin moves until everyone has signed.", color = TextSoft)
+        Explain("In an asynchronous pool (Kilojoin v6) you can close the app between steps: your answers are kept, and when " +
+            "you open it again the round picks up where it stands.", color = TextSoft)
     }
 }
 
@@ -320,8 +326,12 @@ private fun RoundCard(model: WalletModel, pools: PoolsModel, st: PoolSession.Sta
             PoolSession.Phase.OPEN -> "Waiting for people · $people/${t.maxPeers} · closes in ${remaining(t.expiresAt)}"
             PoolSession.Phase.VOTING -> "Close now with $people people?"
             PoolSession.Phase.CLOSING -> "Closing with $people people · collecting the equal outputs"
-            PoolSession.Phase.SIGNING -> "Ready: check and sign within ${remaining(st.phaseDeadline)}"
-            PoolSession.Phase.BROADCAST -> "Sent · waiting for the first confirmation"
+            PoolSession.Phase.SIGNING -> if (pools.session(st.key)?.reserved == true) "Signed · your coins are held until the round resolves"
+                else "Ready: check and sign within ${remaining(st.phaseDeadline)}"
+            // Confirmed only 6 deep, and a round whose broadcast failed goes again (Android 1.5.1).
+            PoolSession.Phase.BROADCAST -> if (st.reason.startsWith(PoolSession.NOT_SENT)) "Signed · not sent yet, it goes again"
+                else if (st.confs > 0) "Sent · confirmed ${st.confs}/${PoolSession.DEPTH}"
+                else "Sent · waiting for the first confirmation"
             PoolSession.Phase.CONFIRMED -> "Confirmed ✓"
             PoolSession.Phase.ABORTED -> "Cancelled: ${reasonText(st.reason)}. Your coins did not move."
             PoolSession.Phase.REJECTED -> "Refused: ${reasonText(st.reason)}"
@@ -372,7 +382,14 @@ private fun RoundCard(model: WalletModel, pools: PoolsModel, st: PoolSession.Sta
             }
             PoolSession.Phase.VOTING -> {
                 val iAsked = st.voteBy == st.token?.let { Protocol.tokenHash(it) }
-                if (iAsked || st.votedOn == st.voteId) {
+                if ((iAsked || st.votedOn == st.voteId) && t.v6) {
+                    // Kilojoin v6: a yes sent is not yet a yes recorded; nobody is left out without being asked again.
+                    Text(if (st.voteAcked == st.voteId) "Your yes is recorded by the pool's creator." else "Your yes is sent; waiting for the creator to record it.",
+                        style = MaterialTheme.typography.bodySmall, color = if (st.voteAcked == st.voteId) Good else TextSoft)
+                    Explain("Waiting for the others to answer, until ${clock(st.voteDeadline)}. You can close the app. If someone doesn't answer, they " +
+                        "leave the pool and the rest are asked again: it never closes with fewer people without asking.")
+                    SecondaryButton(if (st.creator) "Cancel pool" else "Leave", Modifier.fillMaxWidth(), color = TextSoft) { confirmLeave = true }
+                } else if (iAsked || st.votedOn == st.voteId) {
                     Explain("Waiting for the others to answer, until ${clock(st.voteDeadline)}. Whoever has not answered by then is left out; " +
                         "if too few are left, the pool opens again without them.")
                 } else {
@@ -463,6 +480,14 @@ private fun clock(at: Long): String {
 private fun SignReview(pools: PoolsModel, st: PoolSession.State, platform: AppPlatform) {
     val session = pools.session(st.key)
     val plan = session?.plan()
+    if (session?.reserved == true) {
+        Explain("Signed, and the time to sign is over without every signature. Your coins stay held: the transaction can still " +
+            "go out if the last signatures arrive. They are free once it confirms, or once a coin of the round is spent elsewhere.", color = Warn)
+        return
+    }
+    if (st.postedSig && st.terms.v6) { Explain("Signed, and the relay has your signature: you can close the app. Whoever has every " +
+        "signature sends the transaction. (${st.sigs.size}/${plan?.coins?.size ?: "?"} coins)"); return }
+    if (st.terms.v6 && session?.signed == true) { Explain("Signed. Sending your signature to the relay…"); return }
     if (st.postedSig) { Explain("Signed. Waiting for the others (${st.sigs.size}/${plan?.coins?.size ?: "?"} coins)…"); return }
     if (plan == null) { Explain("The transaction is not complete yet."); return }
     val problem = session.planProblem()
@@ -664,6 +689,8 @@ fun PoolCreateScreen(model: WalletModel, state: UiState) {
     var inputsText by remember { mutableStateOf("5") }
     var password by remember { mutableStateOf("") }
     var dest by remember { mutableStateOf(PoolDest.HOT) }
+    // Kilojoin v6: asynchronous rounds, for people who answer at different times.
+    var async by remember { mutableStateOf(model.demoName == "pool-create-v6") }
     var coins by remember { mutableStateOf<List<SpendableUtxo>?>(null) }
     val chosen = remember { mutableStateListOf<SpendableUtxo>() }
     LaunchedEffect(Unit) {
@@ -751,6 +778,17 @@ fun PoolCreateScreen(model: WalletModel, state: UiState) {
             Field(inputsText, { inputsText = it.filter { c -> c.isDigit() } }, "most coins per person (1–${Protocol.MAX_INPUTS})", keyboard = KeyboardType.Number)
             Field(password, { password = it }, "password (optional: makes it private 🔒)")
             if (password.isNotEmpty()) Explain("Only people you give this password to can join. It is not announced anywhere.")
+            // Kilojoin v6: the mark apart from the words, so the words are found in the translations.
+            Row(Modifier.fillMaxWidth().clickable { async = !async }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(if (async) "●" else "○", color = if (async) PoolBlue else TextMain, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.width(6.dp))
+                Text("Asynchronous rounds (Kilojoin v6)", color = if (async) PoolBlue else TextMain,
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            }
+            if (async) Explain("For people who answer at different times: up to an hour to answer, 30 minutes for the outputs and two " +
+                "hours to sign, with an end time no round goes past. Nobody is left out of a round without being asked again. As its " +
+                "creator, this iPhone runs the pool: iOS pauses apps in the background, so keep Kilowallet open until the round is " +
+                "done (a Kilojoin node is better at it). Only wallets that know Kilojoin v6 see these pools.")
         }
         Panel {
             SectionLabel("Your coins")
@@ -763,7 +801,7 @@ fun PoolCreateScreen(model: WalletModel, state: UiState) {
         if (pay == null) Panel { DestChooser(ui, dest) { dest = it }; if (ui.watchKey == null) Explain("Your equal outputs go to fresh addresses of this wallet.") }
         error?.let { Text(reasonText(it), style = MaterialTheme.typography.bodySmall, color = Warn) }
         PrimaryButton("Open the pool with ${model.unlockName}", Modifier.fillMaxWidth(), enabled = error == null && ui.busy == null, color = PoolBlue) {
-            pools.create(amount!!, feeRate!!, minPeers!!, peers!!, hours!!, maxInputs!!, outputs!!, password, chosen.toList(), dest, pay) { ok ->
+            pools.create(amount!!, feeRate!!, minPeers!!, peers!!, hours!!, maxInputs!!, outputs!!, password, chosen.toList(), dest, pay, async) { ok ->
                 if (ok) model.go(Screen.Pools)
             }
         }

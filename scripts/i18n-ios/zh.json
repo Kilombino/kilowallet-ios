@@ -522,5 +522,11 @@
  "Off. With it on, iOS checks now and then with the app closed and notifies what changed.": "已关闭。开启后，应用关闭时 iOS 会不时检查并通知变化。",
  "Received: +{0} sats (confirmed)": "已收到：+{0} sats（已确认）",
  "Sent: −{0} sats": "已发送：−{0} sats",
- "With the app closed, iOS checks now and then (when it decides, not on a fixed schedule) and a notification says what came in, confirmed or went out. Not while the server is reached through Tor.": "应用关闭时，iOS 会不时检查（由系统决定，没有固定时间），并用通知告诉你收到、确认或发出了什么。通过 Tor 连接服务器时不会检查。"
+ "With the app closed, iOS checks now and then (when it decides, not on a fixed schedule) and a notification says what came in, confirmed or went out. Not while the server is reached through Tor.": "应用关闭时，iOS 会不时检查（由系统决定，没有固定时间），并用通知告诉你收到、确认或发出了什么。通过 Tor 连接服务器时不会检查。",
+ "the pool's terms are not the ones you joined for": "池的条款不是你加入时的条款",
+ "not sent yet, it goes again": "尚未发出，会再次尝试",
+ "an asynchronous pool is a v6 pool, with blind outputs": "异步池是 v6 池，使用盲化输出",
+ "vote 10–60 min, outputs 5–30 min, signing 20–120 min, and the final time within a day after the pool's": "投票 10–60 分钟，输出 5–30 分钟，签名 20–120 分钟，最终时间最多比池的时间晚一天",
+ "In an asynchronous pool (Kilojoin v6) you can close the app between steps: your answers are kept, and when you open it again the round picks up where it stands.": "在异步池（Kilojoin v6）中，你可以在步骤之间关闭应用：你的回答会被保存，再次打开时，这一轮会从当前所处的位置继续。",
+ "For people who answer at different times: up to an hour to answer, 30 minutes for the outputs and two hours to sign, with an end time no round goes past. Nobody is left out of a round without being asked again. As its creator, this iPhone runs the pool: iOS pauses apps in the background, so keep Kilowallet open until the round is done (a Kilojoin node is better at it). Only wallets that know Kilojoin v6 see these pools.": "适合在不同时间回复的人：最多一小时回复，30 分钟提交输出，两小时签名，并有一个任何一轮都不会超过的最终时间。没有人会在未被再次询问的情况下被排除在一轮之外。作为创建者，这部 iPhone 负责运行这个池：iOS 会暂停后台应用，所以在这一轮完成之前请保持 Kilowallet 打开（Kilojoin 节点更适合做这件事）。只有支持 Kilojoin v6 的钱包才能看到这些池。"
 }
