@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.math.roundToLong
 
 /** A pool's one address type: every input, equal output and change of its round is of it. */
 enum class PoolType { P2WPKH, P2TR }
@@ -29,7 +30,8 @@ enum class PoolType { P2WPKH, P2TR }
  * transaction and signs only after checking its own outputs, its change and the fee.
  */
 object Protocol {
-    const val RELAY = "wss://relay.kilombino.com"
+    /** The relay every pool uses. Tests point it at a local relay (ws:// on the loopback only). */
+    @kotlin.concurrent.Volatile var RELAY = "wss://relay.kilombino.com"
     /**
      * The same relay (the same strfry) as an onion service, plain ws on port 80: the onion is its
      * own encryption and authentication. Only a transport: events and pool terms keep naming [RELAY].
@@ -51,6 +53,8 @@ object Protocol {
     const val V4 = 4
     /** v5 pools: the creator pays recipients of different amounts; joiners get equal outputs. */
     const val V5 = 5
+    /** v6 pools: v3–v5 with asynchronous rounds ([Async]): longer announced windows, acknowledgments, no silent shrinking. */
+    const val V6 = 6
     /** Smallest payment in a v5 pool: the dust limit of a Taproot output, the highest of the two types. */
     const val MIN_PAYMENT = 330L
     /** Most equal outputs one person may get in a v4 pool (and most payments in a v5 one). */
@@ -77,6 +81,46 @@ object Protocol {
     const val OUTPUTS_SECONDS = 5 * 60L
     /** From the transaction being ready until everyone has signed it (needs the user's touch). */
     const val SIGN_SECONDS = 20 * 60L
+
+    /** v6: the bounds of each announced window (never shorter than v5's), and of `final` past the pool's open time. */
+    val ASYNC_VOTE = VOTE_SECONDS..3600L
+    val ASYNC_OUTPUTS = OUTPUTS_SECONDS..1800L
+    val ASYNC_SIGN = SIGN_SECONDS..7200L
+    const val ASYNC_TAIL_MAX = 24 * 3600L
+
+    /**
+     * v6: a pool's timing, bound at join. [vote], [outputs] and [sign] are each stage's window in
+     * seconds; [final] the unix time no stage of the pool goes past (a missing person can't extend
+     * it). Rounds that every member signed are not over at [final]: their coins stay reserved until
+     * the transaction confirms or one of its coins is spent elsewhere (Android 1.5.0, PROTOCOL §14).
+     */
+    data class Async(val vote: Long, val outputs: Long, val sign: Long, val final: Long) {
+        fun toJson(): JsonObject = J.obj("vote" to vote, "outputs" to outputs, "sign" to sign, "final" to final)
+        /** The windows within their bounds, and [final] after the pool's open time [timeout], at most a day after it. */
+        fun valid(timeout: Long): Boolean = vote in ASYNC_VOTE && outputs in ASYNC_OUTPUTS && sign in ASYNC_SIGN &&
+            final > timeout && final - timeout <= ASYNC_TAIL_MAX
+        companion object {
+            fun parse(o: JsonObject): Async = Async(o.long("vote"), o.long("outputs"), o.long("sign"), o.long("final"))
+            /** The longest windows, as Kilojoin opens asynchronous pools by default. */
+            fun longest(timeout: Long): Async = Async(ASYNC_VOTE.last, ASYNC_OUTPUTS.last, ASYNC_SIGN.last,
+                timeout + ASYNC_VOTE.last + ASYNC_OUTPUTS.last + ASYNC_SIGN.last + ASYNC_VOTE.last + ASYNC_OUTPUTS.last)
+        }
+    }
+
+    /**
+     * v6: what a join binds: every fixed term of the pool, in one line, hashed. The creator refuses a
+     * join made for other terms, and the joiner a welcome that names others. Fee rate in thousandths
+     * of a sat/vB, booleans `true`/`false`, payments joined with `,`.
+     */
+    fun termsHash(t: Terms): String = Hashes.sha256(termsLine(t).encodeToByteArray()).toHex()
+
+    /** What [termsHash] hashes (UTF-8). */
+    fun termsLine(t: Terms): String {
+        val a = t.async
+        return listOf("kilojoin/v6/terms", t.version, NETWORK, t.id, t.poolPub, t.amount, (t.feeRate * 1000).roundToLong(),
+            t.minPeers, t.maxPeers, t.private, t.expiresAt, scriptName(t.script), t.maxInputs, t.creatorPub ?: "", t.blindKey ?: "",
+            t.outputs, t.payments.joinToString(","), a?.vote ?: 0, a?.outputs ?: 0, a?.sign ?: 0, a?.final ?: 0).joinToString("|")
+    }
 
     /** A private pool's password never travels: a key derived from it, and an HMAC of the join key under it. */
     fun passwordKey(poolId: String, password: String): ByteArray =
@@ -113,9 +157,18 @@ object Protocol {
         val outputs: Int = 1,
         /** v5: the creator's payments, in sats, summing to [mixTotal]; empty before v5. */
         val payments: List<Long> = emptyList(),
+        /** v6: the pool's asynchronous timing; null before v6. */
+        val async: Async? = null,
     ) {
         val v3: Boolean get() = version >= V3
-        val v5: Boolean get() = version >= V5
+        /** A payment pool (v5, or v6 with payments): the creator's outputs are [payments], the joiners' [outputs] × [amount]. */
+        val v5: Boolean get() = version >= V5 && payments.isNotEmpty()
+        /** A v6 pool: asynchronous rounds. */
+        val v6: Boolean get() = version >= V6
+        /** The vote's window: v6's announced one, else [VOTE_SECONDS]. */
+        val voteSeconds: Long get() = async?.vote ?: VOTE_SECONDS
+        val outputsSeconds: Long get() = async?.outputs ?: OUTPUTS_SECONDS
+        val signSeconds: Long get() = async?.sign ?: SIGN_SECONDS
         /** What each person puts in: [outputs] × [amount]. */
         val mixTotal: Long get() = amount * outputs
 
@@ -130,6 +183,7 @@ object Protocol {
             if (version >= V3) { kv += "creator" to creatorPub; kv += "blind_key" to blindKey }
             if (version >= V4) kv += "outputs" to outputs
             if (version >= V5) kv += "payments" to payments
+            if (version >= V6) kv += "async" to async!!.toJson()
             return J.obj(*kv.toTypedArray())
         }
 
@@ -142,7 +196,7 @@ object Protocol {
             /** The terms in [o] if they are valid and of this network; null otherwise. */
             fun fromJson(o: JsonObject, createdAt: Long): Terms? = runCatching {
                 val v = o.int("v")
-                if (v != V1 && v != VERSION && v != V3 && v != V4 && v != V5 || o.str("network") != NETWORK) return null
+                if (v != V1 && v != VERSION && v != V3 && v != V4 && v != V5 && v != V6 || o.str("network") != NETWORK) return null
                 val t = Terms(
                     id = o.str("id"), poolPub = o.str("public_key"),
                     amount = o.long("denomination"), feeRate = o.double("fee_rate"),
@@ -156,10 +210,14 @@ object Protocol {
                     blindKey = if (v >= V3) o.str("blind_key") else null,
                     outputs = if (v >= V4) o.int("outputs") else 1,
                     payments = if (v >= V5) o.arr("payments").map { it.jsonPrimitive.content.toLong() } else emptyList(),
+                    async = if (v >= V6) Async.parse(o.obj("async")) else null,
                 )
                 // A v4 pool always has several outputs each; one each is announced as v3.
                 if (v == V4 && t.outputs !in 2..MAX_OUTPUTS) return null
                 if (v == V5 && !paymentsOk(t.payments, t.amount, t.outputs)) return null
+                // v6: 1 to 5 outputs each, payments or none, and its windows within their bounds.
+                if (v == V6 && (t.outputs !in 1..MAX_OUTPUTS || (t.payments.isNotEmpty() && !paymentsOk(t.payments, t.amount, t.outputs)) ||
+                        !t.async!!.valid(t.expiresAt))) return null
                 if (t.v3) {
                     if (!t.creatorPub!!.matches(Regex("[0-9a-f]{64}")) || t.creatorPub == t.poolPub) return null
                     BlindRsa.PublicKey.decode(t.blindKey!!)

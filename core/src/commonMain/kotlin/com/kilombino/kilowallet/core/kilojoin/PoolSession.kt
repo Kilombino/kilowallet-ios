@@ -6,6 +6,8 @@ import com.kilombino.kilowallet.core.crypto.Hashes.toHex
 import com.kilombino.kilowallet.core.crypto.TxBuilder
 import com.kilombino.kilowallet.core.platform.ioDispatcher
 import com.kilombino.kilowallet.core.platform.secureRandomBytes
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -18,11 +20,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * One wallet's part in one pool: the Kilojoin state machine, the Android app's
- * `coinjoin/PoolSession.kt` (1.4.4) step for step, on coroutines instead of threads.
+ * `coinjoin/PoolSession.kt` (1.5.2: Kilojoin v6, and the 6-confirmation rules after signing) step for step,
+ * on coroutines instead of threads.
  *
  * The pool's creator also keeps the roster: it checks every join against the chain, hands out
  * seats, counts the votes and calls the phases. Every member (the creator included) hands in its
@@ -45,6 +49,11 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         fun broadcast(rawHex: String): String
         /** Confirmations of [txid], 0 in the mempool, null when unknown. */
         fun confirmations(txid: String): Int?
+        /**
+         * Confirmations of the transaction that spends [coin], when that is not [roundTxid] (0 in the mempool);
+         * null when the coin is unspent, spent by the round itself, or the chain could not tell. Null never frees a round.
+         */
+        fun conflictDepth(coin: PoolTx.Coin, roundTxid: String): Int? = null
         fun save(state: State)
         fun event(e: Event)
         fun now(): Long = NostrEvent.nowSeconds()
@@ -146,6 +155,28 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         val seatId: String = "",
         /** Not before this time (epoch seconds) is the join sent, or the pool opened: a random wait. */
         val joinAfter: Long = 0,
+        // ---- v6 (asynchronous rounds); all 0/empty before v6.
+        /** The roster number the current vote is over. */
+        var voteSeq: Int = 0,
+        /** The number of the newest vote applied (creator and member alike); an older vote_open, reopen or closing is stale. */
+        var voteN: Int = 0,
+        /** The number of the newest vote that ended without a round, or whose round was called off. */
+        var voteEndedN: Int = 0,
+        /** Member: the vote whose answer the creator acknowledged recording (`vote_ack`, or our id in a snapshot). */
+        var voteAcked: String? = null,
+        /** Creator: votes it numbered so far, and their ids, so a replayed request never opens one again. */
+        var votesSent: Int = 0,
+        val usedVotes: MutableSet<String> = linkedSetOf(),
+        /** Creator: votes it opened again by itself after one timed out with silent seats. */
+        var revotes: Int = 0,
+        /** Creator: the newest message of each type that runs the pool, `{"at":…,"msg":…}`, replayed in snapshots. */
+        val lastMsgs: MutableMap<String, String> = linkedMapOf(),
+        /** Snapshots: numbered by the creator; a member applies only a newer one. */
+        var stateN: Int = 0,
+        /** When this wallet had signed all its inputs (its coins are reserved from then until the round resolves). */
+        var signedAt: Long = 0,
+        /** Confirmations of the round's transaction at the last look (it counts as confirmed at [DEPTH]). */
+        var confs: Int = 0,
     ) {
         val poolId: String get() = terms.id
         /** What this seat is kept under on the phone: the pool's id, or with [seatId] for another seat in it. */
@@ -155,7 +186,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         val mixScript: ByteArray get() = mixScripts.first()
         val done: Boolean get() = phase in setOf(Phase.CONFIRMED, Phase.ABORTED, Phase.REJECTED)
 
-        fun toJson(): JsonObject = J.obj(
+        fun toJson(): JsonObject = J.with(J.obj(
             "terms" to J.with(terms.toJson(), "created_at" to terms.createdAt),
             "creator" to creator, "pool_secret" to (poolSecret ?: ""), "join_secret" to joinSecret,
             "token" to (token ?: ""), "seat" to seat.toJson(), "join_proof" to joinProof,
@@ -177,7 +208,10 @@ class PoolSession(private val env: Env, private val s: State, private val socket
             "close_seq" to closeSeq, "closed_vote" to (closedVote ?: ""), "closing_at" to closingAt,
             "sent_at" to sentAt, "ended_at" to endedAt,
             "seat_id" to seatId, "join_after" to joinAfter,
-        )
+        ), *(if (!terms.v6) emptyArray() else arrayOf<Pair<String, Any?>>(
+            "vote_seq" to voteSeq, "vote_n" to voteN, "vote_ended_n" to voteEndedN, "vote_acked" to (voteAcked ?: ""),
+            "votes_sent" to votesSent, "used_votes" to usedVotes.toList(), "revotes" to revotes, "last_msgs" to lastMsgs.toMap(),
+            "state_n" to stateN, "signed_at" to signedAt)), "confs" to confs)
 
         companion object {
             private fun JsonObject.s(k: String): String? = optStr(k).ifEmpty { null }
@@ -214,6 +248,11 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                     o.optInt("close_seq"), o.s("closed_vote"), o.optLong("closing_at"),
                     o.optLong("sent_at"), o.optLong("ended_at"),
                     o.optStr("seat_id"), o.optLong("join_after"),
+                    voteSeq = o.optInt("vote_seq"), voteN = o.optInt("vote_n"), voteEndedN = o.optInt("vote_ended_n"),
+                    voteAcked = o.s("vote_acked"), votesSent = o.optInt("votes_sent"),
+                    usedVotes = (o.strings("used_votes") ?: emptyList()).toMutableSet(),
+                    revotes = o.optInt("revotes"), lastMsgs = o.map("last_msgs"), stateN = o.optInt("state_n"),
+                    signedAt = o.optLong("signed_at"), confs = o.optInt("confs"),
                 )
             }
         }
@@ -244,6 +283,15 @@ class PoolSession(private val env: Env, private val s: State, private val socket
     private val outputScheduled = mutableSetOf<Int>()
     private val perPerson: Int get() = terms.outputs
 
+    // ---- v6, in memory only (the round itself is in [State]).
+    /** A vote_open that came before the roster it is over (events out of order): applied once that roster is in. */
+    private var pendingVoteOpen: Pair<JsonObject, Long>? = null
+    private var lastVoteSent = 0L
+    private var lastSync = 0L
+    private var lastStatePub = 0L
+    private var lastResolve = 0L
+    private var lastSigSent = 0L
+
     /** v5: the creator's seat, the one it joined with the pool's own key. */
     private fun isCreatorSeat(seat: Protocol.Seat) = seat.joinPub == terms.poolPub
 
@@ -269,6 +317,9 @@ class PoolSession(private val env: Env, private val s: State, private val socket
     /** Why the plan does not pay us right (null when it does, or when there is no plan yet). */
     fun planProblem(): String? = plan()?.let { checkPlan(it) }
 
+    /** The round's transaction id: sent, or the one being signed. */
+    fun plannedTxid(): String? = s.txid ?: if (s.phase == Phase.SIGNING) plan()?.let { PoolTx.txid(it) } else null
+
     // ------------------------------------------------------------------------------- lifecycle
 
     fun start() {
@@ -278,11 +329,11 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         ticker = scope.launch {
             launch { for (ev in ch) lock.withLock { runCatching { onEvent(ev) }.onFailure { env.log("event: ${it.message}") } } }
             lock.withLock { runCatching { connect() }.onFailure { env.log("connect: ${it.message}") } }
-            delay(5_000)
+            delay(minOf(5L, TICK_SECONDS) * 1000)
             while (isActive) {
                 lock.withLock { tick() }
                 if (done && s.phase != Phase.BROADCAST) break
-                delay(15_000)
+                delay(TICK_SECONDS * 1000)
             }
         }
     }
@@ -309,6 +360,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         if (s.creator && terms.v3) r.subscribe("outs", listOf(filter(listOf(Protocol.KIND_MSG), p = terms.creatorPub)))
         // Another seat of this phone waits its random moment first (see [State.joinAfter]).
         if (s.phase == Phase.JOINING && env.now() >= s.joinAfter) { if (s.creator) creatorStart() else sendJoin() }
+        // v6: back online, ask the creator where the round stands (its answer goes through the usual checks).
+        if (terms.v6 && !s.creator && s.token != null && !done) scope.launch { lock.withLock { runCatching { sendSync() } } }
     }
 
     @OptIn(kotlin.time.ExperimentalTime::class)
@@ -389,6 +442,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
             "proof" to s.joinProof, "change_sig" to s.changeSig)
         if (s.joinProofs.size > 1) kv += "proofs" to s.joinProofs
         s.pwProof?.let { kv += "pw" to it }
+        // v6: the terms this wallet joins under, its windows and final time among them.
+        if (terms.v6) kv += "terms" to Protocol.termsHash(terms)
         joinSent = true
         direct(terms.poolPub, J.obj(*kv.toTypedArray()), joinKey)
     }
@@ -426,7 +481,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
             s.creator && terms.v3 && ev.tag("p") == terms.creatorPub -> {
                 val k = creatorKey ?: return
                 val msg = Nip44.decrypt(ev.content, Nip44.conversationKey(k, Hashes.hexToBytes(ev.pubkey))) ?: return
-                onOutputHandedIn(J.parse(msg))
+                onOutputHandedIn(J.parse(msg), ev.pubkey)
             }
             // A join request to the pool (only the creator can read and answer it).
             s.creator && ev.tag("p") == terms.poolPub && ev.pubkey != terms.poolPub && ev.pubkey != terms.creatorPub -> {
@@ -444,6 +499,11 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                 val secret = o.str("pool_secret")
                 // Anyone can write to our join key; only a secret that matches the pool's key is real.
                 if (NostrEvent.pubOf(NostrEvent.secretOf(secret)) != terms.poolPub) return
+                // v6: welcomed under the terms we joined for, or not at all.
+                if (terms.v6 && o.optStr("terms") != Protocol.termsHash(terms)) {
+                    s.phase = Phase.REJECTED; s.reason = "the pool's terms are not the ones it announced"
+                    save(); env.event(Event.Rejected(s.poolId, s.reason)); return
+                }
                 val token = o.str("token")
                 s.poolSecret = secret.padStart(64, '0'); s.token = token; s.phase = Phase.OPEN
                 s.rosterSeq = o.optInt("seq") - 1
@@ -476,7 +536,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
 
     private fun roster(): JsonObject {
         s.rosterSeq++; save()
-        return J.obj("type" to "roster", "seq" to s.rosterSeq, "seats" to Protocol.seatsJson(s.seats))
+        return J.obj("type" to "roster", "seq" to s.rosterSeq, "seats" to Protocol.seatsJson(s.seats)).also { keepLast(it) }
     }
 
     private suspend fun reject(joinPub: String, reason: String) {
@@ -492,6 +552,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         evictSpent()
         if (s.phase != Phase.OPEN) return reject(from, "the pool is no longer open")
         if (s.seats.size >= terms.maxPeers) return reject(from, "the pool is full")
+        if (terms.v6 && o.optStr("terms") != Protocol.termsHash(terms)) return reject(from, "the pool's terms are not the ones you joined for")
         s.pwKey?.let { k ->
             val ok = constantTimeEquals(Protocol.passwordProof(Hashes.hexToBytes(k), from).encodeToByteArray(), o.optStr("pw").encodeToByteArray())
             if (!ok) return reject(from, "wrong password")
@@ -532,7 +593,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         s.tokens[th] = token; s.joinPubs[from] = th; s.seats.add(placed)
         val roster = roster()
         direct(from, J.obj("type" to "welcome", "pool_secret" to s.poolSecret?.padStart(64, '0'), "token" to token,
-            "seq" to s.rosterSeq), replyKey!!)
+            "seq" to s.rosterSeq, "terms" to (if (terms.v6) Protocol.termsHash(terms) else null)), replyKey!!)
         creatorChannel(roster)
         announce()
         // A coin taking its seat back is nobody new.
@@ -540,7 +601,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         // Full: ask everyone whether to close now (the creator's own seat counts as a yes).
         // Not when the seats are only this wallet's own and too few others: that vote could only fail.
         if (s.seats.size >= terms.maxPeers && people(s.seats) >= terms.minPeers) {
-            if (terms.v3) creatorChannel(J.obj("type" to "vote_open", "by" to myTokenHash, "vote_id" to randomHex(8)))
+            if (terms.v6) sendVoteOpen(myTokenHash!!, randomHex(8))
+            else if (terms.v3) creatorChannel(J.obj("type" to "vote_open", "by" to myTokenHash, "vote_id" to randomHex(8)))
             else channel(J.obj("type" to "close_request", "token" to s.token, "vote_id" to randomHex(8)))
         }
     }
@@ -567,6 +629,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         env.log("seats out ($why): ${gone.size}")
         gone.forEach { s.accepts.remove(it) }; save()
         creatorChannel(roster()); announce()
+        // v6: a vote is over the roster it was opened on; another roster ends it, never closes it with fewer.
+        if (terms.v6) { if (s.phase == Phase.VOTING) sendReopen(if (why == "left") "withdrawn" else "roster_changed"); return true }
         if (s.phase == Phase.VOTING && people(s.seats) < terms.minPeers)
             creatorChannel(J.obj("type" to "reopen", "vote_id" to s.voteId))
         else if (s.phase == Phase.VOTING && s.seats.all { it.tokenHash in s.accepts })
@@ -608,16 +672,28 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                 creatorChannel(J.obj("type" to "reopen", "vote_id" to s.voteId))
             return
         }
+        // v6: only the whole roster the vote was over, every seat of it having said yes.
+        if (terms.v6 && (seats.map { it.tokenHash }.toSet() != s.seats.map { it.tokenHash }.toSet() || s.voteSeq != s.rosterSeq)) {
+            env.log("not closing: the round is not the roster that was voted"); s.closedVote = null; return
+        }
         s.round = seats.toMutableList()
-        if (terms.v3) { s.roundId = randomHex(8); s.blindSigs.clear(); s.blindedOf.clear(); s.regOutputs.clear(); save() }
-        val sent = creatorChannel(J.obj("type" to "closing", "why" to why, "seats" to Protocol.seatsJson(seats),
-            "deadline" to env.now() + Protocol.OUTPUTS_SECONDS, "round_id" to (if (terms.v3) s.roundId else null)))
+        // v3: a fresh round id; blind signatures and outputs count for this round only.
+        // v6: a seat's blind signatures are given once for the pool's whole life (a round called off and voted again
+        // gets the same outputs back, never another set).
+        if (terms.v3) { s.roundId = randomHex(8); if (!terms.v6) { s.blindSigs.clear(); s.blindedOf.clear() }; s.regOutputs.clear(); save() }
+        val closing = J.obj("type" to "closing", "why" to why, "seats" to Protocol.seatsJson(seats),
+            "deadline" to (if (terms.v6) capped(env.now() + terms.outputsSeconds) else env.now() + Protocol.OUTPUTS_SECONDS),
+            "round_id" to (if (terms.v3) s.roundId else null),
+            "vote_id" to (if (terms.v6) s.voteId else null), "n" to (if (terms.v6) s.voteN else null), "seq" to (if (terms.v6) s.voteSeq else null))
+        val sent = creatorChannel(closing)
+        if (sent && terms.v6) keepLast(closing)
         // Not taken by the relay: the next yes or look at the deadline tries again.
         if (!sent) s.closedVote = null
         save()
     }
 
-    private suspend fun creatorOnVote(tokenHash: String, voteId: String, accept: Boolean) {
+    private suspend fun creatorOnVote(tokenHash: String, voteId: String, accept: Boolean, at: Long = 0) {
+        if (terms.v6) return creatorOnVoteV6(tokenHash, voteId, accept, at)
         if (s.phase != Phase.VOTING || voteId != s.voteId) return
         if (s.seats.none { it.tokenHash == tokenHash }) return
         if (!accept) {
@@ -638,7 +714,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         val v3 = terms.v3
         when (o.optStr("type")) {
             "roster" -> {
-                if (!fromCreator || s.phase !in setOf(Phase.OPEN, Phase.VOTING)) return
+                // v6: a round called off goes back to the pool, so a member still collecting outputs takes the new roster.
+                if (!fromCreator || s.phase !in setOf(Phase.OPEN, Phase.VOTING) && !(terms.v6 && s.phase == Phase.CLOSING)) return
                 val seq = o.optInt("seq")
                 if (s.creator || seq <= s.rosterSeq) return
                 s.rosterSeq = seq
@@ -655,26 +732,34 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                 // spent after it joined) before we leave; a round never closes with it (see "closing").
                 if (v3 && s.phase != Phase.ABORTED && checkFakeSeats(seats)) return
                 if (!s.creator && seats.size > before && before > 0) env.event(Event.Joined(s.poolId, seats.size))
+                // v6: a vote over this roster that came first.
+                pendingVoteOpen?.let { (vo, vat) -> if (vo.optInt("seq") <= s.rosterSeq) { pendingVoteOpen = null; openVoteV6(vo, vat) } }
             }
             "close_request" -> {
                 if (v3) {
                     if (!s.creator || s.phase != Phase.OPEN || people(s.seats) < terms.minPeers) return
                     val th = o.str("token_hash"); val id = o.str("vote_id")
                     if (s.seats.none { it.tokenHash == th } || !Protocol.macOk(s.tokens[th], o.str("mac"), "close", id)) return
+                    // v6: a request replayed from the relay (after a restart) never opens its vote again.
+                    if (terms.v6) { if (id !in s.usedVotes) sendVoteOpen(th, id); return }
                     creatorChannel(J.obj("type" to "vote_open", "by" to th, "vote_id" to id))
                     return
                 }
                 openVote(Protocol.tokenHash(o.str("token")), o.str("vote_id"), at)
             }
-            "vote_open" -> if (v3 && fromCreator) openVote(o.str("by"), o.str("vote_id"), at)
+            "vote_open" -> if (terms.v6) { if (fromCreator) openVoteV6(o, at) } else if (v3 && fromCreator) openVote(o.str("by"), o.str("vote_id"), at)
             "vote" -> if (s.creator) {
                 if (v3) {
                     val th = o.str("token_hash"); val id = o.str("vote_id"); val yes = o.bool("accept")
                     if (!Protocol.macOk(s.tokens[th], o.str("mac"), "vote", id, yes)) return
-                    creatorOnVote(th, id, yes)
+                    creatorOnVote(th, id, yes, at)
                 } else creatorOnVote(Protocol.tokenHash(o.str("token")), o.str("vote_id"), o.bool("accept"))
             }
+            "vote_ack" -> if (terms.v6 && fromCreator && !s.creator) onVoteAck(o)
+            "state" -> if (terms.v6 && fromCreator && !s.creator) applyState(o)
+            "sync" -> if (terms.v6 && s.creator) onSync(o)
             "reopen" -> {
+                if (terms.v6) { if (fromCreator) onReopenV6(o); return }
                 if (!fromCreator || s.phase != Phase.VOTING || o.optStr("vote_id") != s.voteId) return
                 s.phase = Phase.OPEN; s.voteId = null; s.accepts.clear(); save()
                 env.event(Event.CloseRefused(s.poolId))
@@ -684,6 +769,9 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                 // signatures; only a member still collecting outputs takes it, and only a newer one (replays).
                 val again = o.optInt("again", 0)
                 if (!fromCreator) return
+                // v6: only the round of the vote under way, over the roster it was voted on, and only if we said yes to it
+                // here: a closing we have no yes of our own for (history lost, or a creator that lies) never leads to signing.
+                if (terms.v6 && !closingOkV6(o)) return
                 // A creator before Android 1.3.9 could close the same vote again with a new round id, and goes
                 // on with its latest: a later closing replaces ours while we wait for our blind signatures.
                 val replaces = v3 && !s.creator && again == 0 && s.phase == Phase.CLOSING && s.closeSeq == 0 &&
@@ -728,6 +816,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                 s.phaseDeadline = o.optLong("deadline", at + Protocol.OUTPUTS_SECONDS)
                 save()
                 if (s.creator) announce()
+                if (s.creator) publishState(force = true)
                 env.event(Event.Closing(s.poolId, people(seats)))
                 if (!v3) scheduleOutput()
                 else if (s.creator) {
@@ -794,7 +883,9 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                 val coin = plan.coins.firstOrNull { it.outpoint == outpoint } ?: return
                 val sig = o.str("sig")
                 if (!PoolTx.verify(plan, coin, Hashes.hexToBytes(sig))) return
+                val fresh = s.sigs[outpoint] != sig
                 s.sigs[outpoint] = sig; save()
+                if (fresh) publishState()
                 maybeBroadcast(plan)
             }
             "tx" -> if (s.txid == null && s.phase in setOf(Phase.SIGNING, Phase.BROADCAST)) {
@@ -814,6 +905,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
             // A round closed again takes an abort from its creator only: a seat left out of it (an older
             // app waking up after the first closing ran out) would otherwise end the round for the rest.
             "abort" -> if (!done && s.phase != Phase.BROADCAST && !(v3 && !fromCreator && s.closeSeq > 0)) {
+                // v6: once we signed, nobody's word ends the round: a peer may still hold every signature.
+                if (terms.v6 && signedAll()) { s.reason = o.optStr("reason", "aborted"); save(); return }
                 s.phase = Phase.ABORTED; s.reason = o.optStr("reason", "aborted"); save()
                 // A member's abort can reach the creator before its own deadline does: the listing must
                 // still say the pool is over.
@@ -922,8 +1015,11 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         Hashes.sha256(blinded.map { Hashes.hexToBytes(it) }.reduce { a, b -> a + b }).toHex()
 
     /** v3 creator: an output handed in with its unblinded signature, from a key nobody can tie to a seat. */
-    private suspend fun onOutputHandedIn(o: JsonObject) {
-        if (o.optStr("type") != "output" || s.phase != Phase.CLOSING || o.optStr("round_id") != s.roundId) return
+    private suspend fun onOutputHandedIn(o: JsonObject, from: String) {
+        if (o.optStr("type") != "output" || s.phase != Phase.CLOSING || o.optStr("round_id") != s.roundId) {
+            if (terms.v6) env.log("output handed in for another round or stage: ignored")
+            return
+        }
         val script = o.str("script")
         if (!scriptOk(script)) return
         val prefix = Hashes.hexToBytes(o.str("prefix"))
@@ -931,6 +1027,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         val pk = blindPk ?: return
         if (!BlindRsa.verify(pk, prefix + Hashes.hexToBytes(script), Hashes.hexToBytes(o.str("sig")))) return
         s.regOutputs.add(script); save()
+        // v6: kept on disk first, then acknowledged to the output's own fresh key (nothing in it points at a seat).
+        if (terms.v6) creatorKey?.let { direct(from, J.obj("type" to "output_ack", "round_id" to s.roundId, "script" to script), it) }
         listOutputsIfAll()
     }
 
@@ -941,7 +1039,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         if (s.regOutputs.size > want) return abort("more equal outputs than people")
         if (s.regOutputs.size < want) return
         val pays = if (terms.v5) s.mixScripts.indices.map { i -> J.obj("script" to s.mixScripts[i].toHex(), "value" to terms.payments[i]) } else null
-        creatorChannel(J.obj("type" to "outputs", "round_id" to s.roundId, "scripts" to s.regOutputs.sorted(), "payments" to pays))
+        val o = J.obj("type" to "outputs", "round_id" to s.roundId, "scripts" to s.regOutputs.sorted(), "payments" to pays)
+        if (creatorChannel(o) && terms.v6) keepLast(o)
     }
 
     /** Each of our outputs after a random wait of its own, so nobody can tie them to us or to each other. */
@@ -953,6 +1052,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
             val delaySec = handInDelaySeconds()
             scope.launch {
                 delay(delaySec * 1000)
+                if (terms.v6) { handInV6(i); return@launch }
                 lock.withLock {
                     outputScheduled -= i
                     if (s.phase == Phase.CLOSING && !s.postedOutput && i !in s.handedIn) {
@@ -1018,7 +1118,8 @@ class PoolSession(private val env: Env, private val s: State, private val socket
     private suspend fun toSigning() {
         val plan = runCatching { buildPlan() }.getOrElse { return abort("the transaction does not add up: ${it.message}") } ?: return
         checkPlan(plan)?.let { return abort(it) }
-        s.phase = Phase.SIGNING; s.phaseDeadline = env.now() + Protocol.SIGN_SECONDS; save()
+        s.phase = Phase.SIGNING; s.phaseDeadline = if (terms.v6) capped(env.now() + terms.signSeconds) else env.now() + Protocol.SIGN_SECONDS; save()
+        publishState(force = true)
         env.event(Event.SignNeeded(s.poolId, plan.coins.size))
     }
 
@@ -1028,6 +1129,18 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         require(privateKeys.size == s.seat.coins.size) { "one key per coin is needed" }
         val plan = buildPlan() ?: error("the transaction is not complete")
         checkPlan(plan)?.let { error(it) }
+        if (terms.v6) {
+            // Kept before anything goes out: from here on our coins are reserved until the round resolves.
+            s.seat.coins.forEachIndexed { i, c ->
+                val mine = plan.coins.first { it.outpoint == c.outpoint }
+                s.sigs[mine.outpoint] = PoolTx.sign(plan, mine, privateKeys[i]).toHex()
+            }
+            s.signedAt = env.now(); save()
+            // The relay's OK is the receipt; what it did not take goes again from the timer (and on a snapshot without it).
+            postOwnSigs()
+            maybeBroadcast(plan)
+            return@withLock
+        }
         s.seat.coins.forEachIndexed { i, c ->
             val mine = plan.coins.first { it.outpoint == c.outpoint }
             val sig = PoolTx.sign(plan, mine, privateKeys[i]).toHex()
@@ -1045,19 +1158,35 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         // Another member may have broadcast it already: the same txid is just as good.
         if (ok.isFailure && runCatching { env.confirmations(tx.txid) }.getOrNull() == null) {
             val msg = ok.exceptionOrNull()?.message ?: "broadcast failed"
-            if (!msg.contains("already", true)) return abort("broadcast failed: $msg")
+            if (!msg.contains("already", true)) {
+                if (terms.v6) return abort("broadcast failed: $msg")
+                // Before v6 too, every signature is here: a failure (a server out of reach, a spend of one of the coins
+                // still in the mempool or a block or two deep) frees nothing. It goes again until it is seen, or a coin
+                // of it is spent elsewhere [DEPTH] blocks deep (see [tickBroadcast]).
+                s.txid = tx.txid; s.phase = Phase.BROADCAST; s.phaseDeadline = env.now(); s.reason = "$NOT_SENT: $msg"; save()
+                env.log("broadcast failed, it goes again: $msg")
+                return
+            }
         }
-        s.txid = tx.txid; s.phase = Phase.BROADCAST; s.phaseDeadline = env.now(); save()
-        channel(J.obj("type" to "tx", "txid" to tx.txid))
+        sent(tx.txid)
+    }
+
+    /** The round's transaction went out from here: everyone is told. */
+    private suspend fun sent(txid: String) {
+        s.txid = txid; s.phase = Phase.BROADCAST; s.phaseDeadline = env.now(); if (s.reason.startsWith(NOT_SENT)) s.reason = ""; save()
+        channel(J.obj("type" to "tx", "txid" to txid))
         announce()
-        env.event(Event.Broadcast(s.poolId, tx.txid))
+        publishState(force = true)
+        env.event(Event.Broadcast(s.poolId, txid))
     }
 
     private suspend fun abort(reason: String) {
         if (done) return
+        // v6: after signing, no deadline or failure frees our coins: only the round resolving does (see [resolveSigned]).
+        if (terms.v6 && signedAll()) { s.reason = reason; save(); if (s.creator) publishState(force = true); return }
         s.phase = Phase.ABORTED; s.reason = reason; save()
         // v3: the creator's from its own key, which every v3 wallet takes as the creator's.
-        if (s.creator && terms.v3) creatorChannel(J.obj("type" to "abort", "reason" to reason))
+        if (s.creator && terms.v3) creatorChannel(J.obj("type" to "abort", "reason" to reason).also { keepLast(it) })
         else channel(J.obj("type" to "abort", "reason" to reason))
         if (s.creator) announce()
         env.event(Event.Aborted(s.poolId, reason))
@@ -1105,6 +1234,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         val id = randomHex(8)
         when {
             !terms.v3 -> channel(J.obj("type" to "close_request", "token" to s.token, "vote_id" to id))
+            s.creator && terms.v6 -> { sendVoteOpen(myTokenHash!!, id); true }
             s.creator -> creatorChannel(J.obj("type" to "vote_open", "by" to myTokenHash, "vote_id" to id))
             else -> channel(J.obj("type" to "close_request", "token_hash" to myTokenHash, "vote_id" to id,
                 "mac" to Protocol.mac(s.token ?: error("no seat"), "close", id)))
@@ -1120,6 +1250,7 @@ class PoolSession(private val env: Env, private val s: State, private val socket
             "mac" to Protocol.mac(s.token ?: return@withLock, "vote", id, accept)))
         else channel(J.obj("type" to "vote", "token" to s.token, "vote_id" to id, "accept" to accept))
         s.votedOn = id
+        lastVoteSent = env.now()
         // A member saying "not yet" leaves this round; the creator keeps its pool open.
         if (!accept && !s.creator) { s.phase = Phase.ABORTED; s.reason = LEFT_BY_CHOICE }
         save()
@@ -1160,12 +1291,21 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                 if (s.creator) creatorStart() else sendJoin()
                 return@runCatching
             }
+            // v6: its own stages (the open one is as before).
+            if (terms.v6 && s.phase in setOf(Phase.VOTING, Phase.CLOSING, Phase.SIGNING, Phase.BROADCAST)) { tickV6(now); return@runCatching }
             when (s.phase) {
                 Phase.OPEN, Phase.JOINING -> if (s.phase == Phase.OPEN && !s.warnedExpiry && now <= terms.expiresAt &&
                     terms.expiresAt - now <= EXPIRY_WARN_SECONDS && people(s.seats) >= terms.minPeers && s.seats.size < terms.maxPeers) {
                     s.warnedExpiry = true; save()
                     env.event(Event.ExpiringSoon(s.poolId, people(s.seats), ((terms.expiresAt - now) / 60).toInt().coerceAtLeast(1)))
+                } else if (terms.v6 && !s.creator && s.phase == Phase.OPEN && now > terms.expiresAt) {
+                    // v6: the pool lives until `final`, not `timeout` (PROTOCOL §14). Open again after a vote that
+                    // timed out, the creator's new vote may come a moment after its reopen: a member waits for it, and
+                    // for the creator's abort if there is none (Android 1.5.2). A creator that is gone stops re-announcing.
+                    if (now > terms.async!!.final) localEnd("the pool reached its final time")
                 } else if (now > terms.expiresAt) {
+                    // The creator itself (v6 too): past `timeout` a pool open again only ever gets a new vote from the
+                    // creator right at its reopen (roundFits), so one still open has nothing left to wait for.
                     if (s.creator) abort("the pool expired") else { s.phase = Phase.ABORTED; s.reason = "the pool expired"; save(); env.event(Event.Aborted(s.poolId, s.reason)) }
                 } else if (s.phase == Phase.JOINING && !s.creator && now - maxOf(s.created, s.joinAfter) > JOIN_TIMEOUT) {
                     s.phase = Phase.ABORTED
@@ -1198,19 +1338,447 @@ class PoolSession(private val env: Env, private val s: State, private val socket
                     else if (s.outSigs.isNotEmpty() && !s.postedOutput) scheduleOutput()
                 } else if (terms.v3 && s.creator) listOutputsIfAll()
                 Phase.SIGNING -> if (now > s.phaseDeadline + 60) abort("not everyone signed in time")
-                Phase.BROADCAST -> s.txid?.let { txid ->
-                    val c = runCatching { env.confirmations(txid) }.getOrNull()
-                    if (c != null && c >= 1) { s.phase = Phase.CONFIRMED; save(); env.event(Event.Confirmed(s.poolId, txid)); relay?.close(); relay = null }
-                    else if (c == null) {
-                        if (s.phaseDeadline > 0 && now > s.phaseDeadline + BROADCAST_GIVE_UP) {
-                            s.phase = Phase.ABORTED; s.reason = "the transaction never appeared: a coin of the round was spent elsewhere"
-                            save(); env.event(Event.Aborted(s.poolId, s.reason)); relay?.close(); relay = null
-                        }
-                    } else s.phaseDeadline = now // seen (unconfirmed): wait for it, however long it takes
-                }
+                // As v6: confirmed [DEPTH] deep, freed only by a conflicting spend [DEPTH] deep, sent again meanwhile.
+                Phase.BROADCAST -> tickBroadcast(now)
                 else -> {}
             }
         }.onFailure { env.log("tick: ${it.message}") }
+    }
+
+    /** The round is over here: no more relay (the session's loop ends with it). */
+    private fun finish() { relay?.close(); relay = null }
+
+    // ------------------------------------------------------------------------------- v6: asynchronous rounds
+
+    /** v6: a deadline no later than the pool's final time. */
+    private fun capped(t: Long): Long = minOf(t, terms.async?.final ?: t)
+
+    /** v6: a whole round (a vote, the outputs, the signing, each its full window) still fits before `final` from [now]. */
+    private fun roundFits(now: Long): Boolean = now + terms.voteSeconds + terms.outputsSeconds + terms.signSeconds <= terms.async!!.final
+
+    /** v6: every one of our inputs is signed: our coins are reserved until the round resolves. */
+    private fun signedAll(): Boolean = s.seat.coins.isNotEmpty() && s.seat.coins.all { it.outpoint in s.sigs }
+
+    /** Our coins held by a v6 round we signed whose time is over: the transaction may still go out. */
+    val reserved: Boolean get() = terms.v6 && s.phase == Phase.SIGNING && signedAll() && env.now() > s.phaseDeadline
+
+    /** Every one of our inputs is signed (v6: kept before it is sent, so this can be true while the relay has not taken it yet). */
+    val signed: Boolean get() = signedAll()
+
+    /** v6 creator: the newest message of its type, for the snapshot. */
+    private fun keepLast(o: JsonObject) {
+        if (!terms.v6 || !s.creator) return
+        s.lastMsgs[o.str("type")] = J.obj("at" to env.now(), "msg" to o).toString()
+    }
+
+    /** v6 creator: opens vote [id] asked by seat [by], numbered, over the current roster, and applies it here at once. */
+    private suspend fun sendVoteOpen(by: String, id: String) {
+        if (id in s.usedVotes) return
+        val n = ++s.votesSent
+        s.usedVotes += id
+        val o = J.obj("type" to "vote_open", "by" to by, "vote_id" to id, "n" to n, "seq" to s.rosterSeq,
+            "deadline" to capped(env.now() + terms.voteSeconds))
+        save()
+        if (!creatorChannel(o)) { env.log("vote_open not taken by the relay"); return }
+        keepLast(o)
+        openVoteV6(o, env.now())
+        publishState(force = true)
+    }
+
+    /**
+     * v6: a vote over roster `seq`, numbered `n`. Votes are applied in their number's order whatever order the
+     * relay gives them in; one that comes before its roster waits for it; one over an older roster is stale.
+     */
+    private suspend fun openVoteV6(o: JsonObject, at: Long) {
+        val n = o.optInt("n"); val seq = o.optInt("seq"); val id = o.str("vote_id"); val th = o.str("by")
+        if (n <= s.voteN || n <= s.voteEndedN) return
+        if (s.phase !in setOf(Phase.OPEN, Phase.VOTING, Phase.CLOSING)) return
+        if (!s.creator && seq > s.rosterSeq) { pendingVoteOpen = o to at; return }
+        if (seq != s.rosterSeq) return
+        if (s.seats.none { it.tokenHash == th } || s.seats.size < terms.minPeers) return
+        if (s.creator && people(s.seats) < terms.minPeers) return
+        // A round called off for a new vote: nothing of it was signed. Our blind signatures stay (one set per seat).
+        if (s.phase == Phase.CLOSING) { if (signedAll()) return; clearRound() }
+        val wasVoting = s.phase == Phase.VOTING
+        s.phase = Phase.VOTING; s.voteId = id; s.voteBy = th; s.voteN = n; s.voteSeq = seq
+        s.voteDeadline = minOf(o.optLong("deadline", env.now() + terms.voteSeconds), env.now() + terms.voteSeconds, terms.async!!.final)
+        s.accepts.clear(); s.accepts.add(th)
+        // Whoever asked has said yes: the creator's vote_open is its record of that.
+        if (th == myTokenHash) { s.votedOn = id; s.voteAcked = id }
+        save()
+        if (wasVoting) env.log("vote $n replaces the one before")
+        env.event(Event.CloseRequested(s.poolId, people(s.seats), th == myTokenHash))
+        if (s.creator && s.seats.all { it.tokenHash in s.accepts }) callClosing(s.seats.toList(), "agreed")
+    }
+
+    /** v6 creator: ends the vote under way (or its round, before anyone signed) with an explicit [outcome]; applied here at once. */
+    private suspend fun sendReopen(outcome: String) {
+        val id = s.voteId ?: return
+        val o = J.obj("type" to "reopen", "vote_id" to id, "n" to s.voteN, "outcome" to outcome,
+            "round_id" to (if (s.phase == Phase.CLOSING) s.roundId else null))
+        if (!creatorChannel(o)) env.log("reopen not taken by the relay")
+        keepLast(o)
+        onReopenV6(o)
+        publishState(force = true)
+    }
+
+    private fun onReopenV6(o: JsonObject) {
+        val n = o.optInt("n")
+        if (n < s.voteN) return
+        if (n > s.voteEndedN) { s.voteEndedN = n; save() }
+        if (o.optStr("vote_id") != s.voteId) return
+        val ok = s.phase == Phase.VOTING || (s.phase == Phase.CLOSING && o.optStr("round_id") == s.roundId && !signedAll())
+        if (!ok) return
+        if (s.phase == Phase.CLOSING) clearRound()
+        s.phase = Phase.OPEN; s.voteId = null; s.accepts.clear()
+        s.reason = when (o.optStr("outcome")) {
+            "declined" -> "someone said not yet"
+            "withdrawn" -> "someone left the pool"
+            "timeout" -> "not everyone answered in time"
+            "outputs_timeout" -> "not everyone handed in their outputs in time"
+            "roster_changed" -> "the people in the pool changed"
+            else -> ""
+        }
+        save()
+        env.event(Event.CloseRefused(s.poolId))
+    }
+
+    /** Back from a round called off before anyone signed: the pool's state, ready for another vote. Our blinding stays. */
+    private fun clearRound() {
+        s.round.clear(); s.outputs.clear(); s.handedIn.clear(); s.postedOutput = false; s.regOutputs.clear()
+        s.payOutputs.clear(); s.roundId = null; s.phaseDeadline = 0; s.closedVote = null
+        outputScheduled.clear()
+    }
+
+    /** v6: a closing is taken only for the vote under way, over its roster as voted, with our own yes on record. */
+    private fun closingOkV6(o: JsonObject): Boolean {
+        val n = o.optInt("n"); val id = o.optStr("vote_id")
+        if (s.phase != Phase.VOTING || n != s.voteN || n <= s.voteEndedN || id != s.voteId || o.optInt("seq") != s.voteSeq) return false
+        if (s.rosterSeq != s.voteSeq) return false
+        val seats = runCatching { Protocol.parseSeats(o.arr("seats"), terms.script) }.getOrNull() ?: return false
+        if (seats.map { it.tokenHash }.toSet() != s.seats.map { it.tokenHash }.toSet()) {
+            env.log("a closing that is not the roster voted: ignored"); return false
+        }
+        if (!s.creator && s.votedOn != id) { env.log("a closing for a vote we never said yes to: ignored"); return false }
+        return true
+    }
+
+    /** v6 creator: one answer per seat and vote, kept on disk before it is acknowledged; a repeat is acknowledged again, never counted. */
+    private suspend fun creatorOnVoteV6(th: String, voteId: String, accept: Boolean, at: Long) {
+        suspend fun ack(status: String) {
+            // A replay of old votes (after a restart) is not answered; every vote of now is, a repeat too: a member
+            // repeats its vote only while it has no acknowledgment, every [RESEND_SECONDS].
+            if (status != "recorded" && at > 0 && env.now() - at > 600) return
+            creatorChannel(J.obj("type" to "vote_ack", "vote_id" to voteId, "token_hash" to th, "accept" to accept,
+                "status" to status, "n" to (if (voteId == s.voteId) s.voteN else 0),
+                "yes" to s.accepts.count { a -> s.seats.any { it.tokenHash == a } }, "seats" to s.seats.size))
+        }
+        if (s.seats.none { it.tokenHash == th }) return ack("not_in_roster")
+        if (voteId != s.voteId) return ack("superseded")
+        if (s.phase != Phase.VOTING) return ack(if (s.closedVote == voteId) "closed" else "superseded")
+        if (!accept) {
+            // A no is that seat leaving: recorded, acknowledged, and the vote ends with it (no smaller round from it).
+            if (th != myTokenHash) {
+                s.seats.removeAll { it.tokenHash == th }; s.accepts.remove(th); save()
+                ack("recorded")
+                creatorChannel(roster()); announce()
+            } else ack("recorded")
+            sendReopen("declined")
+            return
+        }
+        if (th in s.accepts) return ack("recorded")
+        s.accepts.add(th); save()
+        ack("recorded")
+        if (s.seats.all { it.tokenHash in s.accepts }) callClosing(s.seats.toList(), "agreed")
+        else publishState()
+    }
+
+    /** v6 member: the creator recorded (or not) our answer. */
+    private fun onVoteAck(o: JsonObject) {
+        if (o.optStr("token_hash") != myTokenHash || o.optStr("vote_id") != s.votedOn) return
+        if (o.optStr("status") == "recorded" && s.voteAcked != s.votedOn) {
+            s.voteAcked = s.votedOn; save()
+            env.log("our vote is recorded (${o.optInt("yes")}/${o.optInt("seats")} yes)")
+        }
+    }
+
+    /** v6 member: asks the creator for a snapshot (after reconnecting, or when a stage seems stuck). */
+    private suspend fun sendSync() {
+        val th = myTokenHash ?: return; val token = s.token ?: return
+        val now = env.now()
+        if (now - lastSync < 20) return
+        lastSync = now
+        channel(J.obj("type" to "sync", "token_hash" to th, "at" to now, "mac" to Protocol.mac(token, "sync", now)))
+    }
+
+    /** v6 creator: a member asks where the round stands. Only a seat's fresh request is answered (a replay is not). */
+    private suspend fun onSync(o: JsonObject) {
+        val th = o.optStr("token_hash"); val at = o.optLong("at")
+        if (!Protocol.macOk(s.tokens[th], o.optStr("mac"), "sync", at)) return
+        if (kotlin.math.abs(env.now() - at) > 600) return
+        publishState()
+    }
+
+    /**
+     * v6 creator: the snapshot. Where the pool stands, with counts only for the outputs (never which seat handed
+     * in what), and the newest message of each type that runs it, for a member that lost them to replay through
+     * its usual checks. Rate-limited unless [force].
+     */
+    private suspend fun publishState(force: Boolean = false) {
+        if (!terms.v6 || !s.creator) return
+        val now = env.now()
+        if (!force && now - lastStatePub < 10) return
+        lastStatePub = now
+        val kv = mutableListOf<Pair<String, Any?>>("type" to "state", "n" to ++s.stateN, "at" to now,
+            "phase" to s.phase.name.lowercase(), "final" to terms.async!!.final, "roster_seq" to s.rosterSeq, "reason" to s.reason)
+        if (s.phase == Phase.VOTING) kv += "vote" to J.obj("vote_id" to s.voteId, "n" to s.voteN, "seq" to s.voteSeq,
+            "deadline" to s.voteDeadline, "seats" to s.seats.size,
+            "accepted" to s.accepts.filter { a -> s.seats.any { it.tokenHash == a } })
+        if (s.phase == Phase.CLOSING) kv += "round" to J.obj("round_id" to s.roundId, "deadline" to s.phaseDeadline,
+            "seats" to s.round.size, "blind_given" to s.round.count { it.tokenHash in s.blindSigs },
+            "outputs_in" to s.regOutputs.size, "outputs_wanted" to handingIn * perPerson)
+        if (s.phase in setOf(Phase.SIGNING, Phase.BROADCAST, Phase.CONFIRMED))
+            kv += "sign" to J.obj("deadline" to s.phaseDeadline, "sigs" to s.sigs.toMap())
+        s.txid?.let { kv += "txid" to it }
+        kv += "replay" to listOf("roster", "vote_open", "closing", "outputs", "reopen", "abort").mapNotNull { s.lastMsgs[it]?.let { j -> J.parse(j) } }
+        save()
+        creatorChannel(J.obj(*kv.toTypedArray()))
+    }
+
+    /** v6 member: a snapshot from the creator, newer than the last one: everything in it goes through the usual handlers. */
+    private suspend fun applyState(o: JsonObject) {
+        val n = o.optInt("n")
+        if (n <= s.stateN) return
+        s.stateN = n; save()
+        o.optArr("replay")?.forEach { e ->
+            runCatching { val x = e.jsonObject; onChannel(x.obj("msg"), x.optLong("at"), fromCreator = true) }
+        }
+        o.optObj("vote")?.let { v ->
+            val acc = v.strings("accepted") ?: emptyList()
+            if (v.optStr("vote_id") == s.votedOn && myTokenHash in acc && s.voteAcked != s.votedOn) { s.voteAcked = s.votedOn; save() }
+        }
+        o.optObj("sign")?.optObj("sigs")?.let { sg ->
+            for ((k, v) in sg) runCatching { onChannel(J.obj("type" to "sig", "outpoint" to k, "sig" to v.jsonPrimitive.content), 0, true) }
+            // Ours missing from it: the relay lost it; it goes again.
+            if (signedAll() && s.seat.coins.any { it.outpoint !in sg }) { s.postedSig = false; lastSigSent = 0 }
+        }
+        o.optStr("txid").takeIf { it.isNotEmpty() }?.let { runCatching { onChannel(J.obj("type" to "tx", "txid" to it), 0, true) } }
+    }
+
+    /** v6: our signatures on the channel; [State.postedSig] once the relay took every one. */
+    private suspend fun postOwnSigs() {
+        lastSigSent = env.now()
+        var all = true
+        for (c in s.seat.coins) {
+            val sig = s.sigs[c.outpoint] ?: continue
+            if (!channel(J.obj("type" to "sig", "outpoint" to c.outpoint, "sig" to sig))) all = false
+        }
+        s.postedSig = all; save()
+    }
+
+    /**
+     * v6: our output [i] handed in as in v3 (a fresh key, a connection of its own), and kept going until the
+     * creator acknowledges it to that fresh key: a resend is the same output again, which the creator counts once.
+     */
+    private suspend fun handInV6(i: Int) {
+        // What to hand in, read under the session's lock; the wait for the acknowledgment happens outside it,
+        // so the session goes on reading the channel meanwhile.
+        val job = lock.withLock {
+            if (s.phase != Phase.CLOSING || s.postedOutput || i in s.handedIn) { outputScheduled -= i; return }
+            val sig = s.outSigs.getOrNull(i); val round = s.roundId; val prefix = s.blindPrefixes.getOrNull(i)
+            if (sig == null || round == null || prefix == null) { outputScheduled -= i; return }
+            listOf(round, s.mixScripts[i].toHex(), prefix, sig)
+        }
+        val ok = handInOutputV6(job[0], job[1], job[2], job[3])
+        lock.withLock {
+            outputScheduled -= i
+            if (ok && s.phase == Phase.CLOSING && s.roundId == job[0] && i !in s.handedIn) {
+                s.handedIn += i
+                if (s.handedIn.size == s.mixScripts.size) s.postedOutput = true
+                save()
+            }
+        }
+    }
+
+    private suspend fun handInOutputV6(round: String, script: String, prefix: String, sig: String): Boolean {
+        val creator = terms.creatorPub!!
+        val fresh = NostrEvent.newSecret()
+        val freshPub = NostrEvent.pubOf(fresh)
+        val o = J.obj("type" to "output", "round_id" to round, "script" to script, "prefix" to prefix, "sig" to sig)
+        val conv = Nip44.conversationKey(fresh, Hashes.hexToBytes(creator))
+        val ev = NostrEvent.sign(fresh, Protocol.KIND_MSG, listOf(listOf("p", creator)), Nip44.encrypt(o.toString(), conv))
+        val acked = CompletableDeferred<Boolean>()
+        val r = RelayClient(Protocol.RELAY, sockets, { _, e ->
+            if (e.pubkey != creator || e.tag("p") != freshPub) return@RelayClient
+            val m = Nip44.decrypt(e.content, conv)?.let { runCatching { J.parse(it) }.getOrNull() } ?: return@RelayClient
+            if (m.optStr("type") == "output_ack" && m.optStr("round_id") == round && m.optStr("script") == script) acked.complete(true)
+        }, {}, "kj-out-" + secureRandomBytes(8).toHex())
+        return try {
+            r.connect()
+            r.subscribe("ack", listOf(filter(listOf(Protocol.KIND_MSG), p = freshPub, authors = creator)), waitEose = false)
+            val res = r.publish(ev)
+            env.log("hand in output -> ${res.first} ${res.second}")
+            (res.first && (withTimeoutOrNull(OUTPUT_ACK_WAIT * 1000) { acked.await() } ?: false))
+                .also { env.log(if (it) "output acknowledged" else "output not acknowledged yet") }
+        } catch (e: Exception) { env.log("hand in output failed: ${e.message}"); false }
+        finally { runCatching { r.close() } }
+    }
+
+    /**
+     * v6, a round we signed past its time: it resolves only on the chain. The transaction seen (by anyone's
+     * broadcast) is the round going on; a coin of it spent by anything else, [DEPTH] blocks deep, means it never
+     * can, and frees ours. A spend less deep may still be replaced or reorged away: the round stays reserved, and
+     * whoever holds every signature keeps sending it.
+     */
+    private suspend fun resolveSigned(now: Long) {
+        if (now - lastResolve < RESOLVE_EVERY) return
+        lastResolve = now
+        val plan = buildPlan() ?: return
+        val txid = PoolTx.txid(plan)
+        val c = runCatching { env.confirmations(txid) }.getOrNull()
+        if (c != null) {
+            s.txid = txid; s.phase = if (c >= DEPTH) Phase.CONFIRMED else Phase.BROADCAST; if (s.sentAt == 0L) s.sentAt = now
+            s.confs = c; s.phaseDeadline = now; save()
+            env.event(Event.Broadcast(s.poolId, txid))
+            if (c >= DEPTH) env.event(Event.Confirmed(s.poolId, txid))
+            return
+        }
+        if (conflictBuried(plan, txid)) {
+            s.phase = Phase.ABORTED
+            s.reason = "a coin of the round was spent elsewhere: its transaction can never confirm, and your coins are free"
+            save(); env.event(Event.Aborted(s.poolId, s.reason)); finish()
+        } else if (s.sigs.size == plan.coins.size &&
+            runCatching { env.broadcast(PoolTx.assemble(plan, s.sigs.mapValues { Hashes.hexToBytes(it.value) }).rawHex) }.isSuccess)
+            sent(txid)
+    }
+
+    /**
+     * A coin of the round spent by another transaction at least [DEPTH] blocks deep. Only then can the round
+     * never confirm: a spend in the mempool, or in a block or two, may still be replaced, evicted or reorged away.
+     */
+    private fun conflictBuried(plan: PoolTx.Plan, txid: String): Boolean {
+        val unspent = runCatching { env.coinsUnspent(plan.coins) }.getOrNull() ?: return false
+        if (unspent.size != plan.coins.size) return false
+        return plan.coins.indices.any { i ->
+            unspent[i] == false && (runCatching { env.conflictDepth(plan.coins[i], txid) }.getOrNull() ?: -1) >= DEPTH
+        }
+    }
+
+    private suspend fun tickV6(now: Long) {
+        val final = terms.async!!.final
+        when (s.phase) {
+            Phase.VOTING -> when {
+                now > final -> if (s.creator) abort("the pool reached its final time") else localEnd("the pool reached its final time")
+                !s.creator -> {
+                    // Our answer not recorded yet: the same answer again (the creator counts it once).
+                    if (s.votedOn == s.voteId && s.voteAcked != s.voteId && now - lastVoteSent >= RESEND_SECONDS) resendVote()
+                    if (now > s.voteDeadline + 60 && now - lastSync >= SYNC_EVERY) sendSync()
+                }
+                now > s.voteDeadline -> {
+                    // Time over without every yes. Never a smaller round from it: the silent seats leave the roster,
+                    // and the rest are asked again over the new one (each answers anew).
+                    val silent = s.seats.filter { it.tokenHash !in s.accepts && it.tokenHash != myTokenHash }.map { it.tokenHash }.toSet()
+                    val weSaidYes = myTokenHash in s.accepts
+                    if (silent.isNotEmpty()) {
+                        s.seats.removeAll { it.tokenHash in silent }; silent.forEach { s.accepts.remove(it) }; save()
+                        creatorChannel(roster()); announce()
+                    }
+                    sendReopen("timeout")
+                    if (weSaidYes && silent.isNotEmpty() && people(s.seats) >= terms.minPeers && s.revotes < MAX_REVOTES &&
+                        roundFits(now)) {
+                        s.revotes++; save()
+                        sendVoteOpen(myTokenHash!!, randomHex(8))
+                    }
+                }
+            }
+            Phase.CLOSING -> when {
+                now > final -> if (s.creator) abort("the pool reached its final time") else localEnd("the pool reached its final time")
+                s.creator && now > s.phaseDeadline + RECLOSE_AFTER -> {
+                    // Seats that never even asked for their blind signatures leave the roster and the rest vote again
+                    // (never a smaller round without asking). Otherwise someone got signatures and handed nothing in.
+                    val missing = s.round.filter { it.tokenHash != myTokenHash && !(terms.v5 && isCreatorSeat(it)) && it.tokenHash !in s.blindSigs }
+                        .map { it.tokenHash }.toSet()
+                    if (missing.isEmpty()) abort("not everyone sent their output in time")
+                    else {
+                        s.seats.removeAll { it.tokenHash in missing }; missing.forEach { s.accepts.remove(it) }; save()
+                        creatorChannel(roster()); announce()
+                        sendReopen("outputs_timeout")
+                        if (people(s.seats) >= terms.minPeers && s.revotes < MAX_REVOTES && roundFits(now) &&
+                            (!terms.v5 || s.seats.count { isCreatorSeat(it) } == 1)) {
+                            s.revotes++; save(); sendVoteOpen(myTokenHash!!, randomHex(8))
+                        }
+                    }
+                }
+                s.creator -> listOutputsIfAll()
+                // The creator calls a round off (or a new vote) shortly after the deadline; a member waits for that a while.
+                now > s.phaseDeadline + MEMBER_GRACE -> localEnd("not everyone sent their output in time")
+                else -> {
+                    if (now > s.phaseDeadline && now - lastSync >= SYNC_EVERY) sendSync()
+                    if (s.outSigs.isEmpty() && now - lastBlindSent > 30) sendBlind()
+                    else if (s.outSigs.isNotEmpty() && !s.postedOutput) scheduleOutput()
+                }
+            }
+            Phase.SIGNING -> {
+                // Our signatures the relay did not take go again.
+                if (signedAll() && !s.postedSig && now - lastSigSent >= RESEND_SECONDS) postOwnSigs()
+                // Reserved: the same signatures again every day, and the creator's snapshot with all it holds, so a
+                // relay that keeps events a week still has them for whoever comes back to complete the round.
+                if (signedAll() && s.postedSig && now - lastSigSent >= REPOST_EVERY) postOwnSigs()
+                if (s.creator && signedAll() && now - lastStatePub >= REPOST_EVERY) publishState(force = true)
+                if (now > s.phaseDeadline + 60 || now > final) {
+                    if (!signedAll()) {
+                        // We never signed: nothing of ours can go out, the round is over for us.
+                        if (s.creator) abort("not everyone signed in time") else localEnd("not everyone signed in time")
+                    } else {
+                        if (s.reason.isEmpty()) { s.reason = "signed, waiting: the others' signatures, or a coin moving"; save() }
+                        resolveSigned(now)
+                    }
+                } else if (now - lastSync >= SYNC_EVERY && !s.creator && signedAll()) sendSync()
+            }
+            Phase.BROADCAST -> tickBroadcast(now)
+            else -> {}
+        }
+    }
+
+    /**
+     * Every version, a round sent (or fully signed and not sent yet): it counts as confirmed only [DEPTH] blocks deep,
+     * a block or two can still be reorged away. Not seen (never, or no more after a reorg): either it fell out of
+     * mempools and blocks (it goes again, when we hold every signature) or a coin of it was spent elsewhere, [DEPTH]
+     * deep (then it never confirms, and our coins are free). Time alone decides nothing (Android 1.5.1).
+     */
+    private suspend fun tickBroadcast(now: Long) {
+        val txid = s.txid ?: return
+        val look = runCatching { env.confirmations(txid) }
+        val c = look.getOrNull()
+        // The count shown: 0 again when the chain says it is gone (a reorg), as it was when the chain is out of reach.
+        if (look.isSuccess && (c ?: 0) != s.confs) { s.confs = c ?: 0; save() }
+        // Seen: it went out (from here or from another wallet), whatever our own first try said.
+        if (c != null && s.reason.startsWith(NOT_SENT)) { s.reason = ""; save() }
+        if (c != null && c >= DEPTH) { s.phase = Phase.CONFIRMED; save(); env.event(Event.Confirmed(s.poolId, txid)); finish() }
+        else if (c == null && now - lastResolve >= RESOLVE_EVERY) {
+            lastResolve = now
+            val plan = buildPlan() ?: return
+            if (conflictBuried(plan, txid)) {
+                s.phase = Phase.ABORTED; s.reason = "the transaction never appeared: a coin of the round was spent elsewhere"
+                save(); env.event(Event.Aborted(s.poolId, s.reason)); finish()
+            } else if (s.sigs.size == plan.coins.size &&
+                runCatching { env.broadcast(PoolTx.assemble(plan, s.sigs.mapValues { Hashes.hexToBytes(it.value) }).rawHex) }.isSuccess &&
+                s.reason.startsWith(NOT_SENT)) sent(txid) // the first time it went out: everyone is told now
+        }
+    }
+
+    /** v6 member: the round is over for us here (nothing signed); the others are not told (the creator calls it). */
+    private fun localEnd(reason: String) {
+        if (done || signedAll()) return
+        s.phase = Phase.ABORTED; s.reason = reason; save(); env.event(Event.Aborted(s.poolId, reason))
+    }
+
+    /** v6 member: our yes again, the same message (the creator counts a seat once per vote). */
+    private suspend fun resendVote() {
+        val id = s.voteId ?: return
+        lastVoteSent = env.now()
+        channel(J.obj("type" to "vote", "token_hash" to myTokenHash, "vote_id" to id, "accept" to true,
+            "mac" to Protocol.mac(s.token ?: return, "vote", id, true)))
     }
 
     private fun randomHex(n: Int) = secureRandomBytes(n).toHex()
@@ -1218,7 +1786,6 @@ class PoolSession(private val env: Env, private val s: State, private val socket
     companion object {
         /** Reason of a round this wallet left on purpose: its card goes away by itself. */
         const val LEFT_BY_CHOICE = "you left this round"
-        const val BROADCAST_GIVE_UP = 12 * 3600L
         const val JOIN_TIMEOUT = 5 * 60
         const val VOTE_GRACE = 3 * 60L
         const val EXPIRY_WARN_SECONDS = 3600
@@ -1230,6 +1797,32 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         var RECLOSE_AFTER = 15L
         /** Times a round may close again so. */
         const val MAX_RECLOSES = 2
+
+        // v6 (asynchronous rounds); tests make them shorter.
+        /** Seconds before an unacknowledged vote or signature is sent again. */
+        var RESEND_SECONDS = 30L
+        /** Seconds between a member's requests for a snapshot while a stage looks stuck. */
+        var SYNC_EVERY = 120L
+        /** Seconds a hand-in waits for the creator's acknowledgment before trying again later. */
+        var OUTPUT_ACK_WAIT = 20L
+        /** Seconds between looks at the chain for a signed round past its time. */
+        var RESOLVE_EVERY = 120L
+        /** Seconds past the outputs' deadline a member waits for the creator to call the round off or vote again. */
+        var MEMBER_GRACE = 600L
+        /** New votes a creator opens by itself after one timed out with silent seats. */
+        const val MAX_REVOTES = 5
+        /**
+         * Blocks deep the round's transaction is before the round counts as confirmed, and another spend of one
+         * of its coins before the round is given up (and the coins it reserved are free). Every version since Android 1.5.1.
+         */
+        const val DEPTH = 6
+        /** The reason a fully signed round shows while its first broadcast failed and it goes again. */
+        const val NOT_SENT = "not sent yet, it goes again"
+        /** v6: seconds between the reposts of a reserved round's signatures (and its creator's snapshot). */
+        var REPOST_EVERY = 86_400L
+        /** Seconds between the session's looks at its deadlines. */
+        var TICK_SECONDS = 15L
+
         /** Why this wallet won't ask to close or say yes: too few people once its own seats count as one. */
         const val OWN_SEATS_ONE = "at least %d different people are needed: your own seats count as one"
 
@@ -1303,7 +1896,13 @@ class PoolSession(private val env: Env, private val s: State, private val socket
         fun newPool(amount: Long, feeRate: Double, maxPeers: Int, hours: Int, minPeers: Int = Protocol.MIN_PEERS,
                     private: Boolean = false, script: PoolType = PoolType.P2WPKH,
                     maxInputs: Int = 1, v3: Boolean = true, outputs: Int = 1,
-                    payments: List<Long> = emptyList(), now: Long = NostrEvent.nowSeconds()): NewPool {
+                    payments: List<Long> = emptyList(), now: Long = NostrEvent.nowSeconds(),
+                    /**
+                     * v6: an asynchronous pool with these windows (seconds; null for each = the longest) and its final
+                     * time [asyncFinal] (null: room for two votes, two output stages and the signing after it closes).
+                     */
+                    async: Boolean = false, asyncVote: Long? = null, asyncOutputs: Long? = null, asyncSign: Long? = null,
+                    asyncFinal: Long? = null): NewPool {
             val k = NostrEvent.newSecret()
             val id = secureRandomBytes(8).toHex()
             require(minPeers in Protocol.MIN_PEERS..maxPeers) { "the minimum must be between 2 and the maximum" }
@@ -1314,12 +1913,21 @@ class PoolSession(private val env: Env, private val s: State, private val socket
             require(payments.isEmpty() || (v3 && Protocol.paymentsOk(payments, amount, outputs))) {
                 "the payments must add up to what each joiner gets"
             }
+            require(!async || v3) { "an asynchronous pool is a v6 pool, with blind outputs" }
             if (v3) {
                 val ck = NostrEvent.newSecret()
                 val blind = BlindRsa.generate()
-                return NewPool(Protocol.Terms(id, NostrEvent.pubOf(k), amount, feeRate, maxPeers, now + hours * 3600L, "open", 1, now,
-                    minPeers, private, if (payments.isNotEmpty()) Protocol.V5 else if (outputs > 1) Protocol.V4 else Protocol.V3,
-                    script, maxInputs, NostrEvent.pubOf(ck), blind.public.encode(), outputs, payments),
+                val timeout = now + hours * 3600L
+                val timing = if (!async) null else {
+                    val l = Protocol.Async.longest(timeout)
+                    val vote = asyncVote ?: l.vote; val outs = asyncOutputs ?: l.outputs; val sign = asyncSign ?: l.sign
+                    Protocol.Async(vote, outs, sign, asyncFinal ?: minOf(timeout + 2 * vote + 2 * outs + sign, timeout + Protocol.ASYNC_TAIL_MAX))
+                        .also { require(it.valid(timeout)) { "vote 10–60 min, outputs 5–30 min, signing 20–120 min, and the final time within a day after the pool's" } }
+                }
+                return NewPool(Protocol.Terms(id, NostrEvent.pubOf(k), amount, feeRate, maxPeers, timeout, "open", 1, now,
+                    // One output each stays v3, which every v3 wallet can join; more need v4; asynchronous rounds v6.
+                    minPeers, private, if (async) Protocol.V6 else if (payments.isNotEmpty()) Protocol.V5 else if (outputs > 1) Protocol.V4 else Protocol.V3,
+                    script, maxInputs, NostrEvent.pubOf(ck), blind.public.encode(), outputs, payments, timing),
                     k.toHex(), ck.toHex(), blind.encodePrivate())
             }
             return NewPool(Protocol.Terms(id, NostrEvent.pubOf(k), amount, feeRate, maxPeers, now + hours * 3600L, "open", 1, now,

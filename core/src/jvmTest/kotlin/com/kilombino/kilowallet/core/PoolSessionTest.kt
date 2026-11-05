@@ -105,7 +105,8 @@ class PoolSessionTest {
         override fun coinUnspent(coin: PoolTx.Coin) = chain.utxos[coin.outpoint] == coin.value
         override fun broadcast(rawHex: String) = chain.broadcast(rawHex)
         override fun confirmations(txid: String): Int? = when {
-            txid in chain.mined -> 1
+            // Since Android 1.5.1 a round counts as confirmed only 6 blocks deep.
+            txid in chain.mined -> PoolSession.DEPTH
             chain.txs.any { TxParse.txid(TxParse.parse(it)) == txid } -> 0
             else -> null
         }

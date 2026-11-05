@@ -74,7 +74,9 @@ class RelayClient(
 
     /** Blocking: opens the WebSocket. */
     fun connect() {
-        require(url.startsWith("wss://")) { "only wss:// relays" }
+        // Plain ws:// only to a relay on this machine (tests and the regtest lab run one); anything else is wss://.
+        val plain = Regex("^ws://(127\\.0\\.0\\.1|localhost|\\[::1])(:\\d+)?(/.*)?$").matches(url)
+        require(url.startsWith("wss://") || plain) { "only wss:// relays" }
         val listener = object : WebSocketListener {
             override fun onText(text: String) { lastHeard = nowMs(); inbox.trySend(text) }
             override fun onPong() { lastHeard = nowMs() }

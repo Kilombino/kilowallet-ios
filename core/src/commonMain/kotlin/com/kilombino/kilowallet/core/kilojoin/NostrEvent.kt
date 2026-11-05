@@ -58,8 +58,11 @@ data class NostrEvent(
         fun hash(pubkey: String, createdAt: Long, kind: Int, tags: List<List<String>>, content: String): ByteArray =
             Hashes.sha256(serialize(pubkey, createdAt, kind, tags, content).encodeToByteArray())
 
+        /** Unix seconds for new events and the sessions' clock; tests move it to run hours of a pool in minutes. */
         @OptIn(kotlin.time.ExperimentalTime::class)
-        fun nowSeconds(): Long = kotlin.time.Clock.System.now().epochSeconds
+        @kotlin.concurrent.Volatile var clock: () -> Long = { kotlin.time.Clock.System.now().epochSeconds }
+
+        fun nowSeconds(): Long = clock()
 
         /** [aux] only for test vectors (BIP-340's auxiliary randomness). */
         fun sign(secret: ByteArray, kind: Int, tags: List<List<String>>, content: String,
