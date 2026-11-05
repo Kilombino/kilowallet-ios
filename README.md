@@ -46,10 +46,14 @@ Version 0.4 (BTC only):
   user signs only their own inputs, with Face ID, after seeing that check. Equal outputs go to this
   wallet's fresh addresses, or to a watch-only key's (a zpub) when one is set. No server holds or
   can move any coin; there is no fee for it; the messages go over nostr
-  (`relay.kilombino.com`), encrypted. Kilojoin protocol v1 to v5, byte for byte as Kilowallet for
-  Android 1.3.9 and for desktop: the same pools, with the same people. Native SegWit (bc1q) pools
-  only. iOS keeps no app running in the background: rounds run while the app is open, and for the
-  short time iOS allows after leaving it; the screen says so.
+  (`relay.kilombino.com`), encrypted. Kilojoin protocol v1 to v6, byte for byte as Kilowallet for
+  Android 1.5.2, Kilojoin 0.10.2 and Kilowallet for desktop: the same pools, with the same people.
+  v6 pools (asynchronous rounds, Kilojoin `PROTOCOL.md` §14) let people answer hours apart: every
+  answer is acknowledged, the round is kept on the phone, and a wallet that comes back asks the
+  creator for a snapshot. After signing, a round's coins are freed only by a conflicting spend 6
+  blocks deep, and it counts as confirmed at 6 confirmations (every version). iOS keeps no app
+  running in the background: rounds run while the app is open, and for the short time iOS allows
+  after leaving it; the screen says so.
 
 New in 0.4.1 (ported from Kilowallet for Android up to 1.3.9): a round whose vote ends by its deadline
 no longer times out (the creator closes each vote once; a member waiting for its blind signature
@@ -192,7 +196,7 @@ file says which Android file it comes from):
 | `wallet/Scanner, Send` | `data/Scanner`, `ui/WalletViewModel` (prepareSend, verifyCoins, confirmSend, fees, dustFor) |
 | `wallet/Replace` | `ui/WalletViewModel` (prepareBump, prepareCancel) |
 | `market/Fiat` | `data/Fiat`, `data/MarketFeed` (the price and the exchange rates only) |
-| `kilojoin/Protocol, PoolTx, PoolSession, BlindRsa, NostrEvent, Nip44, Relay, PoolPayment` | `coinjoin/Protocol, CoinjoinTx, PoolSession, BlindRsa, NostrEvent, Nip44, RelayClient, CoinjoinPayment, MixedCoins, Destination` (1.3.9, [`2989247`](https://github.com/Kilombino/kilowallet/commit/2989247dd55f17f0a8be6d9e8a284d3a4ad1d3c8)) — coroutines instead of threads, `BigNat` instead of `BigInteger` |
+| `kilojoin/Protocol, PoolTx, PoolSession, BlindRsa, NostrEvent, Nip44, Relay, PoolPayment` | `coinjoin/Protocol, CoinjoinTx, PoolSession, BlindRsa, NostrEvent, Nip44, RelayClient, CoinjoinPayment, MixedCoins, Destination` (1.5.2, [`d1fd03b`](https://github.com/Kilombino/kilowallet/commit/d1fd03b)) — coroutines instead of threads, `BigNat` instead of `BigInteger`; tests: `AsyncRoundsTest`, `AsyncRoundsE2ETest`, `TestRelay`, `TestChain` of 1.5.2 in `core/src/jvmTest/…/kilojoin` |
 | `app/…/Pools.kt`, `app/…/ui/Pools.kt` | `coinjoin/CoinjoinHub`, `ui/CoinjoinScreen` — without the background service, the alerts and the lock-screen cards |
 | `app/…/i18n/I18n, Text` + `composeResources/files/i18n/*.json` | `ui/i18n/I18n, Text` + `assets/i18n/*.json` (copied by `scripts/sync-i18n.py`) |
 
