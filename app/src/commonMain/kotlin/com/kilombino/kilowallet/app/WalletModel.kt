@@ -160,6 +160,9 @@ data class UiState(
  * what iOS 0.1 does: one wallet (hot from words, or watch-only from a zpub), the BLAKE2b chain,
  * Electrum only.
  */
+/** True if any of these outpoints ("txid:vout") is held by a Kilojoin round past its waiting step. */
+internal fun takenByRound(outpoints: List<String>, locked: Set<String>): Boolean = outpoints.any { it in locked }
+
 class WalletModel(private val platform: AppPlatform) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val scanner = Scanner(platform.transports)
@@ -916,6 +919,11 @@ class WalletModel(private val platform: AppPlatform) {
             _state.update { it.copy(send = SendPhase.Signing) }
             scope.launch {
                 runCatching {
+                    // A pool may have reached its closing or signing step while the review was open:
+                    // its coins are taken now, so spending one here would break that round (as Android 1.5.x).
+                    check(!takenByRound(draft.inputs.map { "${it.txid}:${it.vout}" }, pools.lockedOutpoints())) {
+                        I18n.tr("A coin in this payment is now being signed in a coinjoin round. Nothing was signed.")
+                    }
                     val (words, pass) = decodeSecret(secret)
                     val signed = withContext(Dispatchers.Default) { Signer.sign(draft, words, pass, zpub, s.activeTaproot) }
                     scanner.broadcast(signed.rawHex, s.endpoint, s.pinned)

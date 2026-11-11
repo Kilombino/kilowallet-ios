@@ -126,7 +126,9 @@ private fun BtcTab(model: WalletModel, state: UiState) {
                 "the «gap limit», and it is what the ring above draws while it scans.")
         }
     }
-    detail?.let { tx ->
+    // Always the current state of that movement, not the copy taken when it was tapped: it may
+    // confirm (or be replaced) while the dialog is open.
+    detail?.let { tapped -> state.txs.firstOrNull { it.txid == tapped.txid } ?: tapped }?.let { tx ->
         // Only a send of ours can be replaced: a payment to us isn't ours to take back.
         val replace: ((Boolean) -> Unit)? = if (hot && tx.pending && (tx.amount ?: 0) < 0)
             ({ cancel -> detail = null; model.go(Screen.Replace(tx.txid, cancel)) }) else null
