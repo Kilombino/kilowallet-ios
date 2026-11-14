@@ -27,7 +27,7 @@ xcrun simctl install "$UDID" "$APP"
 
 n=0
 # "screen@lang" shows that screen in another language (the app's language picker, set by the demo).
-for screen in welcome create restore watch home simple lightning ln-starting ln-running ln-failed ark locked receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round home@es receive@es settings@es lightning@es ln-running@es pools@es pool-round@zh home@zh dice backup cpfp receive-taproot settings-taproot pool-history psbt immature dice@es backup@es pool-history@es psbt@es ark-ready ark-ready@es ark@es ln-bridge ln-move settings-notify ln-bridge@es pool-v6 pool-v6@es pool-create-v6 ark-live tor-live tor-log ln-live; do
+for screen in welcome create restore watch home simple lightning ln-starting ln-running ln-failed ark locked receive send review replace settings pool-intro pools pool-join pool-create pool-pay pool-round home@es receive@es settings@es lightning@es ln-running@es pools@es pool-round@zh home@zh dice backup cpfp receive-taproot settings-taproot pool-history psbt immature dice@es backup@es pool-history@es psbt@es ark-ready ark-ready@es ark@es ln-bridge ln-move settings-notify ln-bridge@es pool-v6 pool-v6@es pool-create-v6 jb-send jb-plan jb-progress jb-sent jb-failed jb-send@es jb-plan@es jb-sent@zh ark-live tor-live tor-log jb-live ln-live; do
   n=$((n + 1))
   base=${screen%@*}
   name=${screen/@/-}
@@ -45,6 +45,8 @@ for screen in welcome create restore watch home simple lightning ln-starting ln-
   { [ "$base" = tor-live ] || [ "$base" = tor-log ]; } && limit=420
   # The real Ark engine: it starts, makes a throwaway wallet on the Ark server and hands out an address.
   [ "$base" = ark-live ] && limit=300
+  # The real Tor and the real JoinBlaket directory (onion, nick auth), the orderbook and the bonds on chain: no keys.
+  [ "$base" = jb-live ] && limit=600
   for i in $(seq 1 $limit); do
     [ -f "$DATA/Documents/kw-ready-$base" ] && break
     sleep 1
@@ -58,7 +60,7 @@ for screen in welcome create restore watch home simple lightning ln-starting ln-
     ls -la "$DATA/Library/Application Support/lnd" || true
   fi
   grep "KW " "screenshots-logs/$name.log" 2>/dev/null || true
-  case "$base" in tor-live|tor-log|ln-live)
+  case "$base" in tor-live|tor-log|ln-live|jb-live)
     TLOG="$DATA/Library/Application Support/tor.log"
     [ -f "$TLOG" ] && cp "$TLOG" "screenshots-logs/tor-$name.log" && tail -15 "screenshots-logs/tor-$name.log" || echo "no Tor log at $TLOG"
     grep "KW " "screenshots-logs/$name.log" || true ;;

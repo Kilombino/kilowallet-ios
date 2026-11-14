@@ -331,3 +331,23 @@ Portado de Android `d1fd03b` (1.5.2) = Kilojoin 0.10.2 (mismos mensajes en el ca
 - **UI:** interruptor "Asynchronous rounds (Kilojoin v6)" al abrir pool (texto propio de iPhone), línea "asynchronous (v6): …" en la lista, voto v6 "Your yes is recorded / sent", firmado/reservado, "Sent · confirmed n/6", "Signed · not sent yet, it goes again", nota v6 en el aviso de primer plano. Tablas de Android `d1fd03b` + 6 textos solo iOS en 7 idiomas. Capturas nuevas `pool-v6`, `pool-v6@es`, `pool-create-v6`.
 - **Tests (core jvmTest):** `AsyncRoundsTest` (6, con los vectores v6), `AsyncRoundsE2ETest` (17 casos de Android 1.5.2, `TestRelay` en memoria con lose/noOk/duplicate/shuffle/forget/hold, `TestChain` con reorg/refuse), `PoolSessionTest` (confirmado a 6). `KjLabInteropTest` contra el laboratorio (`KJ_LAB_RPC=…`): Kilojoin 0.10.2 creador + 2 miembros de aquí, y creador de aquí + miembros Kilojoin m1/m2.
 - **Diferencias con Android:** sin rondas automáticas (`autoKeys`/`DidAlone`, iOS firma siempre a mano), sin servicio en segundo plano ni avisos de ronda; la variante `RegtestChain` del E2E de Android no está portada (la cubre `KjLabInteropTest`).
+
+## JoinBlaket de Android 1.6.0 (PAY THROUGH JOINBLAKET) — para v1.0.0-rc6 (14 nov 2026)
+
+- Core `core/.../joinblaket` = `joinblaket/*` de Android 1.6.0 (e368766) + `JoinBlaketMarket`: Wire, JmSig, Nick/NickAuth,
+  Nacl (X25519 + XSalsa20-Poly1305 sobre `BigNat`), Podle (puntos con libsecp256k1), Fees (decimales `Dec` en vez de
+  BigDecimal), Offers/BondProof/Bond, TakerTx (`TxBuilder.unifiedPreimage`), Session/IoauthCheck, DirectoryClient (sobre
+  `DirectoryTransport`: línea por Tor), Orderbook, ChainLookup (Electrum + SPV `spvProof`; sin RpcChainLookup: iOS no tiene
+  nodo RPC), Selection, Commitments (`JsonCommitmentStore`), Taker (TakerEnv.directory es suspend), LiveCheck.
+- Tests jvmTest: los de Android (Nacl KAT libsodium, vectores xbt-taker byte a byte, DirectoryClient con directorio en proceso,
+  TakerSession con makers falsos, ChainLookup con Electrum falso, Selection, Fees, Offer, Podle, Session, TakerTx, backup de
+  commitments, Market) + DecTest (contra BigDecimal); JoinBlaketLiveTest (JB_MAINNET_ORDERBOOK=1) contra el directorio real
+  por Tor: nick auth OK, 2 ofertas con bond verificadas por SPV.
+- App: bloque en SEND (mercado cada 30 s, comprobación de monedas 5 conf / 20 %, botón), pantalla Screen.JoinBlaket
+  (progreso, plan a confirmar, resultado con COPY TXID / EXPLORER), aviso en la pestaña BTC; sin servicio: beginBackgroundTask
+  (AppPlatform.beginJoinBlaketWork); Swift `openDirectoryConnection` (ElectrumConnection sin timeout de lectura) por Arti;
+  commitments en Prefs + `.kab` "joinblaket_commitments" (formato Android); monedas bloqueadas para SEND y pools, cambio
+  reservado. Textos: tablas de Android 1.6.0 + 19 textos iOS en 7 idiomas (sin la palabra prohibida: "JoinBlaket payment").
+- Capturas: jb-send, jb-plan, jb-progress, jb-sent, jb-failed (+@es/@zh) y jb-live (Tor + directorio real, sin claves).
+- Fuera: la pestaña JoinMarket/Jam de 1.6.0 (iOS nunca la tuvo); RpcChainLookup; prueba E2E en el laboratorio regtest.
+

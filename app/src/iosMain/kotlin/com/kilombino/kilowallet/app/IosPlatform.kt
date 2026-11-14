@@ -103,6 +103,21 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
         })
     override val sockets: WebSocketFactory = relayRoute
 
+    override fun directoryTransport(socksPort: Int): com.kilombino.kilowallet.core.joinblaket.DirectoryTransport =
+        com.kilombino.kilowallet.core.joinblaket.DirectoryTransport { host, port ->
+            val c = bridge.openDirectoryConnection(host, port, socksPort)
+            c.error()?.let { c.close(); throw com.kilombino.kilowallet.core.joinblaket.DirectoryException(it) }
+            object : LineTransport {
+                override val fingerprint: String? = null
+                override fun writeLine(line: String) { c.writeLine(line)?.let { throw ElectrumException(it) } }
+                override fun readLine(): String? = c.readLine()
+                override fun close() = c.close()
+            }
+        }
+
+    override fun beginJoinBlaketWork(name: String): Any? = bridge.beginBackgroundWork(name).takeIf { it != 0L }
+    override fun endJoinBlaketWork(token: Any?) { (token as? Long)?.let { bridge.endBackgroundWork(it) } }
+
     /** Back in the foreground: Tor's port is checked and Tor started again if iOS took it back. */
     override fun onForeground(action: () -> Unit) {
         NSNotificationCenter.defaultCenter.addObserverForName(UIApplicationWillEnterForegroundNotification, null,
@@ -143,7 +158,7 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
 }
 
 /** Screenshot demos that run the real Tor. */
-private val TOR_DEMOS = setOf("ln-live", "tor-live", "tor-log")
+private val TOR_DEMOS = setOf("ln-live", "tor-live", "tor-log", "jb-live")
 
 @OptIn(ExperimentalForeignApi::class)
 private fun NSData.toByteArray(): ByteArray {

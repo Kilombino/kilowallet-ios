@@ -101,6 +101,8 @@ private fun BtcTab(model: WalletModel, state: UiState) {
                 PrimaryButton("SEND", Modifier.weight(1f), enabled = state.scan is ScanPhase.Done && state.total > 0) { model.go(Screen.Send) }
         }
         if (!hot) Explain("Watch-only: this wallet has no keys. A send is signed elsewhere (SeedSigner, Sparrow…) from a PSBT.")
+        // A JoinBlaket payment going (or just ended): where it is, and the way back to its screen.
+        if (hot) JoinBlaketBanner(model)
 
         if (state.txs.isNotEmpty() || state.scan is ScanPhase.Done) Panel {
             SectionLabel("movements · confirmations")

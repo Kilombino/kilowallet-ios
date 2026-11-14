@@ -66,6 +66,12 @@ final class Bridge: NSObject, IosBridge {
         ElectrumConnection(host: host, port: port, tls: tls, pinnedFingerprint: pinnedFingerprint, socksPort: socksPort)
     }
 
+    /// A JoinBlaket directory (a .onion) through the app's Tor: plain TCP, lines read without a
+    /// timeout (a round waits minutes for the user and the makers; closing it ends a read).
+    func openDirectoryConnection(host: String, port: Int32, socksPort: Int32) -> IosConnection {
+        ElectrumConnection(host: host, port: port, tls: false, pinnedFingerprint: nil, socksPort: socksPort, readTimeout: 0)
+    }
+
     // MARK: QR
 
     func qrPng(text: String) -> Data? { QrCode.png(text) }

@@ -121,4 +121,17 @@ interface AppPlatform {
     fun scheduleBalanceWatch(on: Boolean) {}
     /** Calls [action] each time the app comes back to the foreground (iOS: after being suspended). */
     fun onForeground(action: () -> Unit) {}
+    /**
+     * A JoinBlaket directory connection through Tor's SOCKS port [socksPort]: a plain line stream
+     * with no read timeout (the round waits minutes for the user and the makers). iOS:
+     * Network.framework through Arti (iOS 17 or later). Null where there is none.
+     */
+    fun directoryTransport(socksPort: Int): com.kilombino.kilowallet.core.joinblaket.DirectoryTransport? = null
+    /**
+     * While a JoinBlaket round runs, leaving the app keeps it going the little time iOS allows (a
+     * background task). Named apart from LightningPlatform's: Kotlin/Native renames an exported
+     * selector two interfaces share.
+     */
+    fun beginJoinBlaketWork(name: String): Any? = null
+    fun endJoinBlaketWork(token: Any?) {}
 }

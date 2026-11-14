@@ -54,6 +54,19 @@ Version 0.4 (BTC only):
   blocks deep, and it counts as confirmed at 6 confirmations (every version). iOS keeps no app
   running in the background: rounds run while the app is open, and for the short time iOS allows
   after leaving it; the screen says so.
+- **JoinBlaket** (PAY THROUGH JOINBLAKET, on the send screen; JoinMarket on the BTC BLAKE2b chain):
+  one payment to a bc1q address sent as the equal output of a transaction made with makers that
+  hold a fidelity bond, the change back to this wallet. The send screen shows the market as
+  start10's orderbook watcher publishes it (`mempool.kilombino.com/joinblaket/market.json`, read
+  every 30 s: makers, minimum, maximum, what the amount would cost) and checks the coins before
+  unlocking (one needs 5 confirmations and 20 % of the amount). The wallet is a JoinMarket taker,
+  byte for byte as Kilowallet for Android 1.6.0: the directory by its onion through the app's Tor
+  with nick authentication (JMP-0005), bonds and makers' coins looked up on the wallet's Electrum
+  server with SPV proofs, PoDLE commitments (used ones kept, and carried in the .kab as Android
+  does), NaCl-encrypted messages, every signature with the unified sighash 0x21 and the makers'
+  checked before ours. The user confirms each maker's fee and the mining fee (with its ceiling)
+  before anything about the coins leaves the phone; the result shows the txid with COPY TXID and
+  EXPLORER. Rounds run while the app is open (and the short time iOS allows after leaving it).
 
 New in 0.4.1 (ported from Kilowallet for Android up to 1.3.9): a round whose vote ends by its deadline
 no longer times out (the creator closes each vote once; a member waiting for its blind signature
@@ -197,6 +210,8 @@ file says which Android file it comes from):
 | `wallet/Replace` | `ui/WalletViewModel` (prepareBump, prepareCancel) |
 | `market/Fiat` | `data/Fiat`, `data/MarketFeed` (the price and the exchange rates only) |
 | `kilojoin/Protocol, PoolTx, PoolSession, BlindRsa, NostrEvent, Nip44, Relay, PoolPayment` | `coinjoin/Protocol, CoinjoinTx, PoolSession, BlindRsa, NostrEvent, Nip44, RelayClient, CoinjoinPayment, MixedCoins, Destination` (1.5.2, [`d1fd03b`](https://github.com/Kilombino/kilowallet/commit/d1fd03b)) — coroutines instead of threads, `BigNat` instead of `BigInteger`; tests: `AsyncRoundsTest`, `AsyncRoundsE2ETest`, `TestRelay`, `TestChain` of 1.5.2 in `core/src/jvmTest/…/kilojoin` |
+| `joinblaket/Wire, JmSig, Nick, Nacl, Podle, Fees, Offers, TakerTx, Session, DirectoryClient, Orderbook, ChainLookup, Selection, Commitments, Taker, Market` | `joinblaket/…` and `coinjoin/JoinBlaketMarket` (1.6.0, [`e368766`](https://github.com/Kilombino/kilowallet/commit/e368766)) — `BigNat` and libsecp256k1 instead of `BigInteger`, a platform line stream (Tor on iOS) instead of `java.net.Socket`, coroutines; Android's tests and vectors (`nacl-kat.json`, `xbt-taker-vectors.json`) in `core/src/jvmTest/…/joinblaket` |
+| `app/…/JoinBlaket.kt`, `app/…/ui/JoinBlaket.kt` | `coinjoin/JoinBlaketPay`, `ui/JoinBlaketSheet`, the send screen's block in `ui/HotWallet` — without the foreground service |
 | `app/…/Pools.kt`, `app/…/ui/Pools.kt` | `coinjoin/CoinjoinHub`, `ui/CoinjoinScreen` — without the background service, the alerts and the lock-screen cards |
 | `app/…/i18n/I18n, Text` + `composeResources/files/i18n/*.json` | `ui/i18n/I18n, Text` + `assets/i18n/*.json` (copied by `scripts/sync-i18n.py`) |
 
@@ -248,6 +263,9 @@ scripts/sync-i18n.py /path/to/kilowallet <commit>
   libsecp256k1; NIP-44 v2 (ChaCha20 + HMAC-SHA256) and RSA blind signatures (RFC 9474,
   RSABSSA-SHA384-PSS-Randomized) in this repository, the RSA arithmetic in `kilojoin/BigNat`
   (tested against `java.math.BigInteger` and the RFC's vector).
+- JoinBlaket: NaCl `crypto_box` (X25519, XSalsa20-Poly1305) in `joinblaket/Nacl`, pinned to
+  libsodium's output; PoDLE on libsecp256k1's point arithmetic; the JoinMarket message signatures
+  (RFC 6979 without low-R grinding, strict DER, low-S) through libsecp256k1.
 
 ### Tests and CI
 

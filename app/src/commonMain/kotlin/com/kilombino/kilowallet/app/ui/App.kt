@@ -67,6 +67,7 @@ fun App(platform: AppPlatform) {
                     Screen.PoolCreate -> PoolCreateScreen(model, state)
                     is Screen.PoolJoin -> PoolJoinScreen(model, state, s.poolId)
                     Screen.PoolPay -> PoolPayScreen(model, state)
+                    Screen.JoinBlaket -> JoinBlaketScreen(model)
                 }
             }
             state.message?.let { msg ->

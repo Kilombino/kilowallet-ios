@@ -76,6 +76,10 @@ class PoolsModel(
     /** Check coins against the transactions that made them before anything is signed for them. */
     private val verifyCoins: suspend (List<SpendableUtxo>) -> Unit,
     private val onRoundDone: () -> Unit,
+    /** Coins a JoinBlaket payment holds: not offered to a pool while it runs. */
+    private val externalLocked: () -> Set<String> = { emptySet() },
+    /** A JoinBlaket payment's change address: never handed to a seat. */
+    private val externalScripts: () -> Set<List<Byte>> = { emptySet() },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val prefs = platform.prefs
@@ -322,7 +326,7 @@ class PoolsModel(
 
     /** Confirmed coins not seated in another round, biggest first: of [type] only, or all with null. */
     suspend fun poolCoins(type: PoolType? = null): List<SpendableUtxo> {
-        val seated = waitingOutpoints().keys + lockedOutpoints()
+        val seated = waitingOutpoints().keys + lockedOutpoints() + externalLocked()
         val coins = gatherCoins().filter { it.height > 0 && "${it.txid}:${it.vout}" !in seated && (type == null || typeOf(it) == type) }
             .sortedByDescending { it.value }
         runCatching { learnPooled(coins) }
@@ -333,7 +337,7 @@ class PoolsModel(
     private fun freshReceive(zpub: String, n: Int, type: PoolType = PoolType.P2WPKH): List<ByteArray> {
         val s = wallet()
         val acct = account(zpub, type)
-        val held = reservedScripts()
+        val held = reservedScripts() + externalScripts()
         val tr = type == PoolType.P2TR
         var i = s.rows.filter { it.chainIndex == 0 && it.isUsed && (it.type == ScriptType.P2TR) == tr }.maxOfOrNull { it.index }?.plus(1) ?: 0
         val out = mutableListOf<ByteArray>()
@@ -349,7 +353,7 @@ class PoolsModel(
     private fun freshChange(zpub: String, type: PoolType = PoolType.P2WPKH): ByteArray {
         val s = wallet()
         val acct = account(zpub, type)
-        val held = reservedScripts()
+        val held = reservedScripts() + externalScripts()
         val tr = type == PoolType.P2TR
         var i = s.rows.filter { it.chainIndex == 1 && (it.type == ScriptType.P2TR) == tr }.maxOfOrNull { it.index }?.plus(1) ?: 0
         while (true) {

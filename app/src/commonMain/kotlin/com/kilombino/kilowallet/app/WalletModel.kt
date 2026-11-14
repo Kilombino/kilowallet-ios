@@ -68,6 +68,8 @@ sealed interface Screen {
     data object PoolPay : Screen
     /** The end of Tor's log, to read and copy (Android: SHOW TOR'S LOG). */
     data object TorLog : Screen
+    /** PAY THROUGH JOINBLAKET: the round going, its plan to confirm, its outcome. */
+    data object JoinBlaket : Screen
 }
 
 sealed interface ScanPhase {
@@ -172,11 +174,28 @@ class WalletModel(private val platform: AppPlatform) {
     private var scanJob: Job? = null
 
     /** Kilojoin: the pools and this wallet's rounds in them. */
-    val pools = PoolsModel(platform, { _state.value },
+    val pools: PoolsModel = PoolsModel(platform, { _state.value },
         // Native SegWit coins (type null) and the Taproot account's: a pool takes coins of its own type only.
         gatherCoins = { val s = _state.value; scanner.gatherUtxos(s.rows.filter { it.isUsed && (it.type == null || it.type == ScriptType.P2TR) }, s.endpoint, s.pinned) },
         verifyCoins = { coins -> val s = _state.value; scanner.verifyCoins(s.zpub ?: error("No wallet."), coins, s.endpoint, s.pinned, taprootXpub = s.taprootXpub) },
-        onRoundDone = { refresh() })
+        onRoundDone = { refresh() },
+        externalLocked = { joinBlaket.lockedOutpoints() },
+        externalScripts = { joinBlaket.heldChangeScripts() })
+
+    /** PAY THROUGH JOINBLAKET (Android 1.6.0): this wallet as a JoinMarket taker, one payment at a time. */
+    val joinBlaket: JoinBlaketModel = JoinBlaketModel(platform, { _state.value },
+        gatherCoins = { val s = _state.value; scanner.gatherUtxos(s.rows.filter { it.isUsed && it.type == null }, s.endpoint, s.pinned) },
+        verifyCoins = { coins -> val s = _state.value; scanner.verifyCoins(s.zpub ?: error("No wallet."), coins, s.endpoint, s.pinned) },
+        heldByPools = { pools.lockedOutpoints() + pools.waitingOutpoints().keys },
+        poolScripts = { pools.reservedScripts() },
+        onSent = { refresh() })
+
+    /** Screenshot mode: what the send form starts with (address, amount). */
+    var demoSend: Pair<String, Long>? = null
+        private set
+
+    /** Coins a Kilojoin round past its waiting step or a JoinBlaket payment holds: a normal send leaves them alone. */
+    private fun heldOutpoints(): Set<String> = pools.lockedOutpoints() + joinBlaket.lockedOutpoints()
 
     /** The wallet's mined rewards still locked (shown under the balance), or null before they were looked up. */
     private val _immature = MutableStateFlow<Scanner.Immature?>(null)
@@ -791,7 +810,7 @@ class WalletModel(private val platform: AppPlatform) {
         scope.launch {
             runCatching { scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned) }
                 // Coins of a pool round being built are held for it; a pool still waiting lets them go.
-                .onSuccess { u -> val locked = pools.lockedOutpoints(); _state.update { it.copy(spendable = u.filter { c -> "${c.txid}:${c.vout}" !in locked }) } }
+                .onSuccess { u -> val locked = heldOutpoints(); _state.update { it.copy(spendable = u.filter { c -> "${c.txid}:${c.vout}" !in locked }) } }
         }
     }
 
@@ -804,7 +823,7 @@ class WalletModel(private val platform: AppPlatform) {
         _state.update { it.copy(send = SendPhase.Preparing) }
         scope.launch {
             runCatching {
-                val locked = pools.lockedOutpoints()
+                val locked = heldOutpoints()
                 // A watch-only wallet's coins are of its own type, sized as such (Taproot 57.75 vB, nested 91).
                 val watchType = if (s.kind == WalletKind.WATCH && s.scriptType != ScriptType.P2WPKH) s.scriptType else null
                 val utxos = (s.spendable ?: scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned))
@@ -924,6 +943,9 @@ class WalletModel(private val platform: AppPlatform) {
                     check(!takenByRound(draft.inputs.map { "${it.txid}:${it.vout}" }, pools.lockedOutpoints())) {
                         I18n.tr("A coin in this payment is now being signed in a Kilojoin round. Nothing was signed.")
                     }
+                    check(!takenByRound(draft.inputs.map { "${it.txid}:${it.vout}" }, joinBlaket.lockedOutpoints())) {
+                        I18n.tr("A coin in this payment is now in a JoinBlaket payment. Nothing was signed.")
+                    }
                     val (words, pass) = decodeSecret(secret)
                     val signed = withContext(Dispatchers.Default) { Signer.sign(draft, words, pass, zpub, s.activeTaproot) }
                     scanner.broadcast(signed.rawHex, s.endpoint, s.pinned)
@@ -948,7 +970,7 @@ class WalletModel(private val platform: AppPlatform) {
         val tr = receivesTaproot(s)
         val key = (if (tr) s.taprootXpub else s.zpub) ?: error("No wallet.")
         val type = if (tr) ScriptType.P2TR else s.keyType
-        val held = pools.reservedScripts()
+        val held = pools.reservedScripts() + joinBlaket.heldChangeScripts()
         var index = receiveRows(s).filter { it.chainIndex == 1 }.maxOfOrNull { it.index }?.plus(1) ?: 0
         while (SendPlanner.changeScript(key, index, type).toList() in held) index++
         return SendPlanner.changeScript(key, index, type)
@@ -1046,6 +1068,9 @@ class WalletModel(private val platform: AppPlatform) {
             })
             // Lightning's birthday and channel backup, under Android's key (AppBackup "lightning").
             lightning.exportBackup()?.let { put("lightning", it) }
+            // JoinBlaket: PoDLE commitments already shown to makers, so a restored wallet never reuses one (Android 1.6.0).
+            joinBlaket.commitments.export()?.let { t -> runCatching { kotlinx.serialization.json.Json.parseToJsonElement(t) }.getOrNull()
+                ?.let { put("joinblaket_commitments", it) } }
         }
     }
 
@@ -1058,6 +1083,8 @@ class WalletModel(private val platform: AppPlatform) {
         v("ios_street_mode")?.content?.toBooleanStrictOrNull()?.let { setStreetMode(it) }
         v("coinjoin_enabled")?.content?.toBooleanStrictOrNull()?.let { pools.setEnabled(it) }
         (app["lightning"] as? kotlinx.serialization.json.JsonObject)?.let { runCatching { lightning.stageRestore(it) } }
+        // A restore only adds used commitments: it never brings back one this phone or the file burned.
+        (app["joinblaket_commitments"] as? kotlinx.serialization.json.JsonObject)?.let { runCatching { joinBlaket.commitments.mergeFrom(it.toString()) } }
     }
 
     /** Make the backup file (words, passphrase and settings, sealed with [password]) and ask where to save it. */
@@ -1264,6 +1291,38 @@ class WalletModel(private val platform: AppPlatform) {
                         go(Screen.Replace("4f".repeat(32), cancel = true)); platform.markReady(screen)
                     }
                     "send" -> { go(Screen.Send); platform.markReady(screen) }
+                    "jb-send", "jb-plan", "jb-progress", "jb-sent", "jb-failed" -> {
+                        // Made-up JoinBlaket figures (the market as start10's watcher publishes it, a plan, an outcome):
+                        // nothing is connected, unlocked or signed.
+                        val to = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"
+                        val market = com.kilombino.kilowallet.core.joinblaket.JoinBlaketMarket.parse(com.kilombino.kilowallet.core.joinblaket.JoinBlaketMarket.SAMPLE)
+                        val plan = com.kilombino.kilowallet.core.joinblaket.TakerPlan(1_000_000, to,
+                            listOf(com.kilombino.kilowallet.core.joinblaket.TakerPlan.PlanMaker(20, 27_738),
+                                com.kilombino.kilowallet.core.joinblaket.TakerPlan.PlanMaker(300, 100)),
+                            1, 2_400_000, 2.17, 879, 2_349)
+                        val view = when (screen) {
+                            "jb-plan" -> JoinBlaketModel.View(1_000_000, to, com.kilombino.kilowallet.core.joinblaket.TakerStep.Confirm(plan), plan)
+                            "jb-progress" -> JoinBlaketModel.View(1_000_000, to, com.kilombino.kilowallet.core.joinblaket.TakerStep.WaitingForMakers(1, 2))
+                            "jb-sent" -> JoinBlaketModel.View(1_000_000, to, com.kilombino.kilowallet.core.joinblaket.TakerStep.Broadcasting, result =
+                                com.kilombino.kilowallet.core.joinblaket.TakerResult.Sent("6d".repeat(32), "", 2, 320, 879, 1_029, 1_399_701, viaMaker = true, seen = true))
+                            "jb-failed" -> JoinBlaketModel.View(1_000_000, to, com.kilombino.kilowallet.core.joinblaket.TakerStep.CheckingBonds(2), result =
+                                com.kilombino.kilowallet.core.joinblaket.TakerResult.Failed(com.kilombino.kilowallet.core.joinblaket.TakerText.fill(
+                                    com.kilombino.kilowallet.core.joinblaket.TakerText.NO_PODLE_COIN, 5, 200_000L)))
+                            else -> null
+                        }
+                        joinBlaket.setDemo(view, market)
+                        if (screen == "jb-send") { demoSend = to to 1_000_000L; go(Screen.Send) } else go(Screen.JoinBlaket)
+                        delay(1_500); platform.markReady(screen)
+                    }
+                    "jb-live" -> {
+                        // The real Tor, the real JoinBlaket directory (by its onion, nick authentication), the
+                        // orderbook as a watcher asks for it and the bonds valued on the wallet's server with SPV.
+                        // No keys: nothing is unlocked, signed or sent.
+                        launch {
+                            val line = joinBlaket.liveCheck()
+                            say(line); platform.markReady(screen)
+                        }
+                    }
                     "dice" -> { go(Screen.Dice); platform.markReady(screen) }
                     "psbt" -> {
                         // The same made-up coin as "review", from the demo wallet watched: the PSBT to sign elsewhere.

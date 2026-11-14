@@ -21,6 +21,11 @@ interface IosBridge {
     fun openConnection(host: String, port: Int, tls: Boolean, pinnedFingerprint: String?): IosConnection
     /** The same through Tor's SOCKS port [socksPort] (iOS 17 or later), the name resolved by Tor. */
     fun openConnectionVia(host: String, port: Int, tls: Boolean, pinnedFingerprint: String?, socksPort: Int): IosConnection
+    /**
+     * A JoinBlaket directory: plain TCP through Tor's SOCKS port [socksPort] (iOS 17 or later), the
+     * onion resolved by Tor, lines read with no timeout (closing the connection ends a read).
+     */
+    fun openDirectoryConnection(host: String, port: Int, socksPort: Int): IosConnection
 
     /** A PNG of the QR code for [text]. */
     fun qrPng(text: String): NSData?

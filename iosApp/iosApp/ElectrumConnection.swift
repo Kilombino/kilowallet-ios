@@ -18,9 +18,12 @@ final class ElectrumConnection: NSObject, IosConnection {
     private var changed: Bool { box.changed }
     private var err: String?
     private var closed = false
+    /// Seconds a read waits for data before the connection is given up; 0: no limit (a JoinBlaket directory).
+    private let readTimeout: Double
 
     /// [socksPort] > 0: through the app's Tor (TorProxy, iOS 17 or later), the name resolved by Tor.
-    init(host: String, port: Int32, tls: Bool, pinnedFingerprint: String?, socksPort: Int32 = 0) {
+    init(host: String, port: Int32, tls: Bool, pinnedFingerprint: String?, socksPort: Int32 = 0, readTimeout: Double = 90) {
+        self.readTimeout = readTimeout
         let tcp = NWProtocolTCP.Options()
         tcp.connectionTimeout = 20
         tcp.noDelay = true
@@ -128,7 +131,11 @@ final class ElectrumConnection: NSObject, IosConnection {
                 finished = isComplete || e != nil
                 got.signal()
             }
-            if got.wait(timeout: .now() + 90) == .timedOut { closed = true; conn.cancel(); return nil }
+            if readTimeout > 0 {
+                if got.wait(timeout: .now() + readTimeout) == .timedOut { closed = true; conn.cancel(); return nil }
+            } else {
+                got.wait()
+            }
             if let c = chunk { buffer.append(c) }
             if finished { closed = true }
             if finished && buffer.firstIndex(of: 0x0A) == nil { return nil }

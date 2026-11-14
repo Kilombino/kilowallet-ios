@@ -226,6 +226,8 @@ class I18nTest {
         // Balance alerts: the kept lists' key and the wallet kinds they are filed under.
         "watch.list.", "HOT", "WATCH",
         // The relay route's names for the CI log.
+        // JoinBlaket: its name as a section label, the background task's name, the backup key, the screenshot runs' names.
+        "🔀 JOINBLAKET", "JoinBlaket payment", "joinblaket_commitments", "jb-send", "jb-plan", "jb-progress", "jb-sent", "jb-failed", "jb-live",
         " pool(s)", "direct", "failed: ", "onion", "wss over Tor", "ln-bridge", "ln-move", "settings-notify", "a0", "02cd566293ad8c8fd55bf5c5be38df5fc0af2b445333b10cbbd8b8a7d4c7ed7fe3",
     ).map { Regex(Regex.escape(it)) } + listOf(
         Regex("""(12 345 · )?12(/12 345)? conf"""), Regex(""" · 12/12 345 conf"""), Regex("""\d{4}-\d\d-\d\dT[0-9:]+"""),
