@@ -324,10 +324,17 @@ class DirectoryClient(
                     Wire.PING -> sendRaw(Wire.envelope(Wire.PONG, ""))
                     Wire.PEERLIST -> onPeerlist(f.line)
                     Wire.NICK_AUTH_CHALLENGE, Wire.NICK_AUTH_PROOF, Wire.NICK_AUTH_RESULT ->
-                        if (inHandshake) frames.trySend(f)
-                        else throw DirectoryException("Out-of-order nick authentication message type: ${f.type}")
+                        if (inHandshake) {
+                            // The result ends the handshake here, in the reader: a frame right behind it is already the session's.
+                            if (f.type == Wire.NICK_AUTH_RESULT) inHandshake = false
+                            frames.trySend(f)
+                        } else throw DirectoryException("Out-of-order nick authentication message type: ${f.type}")
                     else -> {
-                        if (inHandshake) { frames.trySend(f); continue }
+                        if (inHandshake) {
+                            // Without nick authentication the directory's reply is the last handshake frame.
+                            if ((f.type == Wire.HANDSHAKE || f.type == Wire.DN_HANDSHAKE) && !expectsNickAuth(f)) inHandshake = false
+                            frames.trySend(f); continue
+                        }
                         if (queuedFrames.addAndFetch(1) > MAX_QUEUED_FRAMES ||
                             queuedBytes.addAndFetch(f.line.length.toLong()) > MAX_QUEUED_BYTES) {
                             throw DirectoryException("Directory message buffer limit exceeded")
@@ -345,6 +352,11 @@ class DirectoryClient(
             closeQuietly()
         }
     }
+
+    /** Whether nick authentication follows the directory's handshake reply [f]. */
+    private fun expectsNickAuth(f: Wire.Frame): Boolean = directoryId != null && runCatching {
+        JbJson.isTrue((JbJson.obj(f.line)["features"] as? kotlinx.serialization.json.JsonObject)?.get("nick_auth"))
+    }.getOrDefault(false)
 
     private fun onPeerlist(line: String) {
         val entries = parsePeerlist(line)
