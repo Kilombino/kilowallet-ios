@@ -181,6 +181,18 @@ object TxBuilder {
         version: Long, locktime: Long, hashType: Int, scriptType: Int,
         prevouts: List<ByteArray>, amounts: List<Long>, spentScripts: List<ByteArray>,
         sequences: List<Long>, outputs: List<Output>, index: Int, scriptCode: ByteArray,
+    ): ByteArray = Hashes.taggedHash("UnifiedSighash", unifiedPreimage(version, locktime, hashType, scriptType,
+        prevouts, amounts, spentScripts, sequences, outputs, index, scriptCode))
+
+    /**
+     * The message [unifiedMessage] hashes (202 bytes for a segwit-v0 input under SIGHASH_ALL), for
+     * code that signs inputs this wallet does not build itself (a JoinBlaket CoinJoin, Android's
+     * `TxBuilder.unifiedPreimage`).
+     */
+    fun unifiedPreimage(
+        version: Long, locktime: Long, hashType: Int, scriptType: Int,
+        prevouts: List<ByteArray>, amounts: List<Long>, spentScripts: List<ByteArray>,
+        sequences: List<Long>, outputs: List<Output>, index: Int, scriptCode: ByteArray,
     ): ByteArray {
         val anyoneCanPay = (hashType and 0x80) != 0
         val base = hashType and 0x1f // 1 ALL, 2 NONE, 3 SINGLE
@@ -220,7 +232,7 @@ object TxBuilder {
             val out = outputs[index]
             msg.write(Hashes.sha256(u64le(out.value) + varBytes(out.scriptPubKey)))
         }
-        return Hashes.taggedHash("UnifiedSighash", msg.toByteArray())
+        return msg.toByteArray()
     }
 
     /** The unified sighash (0x21) for input [index]: script type 1 for P2WPKH, 2 for a Taproot key path. */

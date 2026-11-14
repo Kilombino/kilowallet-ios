@@ -23,6 +23,11 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.secp256k1.jni.jvm)
         }
+        jvmTest.dependencies {
+            // JoinBlaket's tests read the taker vectors as Android's tests do (org.json, JUnit 4 asserts).
+            implementation("org.json:json:20240303")
+            implementation("junit:junit:4.13.2")
+        }
     }
 }
 
