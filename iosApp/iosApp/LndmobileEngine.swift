@@ -66,6 +66,10 @@ enum LndmobileEngine {
     }
 
     static func call(_ method: String, _ request: Data?, _ listener: IosLndListener) {
+        // The shared code calls server streams with call() too (as Android does: one gomobile
+        // function per method). 16 nov 2026: paying failed with "no such LND call:
+        // routerSendPaymentV2" because streams were only looked up by stream().
+        if unary[method] == nil, let s = streams[method] { s(request ?? Data(), Callback(listener)); return }
         guard let f = unary[method] else { listener.onError(message: "no such LND call: \(method)"); return }
         f(request ?? Data(), Callback(listener))
     }
