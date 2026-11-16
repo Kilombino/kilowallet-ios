@@ -117,3 +117,34 @@ enum LndPassword {
 
     static func delete() { SecItemDelete(query as CFDictionary) }
 }
+
+/// Small secrets the app keeps apart from its settings (your node's RPC login), each its own
+/// generic-password item: this device only, readable after the first unlock, no Face ID (the
+/// wallet reads the node by itself). Android keeps them sealed under a Keystore key.
+enum AppSecret {
+    private static func query(_ name: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: "com.kilombino.kilowallet.secret",
+         kSecAttrAccount as String: name]
+    }
+
+    static func load(_ name: String) -> String? {
+        var q = query(name)
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
+        return String(data: d, encoding: .utf8)
+    }
+
+    static func save(_ name: String, _ value: String) -> String? {
+        delete(name)
+        var q = query(name)
+        q[kSecValueData as String] = Data(value.utf8)
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(q as CFDictionary, nil)
+        return status == errSecSuccess ? nil : "Keychain error \(status)"
+    }
+
+    static func delete(_ name: String) { SecItemDelete(query(name) as CFDictionary) }
+}

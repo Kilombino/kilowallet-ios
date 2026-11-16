@@ -62,17 +62,37 @@ class IosPlatform(private val bridge: IosBridge, override val demoScreen: String
         return runBlocking { Tor.startAndWait(90_000) } ?: throw ElectrumException(notRunning)
     }
 
-    override val transports = TransportFactory { host, port, tls, pin ->
-        val socks = electrumSocks(host)
-        val c = if (socks > 0) bridge.openConnectionVia(host, port, tls, pin, socks) else bridge.openConnection(host, port, tls, pin)
+    private fun lines(c: IosConnection, host: String, port: Int): LineTransport {
         if (c.certificateChanged()) { c.close(); throw CertificateChangedException("$host:$port", c.fingerprint() ?: "") }
         c.error()?.let { c.close(); throw ElectrumException(it) }
-        object : LineTransport {
+        return object : LineTransport {
             override val fingerprint: String? = c.fingerprint()
             override fun writeLine(line: String) { c.writeLine(line)?.let { throw ElectrumException(it) } }
             override fun readLine(): String? = c.readLine()
             override fun close() = c.close()
         }
+    }
+
+    override val transports = object : TransportFactory {
+        override fun open(host: String, port: Int, tls: Boolean, pinnedFingerprint: String?): LineTransport {
+            val socks = electrumSocks(host)
+            val c = if (socks > 0) bridge.openConnectionVia(host, port, tls, pinnedFingerprint, socks)
+                else bridge.openConnection(host, port, tls, pinnedFingerprint)
+            return lines(c, host, port)
+        }
+
+        /** Your node's RPC (Android 1.6.0): a .onion through Tor, anything else directly. */
+        override fun openRpc(host: String, port: Int, tls: Boolean, pinnedFingerprint: String?, readTimeoutSeconds: Int): LineTransport {
+            val socks = if (isOnionHost(host)) runBlocking { Tor.startAndWait(90_000) }
+                ?: throw ElectrumException("$host is a .onion: it needs Tor, and Tor is not running on this phone (or did not start).") else 0
+            return lines(bridge.openRpcConnection(host, port, tls, pinnedFingerprint, socks, readTimeoutSeconds), host, port)
+        }
+    }
+
+    override fun secretGet(name: String): String? = if (demoScreen != null) prefs.get("secret.$name") else bridge.secretLoad(name)
+    override fun secretPut(name: String, value: String?) {
+        if (demoScreen != null) { prefs.put("secret.$name", value); return }
+        if (value == null) bridge.secretDelete(name) else bridge.secretSave(name, value)
     }
 
     /**

@@ -548,5 +548,7 @@
  "A coin in this payment is now in a JoinBlaket payment. Nothing was signed.": "Una moneda d'aquest pagament és ara en un pagament amb JoinBlaket. No s'ha signat res.",
  "could not unlock": "no s'ha pogut desbloquejar",
  "Tor did not come up: {0}": "Tor no s'ha engegat: {0}",
- "no connection through Tor on this platform": "no hi ha connexió per Tor en aquesta plataforma"
+ "no connection through Tor on this platform": "no hi ha connexió per Tor en aquesta plataforma",
+ "added": "afegit",
+ "testing…": "provant…"
 }

@@ -169,6 +169,8 @@ class I18nTest {
         "Legacy · 1… (BIP44)",
         // The same word in Spanish (and others): "host", "total", "conf".
         "host", "total", "? sats", "12 345 conf",
+        // Your node by RPC: the endpoint's placeholder name and the Keychain key of its login.
+        "node", "secret.12",
         // Kilojoin: protocol words, preference keys, screenshot names and made-up demo values, and errors
         // of the arithmetic that no screen shows.
         "open", "equal", "x", "y", "demo1212", "5e", "6a", "6d", "7b", "demo", "demo-o1", "demo-o2", "demo-other", "demo-third", "demo-third-change",

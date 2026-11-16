@@ -405,6 +405,7 @@ class Scanner(
      * [SPV_FLOOR_BITS].
      */
     private fun spvCheck(client: ElectrumClient, txid: String, height: Int): Boolean? {
+        if (client.isOwnNode) return true // your own node validated the block itself (Android 1.6.0)
         spvCache[txid]?.let { return it }
         val ok = runCatching {
             val header = BlockHeader.parse(client.blockHeader(height))

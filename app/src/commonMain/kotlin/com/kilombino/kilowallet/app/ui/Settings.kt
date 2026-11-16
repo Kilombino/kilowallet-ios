@@ -177,6 +177,8 @@ fun SettingsScreen(model: WalletModel, state: UiState, platform: AppPlatform) {
                 Text("Pinned certificate (SHA-256):", style = MaterialTheme.typography.bodySmall, color = TextSoft)
                 Text(state.pinned?.let { chunked(it) } ?: "none yet — trusted on first connection",
                     style = MaterialTheme.typography.bodySmall, color = TextFaint)
+                // Your own node by RPC instead of the Electrum server (Android 1.6.0), QR code included.
+                RpcNodePanel(model, platform)
             }
 
             state.zpub?.let { z ->

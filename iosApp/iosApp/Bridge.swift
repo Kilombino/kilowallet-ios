@@ -66,6 +66,19 @@ final class Bridge: NSObject, IosBridge {
         ElectrumConnection(host: host, port: port, tls: tls, pinnedFingerprint: pinnedFingerprint, socksPort: socksPort)
     }
 
+    /// Your own node's RPC: as above (socksPort 0: directly), with reads that may wait readTimeout
+    /// seconds (the first import of the wallet's history on the node takes minutes).
+    func openRpcConnection(host: String, port: Int32, tls: Bool, pinnedFingerprint: String?, socksPort: Int32, readTimeout: Int32) -> IosConnection {
+        ElectrumConnection(host: host, port: port, tls: tls, pinnedFingerprint: pinnedFingerprint, socksPort: socksPort,
+                           readTimeout: Double(max(readTimeout, 10)))
+    }
+
+    func secretLoad(name: String) -> String? { AppSecret.load(name) }
+
+    func secretSave(name: String, value: String) -> String? { AppSecret.save(name, value) }
+
+    func secretDelete(name: String) { AppSecret.delete(name) }
+
     /// A JoinBlaket directory (a .onion) through the app's Tor: plain TCP, lines read without a
     /// timeout (a round waits minutes for the user and the makers; closing it ends a read).
     func openDirectoryConnection(host: String, port: Int32, socksPort: Int32) -> IosConnection {

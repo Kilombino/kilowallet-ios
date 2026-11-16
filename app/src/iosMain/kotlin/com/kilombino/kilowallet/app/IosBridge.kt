@@ -26,6 +26,15 @@ interface IosBridge {
      * onion resolved by Tor, lines read with no timeout (closing the connection ends a read).
      */
     fun openDirectoryConnection(host: String, port: Int, socksPort: Int): IosConnection
+    /**
+     * Your own node's RPC: a connection as [openConnectionVia] ([socksPort] 0: directly) whose
+     * reads wait up to [readTimeout] seconds (the first import of a wallet's history takes minutes).
+     */
+    fun openRpcConnection(host: String, port: Int, tls: Boolean, pinnedFingerprint: String?, socksPort: Int, readTimeout: Int): IosConnection
+    /** A small secret (your node's RPC login) as a Keychain item: this device only, after first unlock, no Face ID. */
+    fun secretLoad(name: String): String?
+    fun secretSave(name: String, value: String): String?
+    fun secretDelete(name: String)
 
     /** A PNG of the QR code for [text]. */
     fun qrPng(text: String): NSData?

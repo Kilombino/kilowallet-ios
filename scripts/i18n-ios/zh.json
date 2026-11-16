@@ -548,5 +548,7 @@
  "A coin in this payment is now in a JoinBlaket payment. Nothing was signed.": "此支付中的一枚币现在正用于一笔 JoinBlaket 支付。没有签名任何内容。",
  "could not unlock": "无法解锁",
  "Tor did not come up: {0}": "Tor 未能启动：{0}",
- "no connection through Tor on this platform": "此平台上无法通过 Tor 连接"
+ "no connection through Tor on this platform": "此平台上无法通过 Tor 连接",
+ "added": "已添加",
+ "testing…": "正在测试…"
 }

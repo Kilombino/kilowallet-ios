@@ -22,4 +22,12 @@ fun interface TransportFactory {
      * different certificate, throw [CertificateChangedException] before sending anything.
      */
     fun open(host: String, port: Int, tls: Boolean, pinnedFingerprint: String?): LineTransport
+
+    /**
+     * Your own node's RPC ([NodeRpcBackend]): as [open], but reads may wait [readTimeoutSeconds]
+     * (the first import of the wallet's history takes minutes), and only a .onion goes through
+     * Tor (a node at home is reached directly even with "Connect to the server through Tor").
+     */
+    fun openRpc(host: String, port: Int, tls: Boolean, pinnedFingerprint: String?, readTimeoutSeconds: Int): LineTransport =
+        open(host, port, tls, pinnedFingerprint)
 }

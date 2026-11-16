@@ -80,6 +80,12 @@ interface AppPlatform {
     val seeds: SeedStore
     val prefs: Prefs
     val transports: TransportFactory
+    /**
+     * A small secret kept apart from the settings (your node's RPC login): iOS keeps it in the
+     * Keychain, on this device only, readable after the first unlock. Elsewhere, in [prefs].
+     */
+    fun secretGet(name: String): String? = prefs.get("secret.$name")
+    fun secretPut(name: String, value: String?) = prefs.put("secret.$name", value)
     /** WebSockets to the pools' nostr relay (iOS: URLSessionWebSocketTask, iosApp/iosApp/RelaySocket.swift). */
     val sockets: WebSocketFactory get() = WebSocketFactory { _, _ -> error("no WebSocket on this platform") }
     /** "Face ID", "Touch ID" or "your passcode": what unlocks the words on this device. */

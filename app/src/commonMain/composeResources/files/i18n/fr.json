@@ -2968,5 +2968,7 @@
 "No JoinBlaket payment is going.": "Aucun paiement JoinBlaket en cours.",
 "A coin in this payment is now in a JoinBlaket payment. Nothing was signed.": "Une pièce de ce paiement est maintenant dans un paiement JoinBlaket. Rien n'a été signé.",
 "Tor did not come up: {0}": "Tor n'a pas démarré : {0}",
-"no connection through Tor on this platform": "pas de connexion par Tor sur cette plateforme"
+"no connection through Tor on this platform": "pas de connexion par Tor sur cette plateforme",
+"added": "ajouté",
+"testing…": "test en cours…"
 }

@@ -2,6 +2,9 @@ package com.kilombino.kilowallet.app
 
 import com.kilombino.kilowallet.app.i18n.I18n
 import com.kilombino.kilowallet.core.chain.NodeEndpoint
+import com.kilombino.kilowallet.core.chain.NodeRpcBackend
+import com.kilombino.kilowallet.core.chain.RpcConn
+import com.kilombino.kilowallet.core.chain.RpcNode
 import com.kilombino.kilowallet.core.crypto.Address
 import com.kilombino.kilowallet.core.crypto.Bip32
 import com.kilombino.kilowallet.core.crypto.Bip39
@@ -221,7 +224,7 @@ class WalletModel(private val platform: AppPlatform) {
             return
         }
         scope.launch {
-            runCatching { scanner.immature(rows, s.endpoint, s.pinned) }
+            runCatching { scanner.immature(rows, chainEp(s), chainPin(s)) }
                 .onSuccess { im -> if (sameWallet(s)) _immature.value = im }
                 .onFailure { immatureAsked = null }
         }
@@ -271,6 +274,9 @@ class WalletModel(private val platform: AppPlatform) {
         const val K_GAP = "scan.gap"
         const val K_TOR_ONLY = "tor.only"
         const val K_TOR_ELECTRUM = "tor.electrum"
+        /** Your own node by RPC (Android 1.6.0): its connections (Keychain, they carry the password) and whether it is used. */
+        const val K_RPC = "rpc.conns"
+        const val K_RPC_ON = "rpc.on"
         const val K_MARKET = "market.json"
         const val K_MARKET_AT = "market.fetched"
         /** Screenshot mode's price: no network, the same figures every run. */
@@ -408,7 +414,7 @@ class WalletModel(private val platform: AppPlatform) {
             _state.update { it.copy(send = SendPhase.Editing) }
             val s = _state.value
             if (platform.demoScreen == null) scope.launch {
-                val rate = scanner.suggestedFeeRate(s.endpoint, s.pinned)
+                val rate = scanner.suggestedFeeRate(chainEp(s), chainPin(s))
                 _state.update { it.copy(suggestedRate = rate) }
             }
         }
@@ -640,7 +646,7 @@ class WalletModel(private val platform: AppPlatform) {
         scanJob = scope.launch {
             _state.update { it.copy(scan = ScanPhase.Scanning("", 0, 0, s.gapLimit, 0), certChanged = null) }
             var found = 0
-            scanner.scan(zpub, s.endpoint, s.pinned, s.gapLimit, s.keyType, s.activeTaproot).collect { ev ->
+            scanner.scan(zpub, chainEp(s), chainPin(s), s.gapLimit, s.keyType, s.activeTaproot).collect { ev ->
                 when (ev) {
                     is ScanEvent.Connecting -> Unit
                     is ScanEvent.Connected -> { lightning.chainTip = ev.height; _state.update { it.copy(height = ev.height, serverVersion = ev.server) } }
@@ -679,7 +685,7 @@ class WalletModel(private val platform: AppPlatform) {
         val zpub = s.zpub ?: return
         scanJob = scope.launch {
             _state.update { it.copy(refreshing = true) }
-            scanner.scan(zpub, s.endpoint, s.pinned, s.gapLimit, s.keyType, s.activeTaproot).collect { ev ->
+            scanner.scan(zpub, chainEp(s), chainPin(s), s.gapLimit, s.keyType, s.activeTaproot).collect { ev ->
                 when (ev) {
                     is ScanEvent.Done -> {
                         pinIfFirst(s.endpoint, ev.fingerprint)
@@ -747,6 +753,49 @@ class WalletModel(private val platform: AppPlatform) {
         if (_state.value.zpub != null) scan()
     }
 
+    // ------------------------------------------------------------------ your own node by RPC
+
+    private var rpcCache: List<RpcConn>? = null
+    /** The node's RPC connections, in the order they are tried (Android 1.6.0: Store.rpcConns). */
+    fun rpcConns(): List<RpcConn> = rpcCache ?: RpcConn.listFromJson(platform.secretGet(K_RPC)).also { rpcCache = it }
+    /** Read BTC from the node by RPC (true) or from the Electrum server (false). */
+    fun useRpc(): Boolean = prefs.get(K_RPC_ON) == "1" && rpcConns().isNotEmpty()
+
+    fun setRpcConns(list: List<RpcConn>) {
+        rpcCache = list
+        platform.secretPut(K_RPC, if (list.isEmpty()) null else RpcConn.listToJson(list))
+        if (list.isEmpty()) prefs.put(K_RPC_ON, null)
+        if (useRpc() && _state.value.zpub != null) { _state.update { it.copy(rows = emptyList(), txs = emptyList()) }; scan() }
+    }
+
+    fun setUseRpc(on: Boolean) {
+        prefs.put(K_RPC_ON, if (on && rpcConns().isNotEmpty()) "1" else null)
+        if (_state.value.zpub != null) { _state.update { it.copy(rows = emptyList(), txs = emptyList()) }; scan() }
+    }
+
+    /** Logs in to [c] and says what is there, or why not (a tick or a cross first). */
+    suspend fun testRpc(c: RpcConn): String = withContext(Dispatchers.Default) {
+        runCatching { NodeRpcBackend.test(c, platform.transports) }.fold({ "✓ $it" }, { "✗ " + (it.message ?: "no answer") })
+    }
+
+    /** The certificate an https node shows (TLS handshake only, nothing sent), for the user to compare. */
+    suspend fun probeRpcCertificate(c: RpcConn): Result<String> = withContext(Dispatchers.Default) {
+        runCatching { NodeRpcBackend.probeCertificate(c, platform.transports) }
+    }
+
+    /**
+     * Where the wallet reads the chain and sends: the user's node by RPC when it is on (the
+     * account's key gets a watch-only wallet there), else the Electrum server. Kilojoin and
+     * JoinBlaket keep the Electrum server: they ask about other people's coins and need merkle proofs.
+     */
+    private fun chainEp(s: UiState): NodeEndpoint {
+        val key = s.zpub ?: return s.endpoint
+        if (!useRpc()) return s.endpoint
+        val type = s.keyType ?: runCatching { Bip32.parseExtendedPubKey(key).scriptType }.getOrDefault(ScriptType.P2WPKH)
+        return NodeEndpoint("node", 0, isCustom = true, rpc = RpcNode(rpcConns(), key, type))
+    }
+    private fun chainPin(s: UiState): String? = if (useRpc() && s.zpub != null) null else s.pinned
+
     fun setServer(host: String, port: Int?) {
         val e = if (host.isBlank() || port == null) NodeEndpoint.DEFAULT
                 else NodeEndpoint(host.trim(), port, !(host.trim() == NodeEndpoint.DEFAULT.host && port == NodeEndpoint.DEFAULT.port))
@@ -804,11 +853,11 @@ class WalletModel(private val platform: AppPlatform) {
         val s = _state.value
         _state.update { it.copy(send = SendPhase.Editing, spendable = null) }
         scope.launch {
-            val rate = scanner.suggestedFeeRate(s.endpoint, s.pinned)
+            val rate = scanner.suggestedFeeRate(chainEp(s), chainPin(s))
             _state.update { it.copy(suggestedRate = rate) }
         }
         scope.launch {
-            runCatching { scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned) }
+            runCatching { scanner.gatherUtxos(s.rows.filter { it.isUsed }, chainEp(s), chainPin(s)) }
                 // Coins of a pool round being built are held for it; a pool still waiting lets them go.
                 .onSuccess { u -> val locked = heldOutpoints(); _state.update { it.copy(spendable = u.filter { c -> "${c.txid}:${c.vout}" !in locked }) } }
         }
@@ -826,13 +875,13 @@ class WalletModel(private val platform: AppPlatform) {
                 val locked = heldOutpoints()
                 // A watch-only wallet's coins are of its own type, sized as such (Taproot 57.75 vB, nested 91).
                 val watchType = if (s.kind == WalletKind.WATCH && s.scriptType != ScriptType.P2WPKH) s.scriptType else null
-                val utxos = (s.spendable ?: scanner.gatherUtxos(s.rows.filter { it.isUsed }, s.endpoint, s.pinned))
+                val utxos = (s.spendable ?: scanner.gatherUtxos(s.rows.filter { it.isUsed }, chainEp(s), chainPin(s)))
                     .filter { "${it.txid}:${it.vout}" !in locked }
                     .map { if (watchType != null && it.type == null) it.copy(type = watchType) else it }
                 val draft = withContext(Dispatchers.Default) {
                     SendPlanner.plan(to, amountSats, rate, utxos, freshChange(s), sendAll)
                 }
-                scanner.verifyCoins(zpub, draft.inputs, s.endpoint, s.pinned, s.keyType, s.activeTaproot)
+                scanner.verifyCoins(zpub, draft.inputs, chainEp(s), chainPin(s), s.keyType, s.activeTaproot)
                 draft
             }.onSuccess { d -> _state.update { it.copy(send = SendPhase.Review(d, SendPlanner.feeConcern(d))) } }
              .onFailure { e -> _state.update { it.copy(send = SendPhase.Failed(e.message ?: "Could not prepare the send.")) } }
@@ -888,7 +937,7 @@ class WalletModel(private val platform: AppPlatform) {
         scope.launch {
             runCatching {
                 val tx = withContext(Dispatchers.Default) { com.kilombino.kilowallet.core.crypto.Psbt.finish(p.exported, returned, p.coins, p.draft.outputs) }
-                scanner.broadcast(tx.rawHex, s.endpoint, s.pinned)
+                scanner.broadcast(tx.rawHex, chainEp(s), chainPin(s))
             }.onSuccess { txid ->
                 _state.update { it.copy(send = SendPhase.Sent(txid)) }
                 refresh()
@@ -948,7 +997,7 @@ class WalletModel(private val platform: AppPlatform) {
                     }
                     val (words, pass) = decodeSecret(secret)
                     val signed = withContext(Dispatchers.Default) { Signer.sign(draft, words, pass, zpub, s.activeTaproot) }
-                    scanner.broadcast(signed.rawHex, s.endpoint, s.pinned)
+                    scanner.broadcast(signed.rawHex, chainEp(s), chainPin(s))
                 }.onSuccess { txid ->
                     // A coin seated in a pool still waiting for people was spent: that seat is given up.
                     pools.leaveFor(draft.inputs.map { "${it.txid}:${it.vout}" })
@@ -995,7 +1044,7 @@ class WalletModel(private val platform: AppPlatform) {
         _state.update { it.copy(send = SendPhase.Preparing) }
         scope.launch {
             runCatching {
-                val (tx, coins) = scanner.replacementCoins(txid, s.rows, s.endpoint, s.pinned)
+                val (tx, coins) = scanner.replacementCoins(txid, s.rows, chainEp(s), chainPin(s))
                 withContext(Dispatchers.Default) {
                     if (cancel) ReplacePlanner.cancel(txid, tx, coins, freshChange(s), rate)
                     else {
@@ -1004,7 +1053,7 @@ class WalletModel(private val platform: AppPlatform) {
                             com.kilombino.kilowallet.core.crypto.Address.electrumScriptHash(spk) in changeHashes
                         }, rate)
                     }
-                }.also { scanner.verifyCoins(zpub, it.inputs, s.endpoint, s.pinned, s.keyType, s.activeTaproot) }
+                }.also { scanner.verifyCoins(zpub, it.inputs, chainEp(s), chainPin(s), s.keyType, s.activeTaproot) }
             }.onSuccess { d -> _state.update { it.copy(send = SendPhase.Review(d, SendPlanner.feeConcern(d))) } }
              .onFailure { e ->
                  val fallback = if (cancel) "Could not prepare the cancellation." else "Could not prepare the replacement."
@@ -1027,9 +1076,9 @@ class WalletModel(private val platform: AppPlatform) {
         _state.update { it.copy(send = SendPhase.Preparing) }
         scope.launch {
             runCatching {
-                val (fee, vsize, ours) = scanner.cpfpParent(txid, s.rows, s.endpoint, s.pinned)
+                val (fee, vsize, ours) = scanner.cpfpParent(txid, s.rows, chainEp(s), chainPin(s))
                 val d = withContext(Dispatchers.Default) { com.kilombino.kilowallet.core.wallet.CpfpPlanner.plan(txid, fee, vsize, ours, freshChange(s), rate) }
-                scanner.verifyCoins(zpub, d.inputs, s.endpoint, s.pinned, s.keyType, s.activeTaproot)
+                scanner.verifyCoins(zpub, d.inputs, chainEp(s), chainPin(s), s.keyType, s.activeTaproot)
                 d
             }.onSuccess { d -> _state.update { it.copy(send = SendPhase.Review(d, SendPlanner.feeConcern(d))) } }
              .onFailure { e -> _state.update { it.copy(send = SendPhase.Failed(e.message ?: "Could not prepare the speed-up.")) } }

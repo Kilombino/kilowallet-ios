@@ -18,8 +18,9 @@ object Chain {
 }
 
 /** Where to reach the chain: the bundled default, or a server the user typed in. */
-data class NodeEndpoint(val host: String, val port: Int, val isCustom: Boolean = false) {
-    override fun toString() = "$host:$port"
+/** [rpc]: your own node by RPC instead of an Electrum server (Android 1.6.0's NodeEndpoint.rpc). */
+data class NodeEndpoint(val host: String, val port: Int, val isCustom: Boolean = false, val rpc: RpcNode? = null) {
+    override fun toString() = if (rpc != null) "your node (RPC)" else "$host:$port"
     companion object {
         val DEFAULT = NodeEndpoint(Chain.DEFAULT_HOST, Chain.DEFAULT_PORT, false)
     }
